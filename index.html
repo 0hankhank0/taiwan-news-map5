@@ -803,34 +803,34 @@
         }
 
         async function submitReport() {
-            const title = document.getElementById('report-title').value;
-            const errorType = document.getElementById('report-type').value;
-            const message = document.getElementById('report-message').value;
-            const btn = document.getElementById('report-submit-btn');
+  const title = document.getElementById("report-title").value;
+  const errorType = document.getElementById("report-type").value;
+  const message = document.getElementById("report-message").value;
+  const btn = document.getElementById("report-submit-btn");
 
-            btn.disabled = true;
-            btn.textContent = '傳送中...';
+  btn.disabled = true;
+  btn.textContent = "傳送中...";
 
-            try {
-                const res = await fetch('/api/report', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title, errorType, message })
-                });
+  try {
+    const res = await fetch("/api/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title, errorType, message }),
+    });
 
-                if (res.ok) {
-                    alert('感謝回報！我們會盡快修正。');
-                    closeReportModal();
-                } else {
-                    throw new Error('發送失敗');
-                }
-            } catch (err) {
-                alert('回報失敗，請稍後再試。');
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '送出回報';
-            }
-        }
+    if (res.ok) {
+      alert("感謝回報！我們會盡快修正。");
+      closeReportModal();
+    } else {
+      throw new Error("發送失敗");
+    }
+  } catch (err) {
+    alert("回報失敗，請稍後再試。");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "送出回報";
+  }
+}
 
 
     </script>
