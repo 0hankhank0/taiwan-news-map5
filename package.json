@@ -1,0 +1,24 @@
+{
+  "name": "just-happened",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "fetch": "tsx scripts/fetcher.ts"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@huggingface/inference": "^4.13.14",
+    "@supabase/supabase-js": "^2.98.0",
+    "axios": "^1.13.6",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^5.1.0",
+    "openai": "^6.34.0",
+    "rss-parser": "^3.13.0",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3"
+  }
+}
