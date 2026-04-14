@@ -1,7 +1,6 @@
 {
   "name": "just-happened",
   "version": "1.0.0",
-  "type": "module",
   "scripts": {
     "start": "node server.js",
     "fetch": "tsx scripts/fetcher.ts"
