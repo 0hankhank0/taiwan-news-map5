@@ -306,7 +306,27 @@
                     <option value="新竹縣">新竹縣</option>
                     <option value="宜蘭縣">宜蘭縣</option>
                 </optgroup>
-                <!-- ... 省略其餘選項以縮短代碼 ... -->
+                <optgroup label="中部地區">
+                    <option value="苗栗縣">苗栗縣</option>
+                    <option value="臺中市">臺中市</option>
+                    <option value="彰化縣">彰化縣</option>
+                    <option value="南投縣">南投縣</option>
+                    <option value="雲林縣">雲林縣</option>
+                </optgroup>
+                <optgroup label="南部地區">
+                    <option value="嘉義市">嘉義市</option>
+                    <option value="嘉義縣">嘉義縣</option>
+                    <option value="臺南市">臺南市</option>
+                    <option value="高雄市">高雄市</option>
+                    <option value="屏東縣">屏東縣</option>
+                </optgroup>
+                <optgroup label="東部及離島">
+                    <option value="花蓮縣">花蓮縣</option>
+                    <option value="臺東縣">臺東縣</option>
+                    <option value="澎湖縣">澎湖縣</option>
+                    <option value="金門縣">金門縣</option>
+                    <option value="連江縣">連江縣</option>
+                </optgroup>
             </select>
         </div>
     </div>
@@ -328,7 +348,10 @@
                     <button onclick="setCategoryFilter('all')" id="cat-all" class="filter-btn badge badge-all">全部</button>
                     <button onclick="setCategoryFilter('traffic')" id="cat-traffic" class="filter-btn badge badge-traffic">交通</button>
                     <button onclick="setCategoryFilter('construction')" id="cat-construction" class="filter-btn badge badge-construction">施工</button>
-                    <!-- ... 其他分類按鈕 ... -->
+                    <button onclick="setCategoryFilter('crime')" id="cat-crime" class="filter-btn badge badge-crime">治安</button>
+                    <button onclick="setCategoryFilter('disaster')" id="cat-disaster" class="filter-btn badge badge-disaster">災害</button>
+                    <button onclick="setCategoryFilter('activity')" id="cat-activity" class="filter-btn badge badge-activity">活動</button>
+                    <button onclick="setCategoryFilter('other')" id="cat-other" class="filter-btn badge badge-other">其他</button>
                 </div>
             </div>
             <div id="event-list" class="news-list divide-y divide-gray-100 md:divide-gray-800 max-h-[40vh] md:max-h-none overflow-y-auto"></div>
@@ -361,12 +384,14 @@
             other: { text: "ℹ️ 其他資訊", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
         };
 
-        // 1. 前端直接抓取警廣資料的函數
+        // 1. 前端直接抓取警廣資料的函數 (加上 corsproxy.io 代理)
         async function fetchPBSDirectly() {
             try {
-                console.log('📡 前端正在嘗試直接抓取警廣資料...');
+                console.log('📡 前端正在透過 corsproxy.io 抓取警廣資料...');
                 const PBS_URL = "https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata";
-                const res = await fetch(PBS_URL);
+                const PROXY_URL = "https://corsproxy.io/?url=" + encodeURIComponent(PBS_URL);
+                
+                const res = await fetch(PROXY_URL);
                 if (!res.ok) throw new Error("警廣抓取失敗");
                 
                 const data = await res.json();
@@ -383,7 +408,7 @@
                     source: "警廣路況"
                 })).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
             } catch (err) {
-                console.error('❌ 前端直接抓取警廣失敗 (可能也是地理防火牆):', err.message);
+                console.error('❌ 前端抓取警廣失敗 (CORS Proxy 可能也受限):', err.message);
                 return [];
             }
         }
@@ -421,7 +446,7 @@
             }
         }
 
-        // 3. 渲染邏輯 (與原本大致相同，確保格式一致)
+        // 3. 渲染邏輯
         function loadData() {
             const listEl = document.getElementById("event-list");
             const cityFilter = document.getElementById("city-filter");
@@ -431,7 +456,7 @@
             let data = parsedEvents.filter(e => {
                 if (activeCategory !== "all" && e.category !== activeCategory) return false;
                 if (cityFilter.value !== "all" && e.city !== cityFilter.value) return false;
-                if (searchKeyword && !e.title.includes(searchKeyword)) return false;
+                if (searchKeyword && !e.title.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
                 return true;
             });
 
@@ -470,8 +495,6 @@
             if (mobileCount) mobileCount.textContent = `${data.length} 則事件`;
         }
 
-        // ... 其餘地圖與 UI 控制邏輯 (Modal, Filter 等) 保持不變 ...
-        function switchMode(mode) { /* ... */ }
         function handleSearch(e) { searchKeyword = e.target.value; loadData(); }
         function setCategoryFilter(c) { activeCategory = c; loadData(); }
         function syncCityFilter(v) { document.getElementById('city-filter').value = v; loadData(); }
