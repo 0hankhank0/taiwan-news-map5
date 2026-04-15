@@ -385,57 +385,20 @@
         };
 
         /**
-         * 1. 前端直接抓取警廣資料的函數 (使用 GAS 專屬代理)
-         * 修正：移除所有不必要的 headers 與 mode，確保為最乾淨的 GET 請求以解決 CORS 預檢問題。
+         * 核心：從後端同步資料並渲染
+         * (警廣抓取邏輯已移回後端 TDX API)
          */
-        async function fetchPBSDirectly() {
-            try {
-                console.log('📡 前端正在透過最新的 GAS 代理抓取警廣資料...');
-                // 更新為最新的 GAS 網址
-                const GAS_URL = "https://script.google.com/macros/s/AKfycbxLVOPg-itt7fKnQfzteZ63P3T1kOrTyD7AHD1I50CGMYzNcyl5Ie80KLvGs8GpE1De/exec";
-                
-                // 使用最乾淨的 fetch 請求，避免觸發 Preflight OPTIONS
-                const res = await fetch(GAS_URL);
-                if (!res.ok) throw new Error("警廣抓取失敗");
-                
-                const data = await res.json();
-                const records = data?.result || [];
-                
-                return records.map(item => ({
-                    title: `${item.road || item.areaNm || "未知路段"} - ${item.roadtype || "路況"}`,
-                    content: item.comment || "無詳細說明",
-                    category: (item.roadtype || "").includes("施工") ? "construction" : "traffic",
-                    url: "",
-                    lat: parseFloat(item.y1),
-                    lng: parseFloat(item.x1),
-                    city: (item.areaNm || "全國").split("-")[0],
-                    source: "警廣路況"
-                })).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
-            } catch (err) {
-                console.error('❌ 前端抓取警廣失敗 (GAS 代理可能發生 CORS 錯誤或重新導向失敗):', err.message);
-                return [];
-            }
-        }
-
-        // 2. 核心：同步資料並渲染
         async function syncNewsAndRender() {
             const statusEl = document.getElementById("status-text");
             statusEl.textContent = "📡 正在從雲端更新資料...";
 
             try {
-                // 同時啟動：後端 AI 新聞抓取 + 前端警廣直接抓取
-                const [backendRes, pbsEvents] = await Promise.all([
-                    fetch("/api/events"),
-                    fetchPBSDirectly()
-                ]);
-
-                if (!backendRes.ok) throw new Error("後端 API 請求失敗");
-                const aiEvents = await backendRes.json();
+                // 恢復成最單純的狀態：只呼叫後端 API
+                const response = await fetch("/api/events");
+                if (!response.ok) throw new Error("後端 API 請求失敗");
                 
-                console.log(`✅ 抓取完成：AI 新聞 ${aiEvents.length} 則, 警廣路況 ${pbsEvents.length} 則`);
-
-                // 合併兩者
-                parsedEvents = [...pbsEvents, ...aiEvents];
+                parsedEvents = await response.json();
+                console.log(`✅ 抓取完成：共 ${parsedEvents.length} 則事件 (含 TDX 警廣與 AI 新聞)`);
 
                 if (!parsedEvents.length) {
                     statusEl.textContent = "⚠️ 目前暫無最新事件";
@@ -450,7 +413,7 @@
             }
         }
 
-        // 3. 渲染邏輯
+        // 渲染邏輯
         function loadData() {
             const listEl = document.getElementById("event-list");
             const cityFilter = document.getElementById("city-filter");
@@ -510,5 +473,3 @@
     </script>
 </body>
 </html>
-
-
