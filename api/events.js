@@ -185,7 +185,7 @@ If no precise address is found, use these coordinates:
         // 如果直接是陣列
         eventsArray = parsedData;
       } else if (parsedData && Array.isArray(parsedData.events)) {
-        // 如果是帶有 events 屬性的物件
+        // 如果是帶有 events 屬性的物件 (這是我們在 schema 定義的格式)
         eventsArray = parsedData.events;
       } else {
         console.log('⚠️ AI 回傳格式不符預期，未找到 events 陣列');
@@ -207,6 +207,7 @@ If no precise address is found, use these coordinates:
       source: "警廣路況",
     }));
 
+    // 合併所有事件，確保結果是一個乾淨的陣列
     const allEvents = [...eventsArray, ...policeEvents];
     console.log(`📊 合併後總事件數 (新聞 + 警廣): ${allEvents.length} 筆`);
 
@@ -224,6 +225,7 @@ If no precise address is found, use these coordinates:
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(validEvents);
   } catch (error) {
+    // 捕捉錯誤：確保印出詳細錯誤
     console.error('❌ 後端發生錯誤:', error);
     res.status(500).json({ error: "處理失敗", details: error.message });
   }
