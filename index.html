@@ -386,7 +386,7 @@
 
         /**
          * 核心：從後端同步資料並渲染
-         * (警廣抓取邏輯已移回後端 TDX API)
+         * (警廣抓取邏輯已移回後端 TDX API，前端恢復單一呼叫)
          */
         async function syncNewsAndRender() {
             const statusEl = document.getElementById("status-text");
@@ -398,7 +398,7 @@
                 if (!response.ok) throw new Error("後端 API 請求失敗");
                 
                 parsedEvents = await response.json();
-                console.log(`✅ 抓取完成：共 ${parsedEvents.length} 則事件 (含 TDX 警廣與 AI 新聞)`);
+                console.log(`✅ 抓取完成：共 ${parsedEvents.length} 則事件 (含 TDX 國道/台北與 AI 新聞)`);
 
                 if (!parsedEvents.length) {
                     statusEl.textContent = "⚠️ 目前暫無最新事件";
@@ -473,3 +473,4 @@
     </script>
 </body>
 </html>
+
