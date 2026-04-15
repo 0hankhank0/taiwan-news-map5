@@ -21,9 +21,21 @@
             background: #111827;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
+        
+        /* 容器配置 */
+        .main-container {
+            height: 100vh;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        
         #map { 
-            height: 100vh; 
-            width: 100%; 
+            flex: 1;
+            width: 100%;
+            height: 100%;
             z-index: 1;
         }
         
@@ -38,11 +50,8 @@
         }
         .custom-popup .leaflet-popup-content {
             margin: 12px 16px;
-            font-size: 14px; /* 手機更好閱讀 */
-            line-height: 1.6; /* 增加行高 */
-        }
-        .custom-popup .leaflet-popup-tip {
-            background: white;
+            font-size: 14px;
+            line-height: 1.6;
         }
 
         /* Marker Icon 樣式 */
@@ -63,21 +72,17 @@
             display: flex;
             flex-direction: column;
             background: #1f2937;
-            border-right: 1px solid #374151;
             z-index: 100;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         /* 桌機樣式 */
         @media (min-width: 768px) {
+            .main-container { flex-direction: row; }
             .news-sidebar {
                 width: 360px;
                 height: 100vh;
-            }
-            .main-container {
-                display: flex;
-                flex-direction: row;
-                height: 100vh;
+                border-right: 1px solid #374151;
             }
         }
 
@@ -88,31 +93,37 @@
                 bottom: 0;
                 left: 0;
                 right: 0;
-                height: 120px; /* 初始露出一小截 */
+                height: 100px; /* 收合高度：露出標題 */
                 width: 100%;
-                border-top: 1px solid #374151;
+                background: white !important; /* 手機版改為白色方便辨識 */
+                color: #1f2937 !important;
+                border-top: 1px solid #e5e7eb;
                 border-radius: 24px 24px 0 0;
-                box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
-                z-index: 1000;
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.2);
+                z-index: 9999 !important; /* 強制置頂 */
+                cursor: pointer;
             }
             .news-sidebar.expanded {
-                height: 75vh; /* 展開高度 */
+                height: 70vh; /* 展開高度 */
             }
             .news-sidebar .drag-handle {
                 width: 40px;
                 height: 4px;
-                background: #4b5563;
+                background: #d1d5db;
                 border-radius: 2px;
                 margin: 12px auto;
-                cursor: pointer;
             }
-            /* 調整地圖控制項，避免被抽屜擋住 */
+            .news-sidebar h2, .news-sidebar span, .news-sidebar p { color: #1f2937 !important; }
+            .news-sidebar .news-item { border-bottom-color: #f3f4f6; }
+            
+            /* 調整地圖縮放按鈕，避免被抽屜擋住 */
             .leaflet-bottom.leaflet-right {
-                bottom: 130px !important;
+                bottom: 110px !important;
                 transition: bottom 0.3s;
             }
-            .news-sidebar.expanded ~ #map .leaflet-bottom.leaflet-right {
-                bottom: 76vh !important;
+            .news-sidebar.expanded ~ #map .leaflet-bottom.leaflet-right,
+            .news-sidebar.expanded + #map .leaflet-bottom.leaflet-right {
+                bottom: 71vh !important;
             }
         }
 
@@ -122,9 +133,8 @@
             -webkit-overflow-scrolling: touch;
         }
         .news-list::-webkit-scrollbar { width: 4px; }
-        .news-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+        .news-list::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 10px; }
 
-        /* 標籤樣式 */
         .badge {
             padding: 4px 10px;
             font-size: 0.75rem;
@@ -135,94 +145,73 @@
         .badge-traffic { background-color: #ef4444 !important; }
         .badge-construction { background-color: #f97316 !important; }
         .badge-disaster { background-color: #8b5cf6 !important; }
-        .badge-activity { background-color: #10b981 !important; }
         .badge-other { background-color: #6b7280 !important; }
 
-        /* 隱藏原生捲軸 (手機) */
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* 讓選單更適合手機觸控 */
         .news-item {
             padding: 16px;
             border-bottom: 1px solid #374151;
             transition: background 0.2s;
         }
-        .news-item:active { background: #374151; }
+        .news-item:active { background: #f3f4f6; }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
     
-    <div class="main-container h-screen overflow-hidden flex flex-col md:flex-row">
+    <div class="main-container">
         
         <!-- 側邊欄 / 底部抽屜 -->
-        <aside id="sidebar" class="news-sidebar order-2 md:order-1">
-            <!-- 手機端拖動把手 -->
-            <div class="md:hidden drag-handle" onclick="toggleSidebar()"></div>
+        <aside id="sidebar" class="news-sidebar" onclick="handleSidebarClick(event)">
+            <div class="md:hidden drag-handle"></div>
             
-            <div class="px-4 pb-4 border-b border-gray-700">
+            <div class="px-4 pb-4 border-b border-gray-700 md:border-gray-700 border-gray-100">
                 <div class="flex justify-between items-center py-2 md:pt-4">
                     <h2 class="text-lg font-bold flex items-center gap-2">
                         <span class="md:hidden">最新 10 則新聞</span>
                         <span class="hidden md:inline">📍 剛剛發生什麼</span>
                     </h2>
-                    <span id="mobile-count" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full font-bold">載入中</span>
+                    <span id="mobile-count" class="text-xs bg-blue-600 text-white px-2 py-0.5 rounded-full font-bold">載入中</span>
                 </div>
                 
-                <!-- 搜尋與篩選 (手機展開或桌機才顯示) -->
-                <div class="mt-3 space-y-3">
+                <div id="filter-container" class="mt-3 space-y-3 md:block">
                     <div class="relative">
                         <input type="text" id="event-search" oninput="handleSearch(event)" 
                             placeholder="🔍 搜尋地點、路況..." 
-                            class="w-full bg-gray-800 text-sm border border-gray-700 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-all">
+                            class="w-full bg-gray-100 md:bg-gray-800 text-gray-900 md:text-white text-sm border border-gray-200 md:border-gray-700 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-all">
                     </div>
                     
                     <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                        <select id="city-filter" onchange="loadData()" class="bg-gray-800 text-xs rounded-lg px-3 py-1.5 border border-gray-700 outline-none flex-shrink-0">
+                        <select id="city-filter" onchange="loadData()" class="bg-gray-100 md:bg-gray-800 text-gray-900 md:text-white text-xs rounded-lg px-3 py-1.5 border border-gray-200 md:border-gray-700 outline-none flex-shrink-0">
                             <option value="all">全台灣</option>
-                            <optgroup label="北部">
-                                <option value="臺北市">臺北市</option>
-                                <option value="新北市">新北市</option>
-                                <option value="桃園市">桃園市</option>
-                            </optgroup>
-                            <!-- 更多縣市... -->
+                            <option value="臺北市">臺北市</option>
+                            <option value="新北市">新北市</option>
+                            <option value="桃園市">桃園市</option>
+                            <option value="臺中市">臺中市</option>
+                            <option value="臺南市">臺南市</option>
+                            <option value="高雄市">高雄市</option>
                         </select>
-                        <button onclick="setCategoryFilter('all')" class="badge bg-gray-700 flex-shrink-0">全部</button>
+                        <button onclick="setCategoryFilter('all')" class="badge bg-gray-500 flex-shrink-0">全部</button>
                         <button onclick="setCategoryFilter('traffic')" class="badge badge-traffic flex-shrink-0">交通</button>
-                        <button onclick="setCategoryFilter('construction')" class="badge badge-construction flex-shrink-0">施工</button>
                     </div>
                 </div>
             </div>
 
-            <div id="event-list" class="news-list divide-y divide-gray-800">
-                <!-- 事件項目會動態插入 -->
-            </div>
+            <div id="event-list" class="news-list divide-y"></div>
         </aside>
 
-        <!-- 地圖容器 -->
-        <section id="map" class="flex-1 order-1 md:order-2"></section>
-    </div>
-
-    <!-- Beta 免責聲明 -->
-    <div id="beta-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center hidden p-6">
-        <div class="bg-white text-gray-900 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
-            <div class="text-5xl mb-4">📢</div>
-            <h2 class="text-xl font-bold mb-4">台灣新聞地圖 (Beta)</h2>
-            <p class="text-sm text-gray-600 leading-relaxed mb-6">
-                本系統由 AI 自動標記位置。地標與內容僅供參考，出門請以官方資訊為主！
-            </p>
-            <button onclick="closeModal()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all">我了解了</button>
-        </div>
+        <section id="map"></section>
     </div>
 
     <script>
-        // 側邊欄切換邏輯 (手機版)
-        function toggleSidebar() {
+        function handleSidebarClick(e) {
+            if (window.innerWidth >= 768) return;
+            if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('expanded');
         }
 
-        // 點擊清單項目後在手機版自動縮回
         function handleItemClick(lat, lng, layer) {
             if (window.innerWidth < 768) {
                 document.getElementById('sidebar').classList.remove('expanded');
@@ -232,7 +221,6 @@
         }
 
         const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
-        // 將縮放控制移到右下角，並在手機版微調位置
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -293,11 +281,9 @@
 
                 const popupHtml = `
                     <div class="font-sans">
-                        <div class="flex items-center gap-2 mb-2">
-                            <b class="text-sm">${event.title}</b>
-                        </div>
-                        <p class="text-xs text-gray-600 mb-2">${event.content}</p>
-                        <div class="text-[10px] text-gray-400 border-t pt-2">${event.city} · 即時路況</div>
+                        <b class="text-sm">${event.title}</b>
+                        <p class="text-xs text-gray-600 mt-1">${event.content}</p>
+                        <div class="text-[10px] text-gray-400 border-t mt-2 pt-2">${event.city} · 即時路況</div>
                     </div>
                 `;
 
@@ -311,15 +297,22 @@
                         <span class="text-xs font-bold text-blue-400">${event.city}</span>
                         <span class="${config.badgeClass}">${config.text}</span>
                     </div>
-                    <h3 class="text-sm font-semibold text-gray-100">${event.title}</h3>
+                    <h3 class="text-sm font-semibold md:text-gray-100 text-gray-800">${event.title}</h3>
                 `;
-                item.onclick = () => handleItemClick(lat, lng, layer);
+                item.onclick = (e) => {
+                    e.stopPropagation();
+                    handleItemClick(lat, lng, layer);
+                };
                 listEl.appendChild(item);
             });
         }
 
         function setCategoryFilter(cat) {
             activeCategory = cat;
+            loadData();
+        }
+
+        function handleSearch(e) {
             loadData();
         }
 
@@ -337,5 +330,3 @@
     </script>
 </body>
 </html>
-
-
