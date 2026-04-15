@@ -38,7 +38,7 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 強化版 TDX 抓取：同時抓取台北台與國道事件
+ * 強化版 TDX 抓取：抓取台北市與新北市道路事件 (City Event 格式)
  */
 async function fetchTDXPoliceRecords() {
   try {
@@ -58,30 +58,34 @@ async function fetchTDXPoliceRecords() {
     const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
 
-    console.log('✅ TDX Token 取得成功，正在並行抓取台北與國道路況...');
+    console.log('✅ TDX Token 取得成功，正在並行抓取台北與新北路況...');
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     };
 
-    // 2. 並行抓取兩個指定的 TDX 網址
-    const [taipeiRes, freewayRes] = await Promise.allSettled([
-      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/Taipei?$format=JSON", { headers, timeout: 10000 }),
-      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON", { headers, timeout: 10000 })
+    // 2. 並行抓取台北市與新北市的縣市道路事件 API
+    const [taipeiRes, newTaipeiRes] = await Promise.allSettled([
+      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/Taipei?$format=JSON", { headers, timeout: 10000 }),
+      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/NewTaipei?$format=JSON", { headers, timeout: 10000 })
     ]);
 
     let combinedRecords = [];
     if (taipeiRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(taipeiRes.value.data || [])];
-    if (freewayRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(freewayRes.value.data || [])];
+    if (newTaipeiRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(newTaipeiRes.value.data || [])];
 
     console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
-    // 3. 彈性解析與轉換
+    // 3. 解析與轉換
     const formatted = combinedRecords.map((item) => {
-      const lat = parseFloat(item.LocationPt?.PositionLat || item.PositionLat);
-      const lng = parseFloat(item.LocationPt?.PositionLon || item.PositionLon);
-      const description = item.Description || item.EventDescription || "無詳細說明";
+      // 經緯度抓取判斷
+      const lat = parseFloat(item.PositionLat || item.LocationPt?.PositionLat);
+      const lng = parseFloat(item.PositionLon || item.LocationPt?.PositionLon);
+      
+      // 內容抓取判斷
+      const description = item.EventDescription || item.Description || item.RoadDirection || "無詳細說明";
+      
       const roadType = item.RoadType || item.EventType || "";
       const title = item.RoadName || item.AreaName || item.EventTitle || "即時路況";
 
@@ -92,11 +96,11 @@ async function fetchTDXPoliceRecords() {
                   (roadType + description).includes("事故") ? "disaster" : "traffic",
         lat: lat,
         lng: lng,
-        city: (item.AreaName || item.CityName || "全國").split("-")[0],
+        city: (item.AreaName || item.CityName || "雙北").split("-")[0],
         source: "即時路況",
         url: "",
       };
-    }).filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
+    }).filter((r) => !isNaN(r.lat) && !isNaN(r.lng)); // 過濾掉沒有經緯度的無效資料
 
     console.log(`✅ TDX 解析成功：${formatted.length} 筆有效事件`);
     return formatted;
@@ -245,11 +249,9 @@ If no precise address is found, use these coordinates:
     res.status(200).json(validEvents);
   } catch (error) {
     console.error('❌ 後端發生嚴重錯誤:', error);
-    // 即使發生錯誤也回傳空陣列並設定 Cache-Control，避免錯誤也被長時間快取
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.status(200).json([]); 
   }
 });
 
 module.exports = app;
-
