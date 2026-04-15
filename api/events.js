@@ -38,7 +38,7 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 抓取 TDX 官方警廣即時路況
+ * 強化版 TDX 抓取：同時抓取台北台與國道事件
  */
 async function fetchTDXPoliceRecords() {
   try {
@@ -58,36 +58,51 @@ async function fetchTDXPoliceRecords() {
     const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
 
-    console.log('✅ TDX Token 取得成功，正在抓取路況資料...');
+    console.log('✅ TDX Token 取得成功，正在並行抓取台北與國道路況...');
 
-    // 2. 抓取路況資料
-    const recordRes = await axios.get(
-      "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Record?$format=JSON",
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-        timeout: 15000,
-      }
-    );
+    const headers = {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/json",
+    };
 
-    const records = recordRes.data || [];
-    
-    // 3. 資料轉換
-    return records.map((item) => ({
-      title: `${item.RoadName || item.AreaName || "未知路段"} - ${item.RoadType || "路況"}`,
-      content: item.Description || "無詳細說明",
-      category: (item.RoadType || "").includes("施工") ? "construction" : "traffic",
-      lat: parseFloat(item.LocationPt?.PositionLat),
-      lng: parseFloat(item.LocationPt?.PositionLon),
-      city: (item.AreaName || "全國").split("-")[0],
-      source: "警廣路況",
-      url: "",
-    })).filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
+    // 2. 並行抓取兩個指定的 TDX 網址
+    const [taipeiRes, freewayRes] = await Promise.allSettled([
+      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/Taipei?$format=JSON", { headers, timeout: 10000 }),
+      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON", { headers, timeout: 10000 })
+    ]);
+
+    let combinedRecords = [];
+    if (taipeiRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(taipeiRes.value.data || [])];
+    if (freewayRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(freewayRes.value.data || [])];
+
+    console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
+
+    // 3. 彈性解析與轉換
+    const formatted = combinedRecords.map((item) => {
+      const lat = parseFloat(item.LocationPt?.PositionLat || item.PositionLat);
+      const lng = parseFloat(item.LocationPt?.PositionLon || item.PositionLon);
+      const description = item.Description || item.EventDescription || "無詳細說明";
+      const roadType = item.RoadType || item.EventType || "";
+      const title = item.RoadName || item.AreaName || item.EventTitle || "即時路況";
+
+      return {
+        title: `${title} - ${roadType || '路況'}`,
+        content: description,
+        category: (roadType + description).includes("施工") ? "construction" : 
+                  (roadType + description).includes("事故") ? "disaster" : "traffic",
+        lat: lat,
+        lng: lng,
+        city: (item.AreaName || item.CityName || "全國").split("-")[0],
+        source: "即時路況",
+        url: "",
+      };
+    }).filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
+
+    console.log(`✅ TDX 解析成功：${formatted.length} 筆有效事件`);
+    return formatted;
 
   } catch (err) {
-    console.error('❌ TDX 抓取失敗 (已優雅降級):', err.response?.data || err.message);
+    console.error('❌ TDX 流程發生錯誤:', err.message);
     return [];
   }
 }
@@ -97,7 +112,6 @@ app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
-    // 同時抓取 RSS 新聞與 TDX 警廣資料
     const [rawRssFeeds, pbsEvents] = await Promise.all([
       Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))),
       fetchTDXPoliceRecords(),
@@ -105,7 +119,6 @@ app.get("/api/events", async (req, res) => {
 
     const newsItems = rawRssFeeds.flatMap((f) => f.items);
     console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
-    console.log('📻 TDX 抓到的警廣數量:', pbsEvents.length);
 
     const latestNews = newsItems.slice(0, 10);
 
@@ -211,7 +224,7 @@ If no precise address is found, use these coordinates:
       console.error('❌ AI JSON 解析失敗:', parseErr.message);
     }
 
-    // 合併 TDX 警廣與 AI 新聞
+    // 合併 TDX 與 AI 新聞
     const finalEvents = [...pbsEvents, ...aiEvents];
 
     // 過濾有效經緯度
@@ -227,11 +240,13 @@ If no precise address is found, use these coordinates:
 
     console.log('✅ 最終合併準備回傳總數:', validEvents.length);
 
-    res.setHeader("Vercel-CDN-Cache-Control", "s-maxage=300, stale-while-revalidate=600");
-    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
-    res.json(validEvents);
+    // 設定 Cache-Control 標頭，解決 Vercel Cache HIT 導致資料過舊的問題
+    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
+    res.status(200).json(validEvents);
   } catch (error) {
     console.error('❌ 後端發生嚴重錯誤:', error);
+    // 即使發生錯誤也回傳空陣列並設定 Cache-Control，避免錯誤也被長時間快取
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.status(200).json([]); 
   }
 });
