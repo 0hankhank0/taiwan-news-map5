@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/api/events",
-      "destination": "/api/events.js"
-    }
-  ]
-}
