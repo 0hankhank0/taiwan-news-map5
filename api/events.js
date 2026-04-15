@@ -19,10 +19,10 @@ const PBS_TRAFFIC_URL = "https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/
 async function fetchOneRssFeed(rssUrl) {
   try {
     const xmlResponse = await axios.get(rssUrl, {
-      timeout: 15000,
+      timeout: 10000,
       responseType: "text",
       headers: {
-        "User-Agent": "Mozilla/5.0 RSSFetcher/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
       },
     });
@@ -30,20 +30,43 @@ async function fetchOneRssFeed(rssUrl) {
     return { items: feed.items || [] };
   } catch (err) {
     console.log(`⚠️ RSS fetch failed for ${rssUrl}:`, err.message);
-    const feed = await parser.parseURL(rssUrl);
-    return { items: feed.items || [] };
+    try {
+      const feed = await parser.parseURL(rssUrl);
+      return { items: feed.items || [] };
+    } catch (innerErr) {
+      return { items: [] };
+    }
   }
 }
 
+/**
+ * 強化版的警廣資料抓取
+ * 1. 獨立 Try...Catch
+ * 2. 加入 User-Agent 偽裝
+ * 3. 優雅降級：失敗回傳空陣列
+ */
 async function fetchPoliceRecords() {
   try {
-    const res = await axios.get(PBS_TRAFFIC_URL, { timeout: 15000 });
+    console.log('📡 正在抓取警廣路況資料...');
+    const res = await axios.get(PBS_TRAFFIC_URL, { 
+      timeout: 12000, // 稍微調低一點，避免卡住太久
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Referer": "https://rtr.pbs.gov.tw/"
+      }
+    });
+    
     let data = res.data;
     if (typeof data === "string") {
-      try { data = JSON.parse(data); } catch (e) {}
+      try { data = JSON.parse(data); } catch (e) {
+        console.error('❌ 警廣資料 JSON 解析失敗');
+        return [];
+      }
     }
+    
     const records = data?.result || [];
-    return records.map((item) => ({
+    const formatted = records.map((item) => ({
       id: item.UID || `pbs-${Math.random()}`,
       eventType: item.roadtype || "路況事件",
       description: item.comment || "無詳細說明",
@@ -53,8 +76,12 @@ async function fetchPoliceRecords() {
       lng: parseFloat(item.x1),
       source: "警廣路況",
     })).filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
+    
+    console.log(`✅ 成功取得警廣資料：${formatted.length} 筆`);
+    return formatted;
   } catch (err) {
-    console.error('❌ 警廣抓取錯誤:', err.message);
+    // 優雅降級：報錯但回傳空陣列，不影響主流程
+    console.error('❌ 警廣抓取發生錯誤 (已優雅降級):', err.message);
     return [];
   }
 }
@@ -64,9 +91,13 @@ app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
+    // 獨立抓取警廣與新聞，確保一邊失敗不影響另一邊
     const [rawRssFeeds, policeRecords] = await Promise.all([
       Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))),
-      fetchPoliceRecords(),
+      fetchPoliceRecords().catch(err => {
+        console.error('🔥 Promise.all 中的警廣異常:', err.message);
+        return [];
+      }),
     ]);
 
     const newsItems = rawRssFeeds.flatMap((f) => f.items);
@@ -86,7 +117,7 @@ app.get("/api/events", async (req, res) => {
     }));
 
     // 傳送給 AI 的警政資料 (限縮數量節省 token)
-    const limitedPolice = policeRecords.slice(0, 5).map((record) => ({
+    const limitedPolice = (policeRecords || []).slice(0, 5).map((record) => ({
       ...record,
       description: cleanAndTruncate(record.description),
     }));
@@ -179,13 +210,13 @@ If no precise address is found, use these coordinates:
         aiEvents = parsedData.events;
       }
     } catch (parseErr) {
-      console.error('❌ JSON 解析失敗:', parseErr.message);
+      console.error('❌ AI JSON 解析失敗:', parseErr.message);
     }
 
     console.log(`✅ 最終解析出 ${aiEvents.length} 筆 AI 新聞事件`);
 
     // 轉換警廣資料為統一格式，確保與 aiEvents 一致
-    const pbsEvents = policeRecords.map((r) => ({
+    const pbsEvents = (policeRecords || []).map((r) => ({
       title: `${r.road || r.city} - ${r.eventType}`,
       content: r.description,
       category: r.eventType.includes("施工") ? "construction" : 
@@ -200,7 +231,7 @@ If no precise address is found, use these coordinates:
     // 加入偵錯 Log：印出警廣資料抓取數量
     console.log('📻 警廣資料抓取數量:', pbsEvents.length);
 
-    // 合併所有事件，確保寫法類似：const finalEvents = [...pbsEvents, ...aiEvents];
+    // 合併所有事件
     const finalEvents = [...pbsEvents, ...aiEvents];
     
     // 加入偵錯 Log：印出最終合併準備回傳的總數
@@ -223,9 +254,11 @@ If no precise address is found, use these coordinates:
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(validEvents);
   } catch (error) {
-    console.error('❌ 後端發生錯誤:', error);
-    res.status(500).json({ error: "處理失敗", details: error.message });
+    console.error('❌ 後端發生嚴重錯誤:', error);
+    // 最後的防線：即使整段掛掉，也至少回傳空陣列或基礎錯誤，避免 500
+    res.status(200).json([]); 
   }
 });
 
 module.exports = app;
+
