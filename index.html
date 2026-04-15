@@ -384,13 +384,17 @@
             other: { text: "ℹ️ 其他資訊", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
         };
 
-        // 1. 前端直接抓取警廣資料的函數 (使用 GAS 專屬代理)
+        /**
+         * 1. 前端直接抓取警廣資料的函數 (使用 GAS 專屬代理)
+         * 修正：移除所有不必要的 headers 與 mode，確保為最乾淨的 GET 請求以解決 CORS 預檢問題。
+         */
         async function fetchPBSDirectly() {
             try {
                 console.log('📡 前端正在透過最新的 GAS 代理抓取警廣資料...');
                 // 更新為最新的 GAS 網址
                 const GAS_URL = "https://script.google.com/macros/s/AKfycbxLVOPg-itt7fKnQfzteZ63P3T1kOrTyD7AHD1I50CGMYzNcyl5Ie80KLvGs8GpE1De/exec";
                 
+                // 使用最乾淨的 fetch 請求，避免觸發 Preflight OPTIONS
                 const res = await fetch(GAS_URL);
                 if (!res.ok) throw new Error("警廣抓取失敗");
                 
@@ -408,7 +412,7 @@
                     source: "警廣路況"
                 })).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
             } catch (err) {
-                console.error('❌ 前端抓取警廣失敗 (GAS 代理可能也受限或發生錯誤):', err.message);
+                console.error('❌ 前端抓取警廣失敗 (GAS 代理可能發生 CORS 錯誤或重新導向失敗):', err.message);
                 return [];
             }
         }
@@ -506,6 +510,5 @@
     </script>
 </body>
 </html>
-
 
 
