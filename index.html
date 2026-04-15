@@ -147,6 +147,9 @@
         .badge-social { background-color: #ec4899 !important; }
         .badge-life { background-color: #f59e0b !important; }
         .badge-tech { background-color: #14b8a6 !important; }
+        .badge-finance { background-color: #22c55e !important; }
+        .badge-international { background-color: #8b5cf6 !important; }
+        .badge-entertainment { background-color: #db2777 !important; }
         .badge-fire { background-color: #dc2626 !important; }
         .badge-other { background-color: #6b7280 !important; }
 
@@ -430,14 +433,17 @@
         const CATEGORY_CONFIG = {
             all: { text: "全部", icon: "fa-list", color: "#374151", badgeClass: "badge-all" },
             traffic: { text: "交通", icon: "fa-car", color: "#ef4444", badgeClass: "badge-traffic" },
-            construction: { text: "施工", icon: "fa-person-digging", color: "#f97316", badgeClass: "badge-construction" },
-            disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#ef4444", badgeClass: "badge-disaster" },
-            police: { text: "警政", icon: "fa-shield-halved", color: "#3b82f6", badgeClass: "badge-police" },
-            activity: { text: "活動", icon: "fa-users", color: "#10b981", badgeClass: "badge-activity" },
             politics: { text: "政治", icon: "fa-landmark", color: "#6366f1", badgeClass: "badge-politics" },
             social: { text: "社會", icon: "fa-handshake", color: "#ec4899", badgeClass: "badge-social" },
             life: { text: "生活", icon: "fa-heart", color: "#f59e0b", badgeClass: "badge-life" },
             tech: { text: "科技", icon: "fa-microchip", color: "#14b8a6", badgeClass: "badge-tech" },
+            finance: { text: "財經", icon: "fa-chart-line", color: "#22c55e", badgeClass: "badge-finance" },
+            international: { text: "國際", icon: "fa-globe", color: "#8b5cf6", badgeClass: "badge-international" },
+            entertainment: { text: "娛樂", icon: "fa-film", color: "#db2777", badgeClass: "badge-entertainment" },
+            construction: { text: "施工", icon: "fa-person-digging", color: "#f97316", badgeClass: "badge-construction" },
+            disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#ef4444", badgeClass: "badge-disaster" },
+            police: { text: "警政", icon: "fa-shield-halved", color: "#3b82f6", badgeClass: "badge-police" },
+            activity: { text: "活動", icon: "fa-users", color: "#10b981", badgeClass: "badge-activity" },
             fire: { text: "消防", icon: "fa-fire-extinguisher", color: "#dc2626", badgeClass: "badge-fire" },
             other: { text: "其他", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge-other" }
         };
@@ -472,13 +478,15 @@
                 }
             });
 
-            // 強制將「全部」與「交通」放入最前面（如果有資料的話）
-            const categoriesToShow = ["all"];
-            if (categoriesInData.has("traffic")) categoriesToShow.push("traffic");
+            // 定義顯示順序優先權
+            const priorityOrder = ["all", "traffic", "politics", "social", "life", "tech", "finance", "international", "entertainment"];
             
-            // 加入其他實際存在的類別
+            // 根據優先權與實際資料存在與否生成顯示列表
+            const categoriesToShow = priorityOrder.filter(cat => cat === "all" || categoriesInData.has(cat));
+            
+            // 加入不在優先列表但實際存在的類別（如 construction, disaster 等）
             categoriesInData.forEach(cat => {
-                if (cat !== "all" && cat !== "traffic") categoriesToShow.push(cat);
+                if (!categoriesToShow.includes(cat)) categoriesToShow.push(cat);
             });
 
             container.innerHTML = categoriesToShow.map(cat => {
@@ -603,7 +611,8 @@
 
         async function syncNewsAndRender() {
             try {
-                const res = await fetch("/api/news");
+                // 更新 API 路徑為 /api/events 以匹配 Vercel 後端
+                const res = await fetch("/api/events");
                 parsedEvents = await res.json();
                 loadData();
             } catch (err) {
