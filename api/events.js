@@ -172,12 +172,29 @@ If no precise address is found, use these coordinates:
       temperature: 0,
     });
 
-    // 監視器 3：收到 AI 回覆後印出原始結果
-    const responseText = completion.choices[0].message.content;
-    console.log('🤖 OpenAI 的原始回傳結果:', responseText);
+    // 監視器 3：收到 AI 回覆後印出原始內容 (String)
+    const responseContent = completion.choices[0].message.content;
+    console.log('🤖 OpenAI 的原始回傳結果 (content):', responseContent);
 
-    const parsed = completion.choices[0].message.parsed;
-    let eventsArray = parsed?.events || [];
+    // 解析邏輯強化：處理多種可能的 JSON 結構
+    let eventsArray = [];
+    try {
+      const parsedData = completion.choices[0].message.parsed || JSON.parse(responseContent || "{}");
+      
+      if (Array.isArray(parsedData)) {
+        // 如果直接是陣列
+        eventsArray = parsedData;
+      } else if (parsedData && Array.isArray(parsedData.events)) {
+        // 如果是帶有 events 屬性的物件
+        eventsArray = parsedData.events;
+      } else {
+        console.log('⚠️ AI 回傳格式不符預期，未找到 events 陣列');
+      }
+    } catch (parseErr) {
+      console.error('❌ JSON 解析失敗:', parseErr.message);
+    }
+
+    console.log(`✅ 最終解析出 ${eventsArray.length} 筆新聞事件`);
 
     const policeEvents = policeRecords.map((r) => ({
       title: `${r.road || r.city} - ${r.eventType}`,
@@ -191,6 +208,7 @@ If no precise address is found, use these coordinates:
     }));
 
     const allEvents = [...eventsArray, ...policeEvents];
+    console.log(`📊 合併後總事件數 (新聞 + 警廣): ${allEvents.length} 筆`);
 
     const validEvents = allEvents.filter((item) => {
       const lat = parseFloat(item.lat);
@@ -206,7 +224,6 @@ If no precise address is found, use these coordinates:
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(validEvents);
   } catch (error) {
-    // 捕捉錯誤：確保印出詳細錯誤
     console.error('❌ 後端發生錯誤:', error);
     res.status(500).json({ error: "處理失敗", details: error.message });
   }
