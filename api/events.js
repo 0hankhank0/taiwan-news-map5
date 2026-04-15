@@ -54,6 +54,7 @@ async function fetchPoliceRecords() {
       source: "警廣路況",
     })).filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
   } catch (err) {
+    console.error('❌ 警廣抓取錯誤:', err.message);
     return [];
   }
 }
@@ -69,8 +70,6 @@ app.get("/api/events", async (req, res) => {
     ]);
 
     const newsItems = rawRssFeeds.flatMap((f) => f.items);
-    
-    // 監視器 1：抓完 RSS 後印出數量
     console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
 
     const latestNews = newsItems.slice(0, 10);
@@ -86,6 +85,7 @@ app.get("/api/events", async (req, res) => {
       link: item.link || "",
     }));
 
+    // 傳送給 AI 的警政資料 (限縮數量節省 token)
     const limitedPolice = policeRecords.slice(0, 5).map((record) => ({
       ...record,
       description: cleanAndTruncate(record.description),
@@ -128,9 +128,6 @@ If no precise address is found, use these coordinates:
 
     const userContent = `【新聞】${JSON.stringify(simplifiedNews)}\n【警政】${JSON.stringify(limitedPolice)}`;
 
-    // 監視器 2：準備送給 AI 之前印出前 100 字
-    console.log('🚀 準備送給 AI 分析的文本前 100 字:', userContent.substring(0, 100));
-
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
@@ -172,34 +169,27 @@ If no precise address is found, use these coordinates:
       temperature: 0,
     });
 
-    // 監視器 3：收到 AI 回覆後印出原始內容 (String)
     const responseContent = completion.choices[0].message.content;
-    console.log('🤖 OpenAI 的原始回傳結果 (content):', responseContent);
-
-    // 解析邏輯強化：處理多種可能的 JSON 結構
-    let eventsArray = [];
+    let aiEvents = [];
     try {
       const parsedData = completion.choices[0].message.parsed || JSON.parse(responseContent || "{}");
-      
       if (Array.isArray(parsedData)) {
-        // 如果直接是陣列
-        eventsArray = parsedData;
+        aiEvents = parsedData;
       } else if (parsedData && Array.isArray(parsedData.events)) {
-        // 如果是帶有 events 屬性的物件 (這是我們在 schema 定義的格式)
-        eventsArray = parsedData.events;
-      } else {
-        console.log('⚠️ AI 回傳格式不符預期，未找到 events 陣列');
+        aiEvents = parsedData.events;
       }
     } catch (parseErr) {
       console.error('❌ JSON 解析失敗:', parseErr.message);
     }
 
-    console.log(`✅ 最終解析出 ${eventsArray.length} 筆新聞事件`);
+    console.log(`✅ 最終解析出 ${aiEvents.length} 筆 AI 新聞事件`);
 
-    const policeEvents = policeRecords.map((r) => ({
+    // 轉換警廣資料為統一格式，確保與 aiEvents 一致
+    const pbsEvents = policeRecords.map((r) => ({
       title: `${r.road || r.city} - ${r.eventType}`,
       content: r.description,
-      category: r.eventType.includes("施工") ? "construction" : r.eventType.includes("事故") ? "disaster" : "traffic",
+      category: r.eventType.includes("施工") ? "construction" : 
+                (r.eventType.includes("事故") || r.eventType.includes("車禍")) ? "disaster" : "traffic",
       url: "",
       lat: r.lat,
       lng: r.lng,
@@ -207,11 +197,17 @@ If no precise address is found, use these coordinates:
       source: "警廣路況",
     }));
 
-    // 合併所有事件，確保結果是一個乾淨的陣列
-    const allEvents = [...eventsArray, ...policeEvents];
-    console.log(`📊 合併後總事件數 (新聞 + 警廣): ${allEvents.length} 筆`);
+    // 加入偵錯 Log：印出警廣資料抓取數量
+    console.log('📻 警廣資料抓取數量:', pbsEvents.length);
 
-    const validEvents = allEvents.filter((item) => {
+    // 合併所有事件，確保寫法類似：const finalEvents = [...pbsEvents, ...aiEvents];
+    const finalEvents = [...pbsEvents, ...aiEvents];
+    
+    // 加入偵錯 Log：印出最終合併準備回傳的總數
+    console.log('📦 最終合併準備回傳的總數:', finalEvents.length);
+
+    // 過濾有效經緯度
+    const validEvents = finalEvents.filter((item) => {
       const lat = parseFloat(item.lat);
       const lng = parseFloat(item.lng);
       return !isNaN(lat) && !isNaN(lng) && lat >= 21 && lat <= 26 && lng >= 118 && lng <= 122;
@@ -221,11 +217,12 @@ If no precise address is found, use these coordinates:
       lng: parseFloat(item.lng),
     }));
 
+    console.log('✅ 過濾後有效事件總數:', validEvents.length);
+
     res.setHeader("Vercel-CDN-Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(validEvents);
   } catch (error) {
-    // 捕捉錯誤：確保印出詳細錯誤
     console.error('❌ 後端發生錯誤:', error);
     res.status(500).json({ error: "處理失敗", details: error.message });
   }
