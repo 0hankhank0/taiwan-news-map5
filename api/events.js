@@ -28,7 +28,8 @@ async function fetchOneRssFeed(rssUrl) {
     });
     const feed = await parser.parseString(String(xmlResponse.data || ""));
     return { items: feed.items || [] };
-  } catch {
+  } catch (err) {
+    console.log(`⚠️ RSS fetch failed for ${rssUrl}:`, err.message);
     const feed = await parser.parseURL(rssUrl);
     return { items: feed.items || [] };
   }
@@ -52,7 +53,7 @@ async function fetchPoliceRecords() {
       lng: parseFloat(item.x1),
       source: "警廣路況",
     })).filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
-  } catch {
+  } catch (err) {
     return [];
   }
 }
@@ -67,18 +68,19 @@ app.get("/api/events", async (req, res) => {
       fetchPoliceRecords(),
     ]);
 
-    const newsItems = rawRssFeeds.flatMap((f) => f.items).slice(0, 8);
+    const newsItems = rawRssFeeds.flatMap((f) => f.items);
+    
+    // 監視器 1：抓完 RSS 後印出數量
+    console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
+
+    const latestNews = newsItems.slice(0, 10);
 
     const cleanAndTruncate = (text) => {
       if (!text) return "";
-      return text
-        .replace(/<[^>]*>?/gm, "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .substring(0, 300);
+      return text.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim().substring(0, 300);
     };
 
-    const simplifiedNews = newsItems.map((item) => ({
+    const simplifiedNews = latestNews.map((item) => ({
       title: item.title || "",
       content: cleanAndTruncate(item.contentSnippet || item.content || ""),
       link: item.link || "",
@@ -89,8 +91,13 @@ app.get("/api/events", async (req, res) => {
       description: cleanAndTruncate(record.description),
     }));
 
-    const systemPrompt = `You are a geographic labeling assistant. Extract real physical events in Taiwan from news and police records.
-Output STRICTLY follows this JSON schema:
+    const systemPrompt = `You are a geographic labeling assistant. Your job is to extract EVERY single physical event from the provided Taiwan news and police records.
+
+【CRITICAL RULES】
+1. 請盡可能把所有新聞都轉換成 JSON 格式。
+2. 即使新聞中沒有精確的街道地址，也請務必給它一個該縣市的概略經緯度中心點。
+3. 絕對不要略過任何一條新聞，禁止回傳空陣列 []。
+4. Output MUST follow this JSON schema:
 {
   "events": [
     {
@@ -105,16 +112,24 @@ Output STRICTLY follows this JSON schema:
     }
   ]
 }
-【CATEGORY RULES】
-- **construction**: "施工", "挖路", "鋪柏油", "管線", "封閉", "改道"
-- **disaster**: "火災", "火警", "車禍", "交通事故", "坍方", "淹水", "地震"
-- **traffic**: congestion, signal failures WITHOUT accidents
-- **police**: checkpoints, law enforcement
-- **activity**: festivals, parades, ceremonies
-- **other**: ONLY if nothing else fits
-【TITLE】Never use "全國", "國道". Use "台北市忠孝東路 - 路面施工" format.`;
+
+【CITY TO COORDINATE FALLBACK】
+If no precise address is found, use these coordinates:
+- 台北市: 25.0330, 121.5654
+- 新北市: 25.0169, 121.4628
+- 桃園市: 24.9937, 121.3009
+- 台中市: 24.1477, 120.6736
+- 高雄市: 22.6273, 120.3014
+- 台南市: 22.9997, 120.2270
+- 彰化縣: 24.0685, 120.5575
+- 宜蘭縣: 24.7021, 121.7378
+- 花蓮縣: 23.9872, 121.6015
+- 其他: 23.5, 120.5`;
 
     const userContent = `【新聞】${JSON.stringify(simplifiedNews)}\n【警政】${JSON.stringify(limitedPolice)}`;
+
+    // 監視器 2：準備送給 AI 之前印出前 100 字
+    console.log('🚀 準備送給 AI 分析的文本前 100 字:', userContent.substring(0, 100));
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -157,17 +172,17 @@ Output STRICTLY follows this JSON schema:
       temperature: 0,
     });
 
+    // 監視器 3：收到 AI 回覆後印出原始結果
+    const responseText = completion.choices[0].message.content;
+    console.log('🤖 OpenAI 的原始回傳結果:', responseText);
+
     const parsed = completion.choices[0].message.parsed;
     let eventsArray = parsed?.events || [];
 
     const policeEvents = policeRecords.map((r) => ({
       title: `${r.road || r.city} - ${r.eventType}`,
       content: r.description,
-      category: r.eventType.includes("施工")
-        ? "construction"
-        : r.eventType.includes("事故") || r.eventType.includes("車禍")
-        ? "disaster"
-        : "traffic",
+      category: r.eventType.includes("施工") ? "construction" : r.eventType.includes("事故") ? "disaster" : "traffic",
       url: "",
       lat: r.lat,
       lng: r.lng,
@@ -180,14 +195,7 @@ Output STRICTLY follows this JSON schema:
     const validEvents = allEvents.filter((item) => {
       const lat = parseFloat(item.lat);
       const lng = parseFloat(item.lng);
-      return (
-        !isNaN(lat) &&
-        !isNaN(lng) &&
-        lat >= 21 &&
-        lat <= 26 &&
-        lng >= 118 &&
-        lng <= 122
-      );
+      return !isNaN(lat) && !isNaN(lng) && lat >= 21 && lat <= 26 && lng >= 118 && lng <= 122;
     }).map((item) => ({
       ...item,
       lat: parseFloat(item.lat),
@@ -198,7 +206,8 @@ Output STRICTLY follows this JSON schema:
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.json(validEvents);
   } catch (error) {
-    console.error("❌ /api/events error:", error.message);
+    // 捕捉錯誤：確保印出詳細錯誤
+    console.error('❌ 後端發生錯誤:', error);
     res.status(500).json({ error: "處理失敗", details: error.message });
   }
 });
