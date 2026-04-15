@@ -40,16 +40,21 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 強化版的警廣資料抓取
+ * 強化版的警廣資料抓取 (使用 AllOrigins Proxy 繞過地理防火牆)
  * 1. 獨立 Try...Catch
- * 2. 加入 User-Agent 偽裝
- * 3. 優雅降級：失敗回傳空陣列
+ * 2. 使用 api.allorigins.win 代理
+ * 3. 加入 User-Agent 偽裝
+ * 4. 優雅降級：失敗回傳空陣列
  */
 async function fetchPoliceRecords() {
   try {
-    console.log('📡 正在抓取警廣路況資料...');
-    const res = await axios.get(PBS_TRAFFIC_URL, { 
-      timeout: 12000, // 稍微調低一點，避免卡住太久
+    console.log('📡 正在透過 Proxy 抓取警廣路況資料...');
+    
+    // 使用 AllOrigins Proxy 繞過 Vercel 美國 IP 的限制
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(PBS_TRAFFIC_URL)}`;
+    
+    const res = await axios.get(proxyUrl, { 
+      timeout: 15000, // 透過代理可能會慢一點，給予 15 秒
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*",
@@ -77,11 +82,11 @@ async function fetchPoliceRecords() {
       source: "警廣路況",
     })).filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
     
-    console.log(`✅ 成功取得警廣資料：${formatted.length} 筆`);
+    console.log(`✅ 成功取得警廣資料：${formatted.length} 筆 (透過 Proxy)`);
     return formatted;
   } catch (err) {
     // 優雅降級：報錯但回傳空陣列，不影響主流程
-    console.error('❌ 警廣抓取發生錯誤 (已優雅降級):', err.message);
+    console.error('❌ 警廣抓取發生錯誤 (Proxy 模式已優雅降級):', err.message);
     return [];
   }
 }
@@ -261,4 +266,5 @@ If no precise address is found, use these coordinates:
 });
 
 module.exports = app;
+
 
