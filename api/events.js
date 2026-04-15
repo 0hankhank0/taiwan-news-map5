@@ -38,7 +38,7 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 強化版 TDX 抓取：抓取台北市與新北市道路事件 (City Event 格式)
+ * 強化版 TDX 抓取：抓取全台主要縣市道路事件
  */
 async function fetchTDXPoliceRecords() {
   try {
@@ -58,32 +58,37 @@ async function fetchTDXPoliceRecords() {
     const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
 
-    console.log('✅ TDX Token 取得成功，正在並行抓取台北與新北路況...');
+    // 2. 定義要抓取的縣市清單
+    const cities = ['Taipei', 'NewTaipei', 'Taoyuan', 'Taichung', 'Tainan', 'Kaohsiung', 'Keelung'];
+    console.log(`✅ TDX Token 取得成功，正在並行抓取全台路況 (${cities.join(', ')})...`);
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     };
 
-    // 2. 並行抓取台北市與新北市的縣市道路事件 API
-    const [taipeiRes, newTaipeiRes] = await Promise.allSettled([
-      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/Taipei?$format=JSON", { headers, timeout: 10000 }),
-      axios.get("https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/NewTaipei?$format=JSON", { headers, timeout: 10000 })
-    ]);
+    // 使用 Promise.all 並行請求，並為每個請求加上獨立 catch 確保容錯
+    const fetchPromises = cities.map(city => 
+      axios.get(`https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/${city}?$format=JSON`, { headers, timeout: 10000 })
+        .then(res => res.data || [])
+        .catch(err => {
+          console.error(`⚠️ TDX 抓取失敗 (${city}):`, err.message);
+          return []; // 單一縣市失敗回傳空陣列，不影響整體
+        })
+    );
 
-    let combinedRecords = [];
-    if (taipeiRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(taipeiRes.value.data || [])];
-    if (newTaipeiRes.status === 'fulfilled') combinedRecords = [...combinedRecords, ...(newTaipeiRes.value.data || [])];
+    const cityResults = await Promise.all(fetchPromises);
+    const combinedRecords = cityResults.flat(); // 合併所有縣市資料
 
     console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
     // 3. 解析與轉換
     const formatted = combinedRecords.map((item) => {
-      // 經緯度抓取判斷
+      // 經緯度抓取：優先使用 item.PositionLon / item.PositionLat，或 item.LocationPt 內的屬性
       const lat = parseFloat(item.PositionLat || item.LocationPt?.PositionLat);
       const lng = parseFloat(item.PositionLon || item.LocationPt?.PositionLon);
       
-      // 內容抓取判斷
+      // 內容抓取：優先使用 item.EventDescription，其次為 item.Description 或 item.RoadDirection
       const description = item.EventDescription || item.Description || item.RoadDirection || "無詳細說明";
       
       const roadType = item.RoadType || item.EventType || "";
@@ -96,7 +101,7 @@ async function fetchTDXPoliceRecords() {
                   (roadType + description).includes("事故") ? "disaster" : "traffic",
         lat: lat,
         lng: lng,
-        city: (item.AreaName || item.CityName || "雙北").split("-")[0],
+        city: (item.AreaName || item.CityName || "全國").split("-")[0],
         source: "即時路況",
         url: "",
       };
@@ -244,7 +249,7 @@ If no precise address is found, use these coordinates:
 
     console.log('✅ 最終合併準備回傳總數:', validEvents.length);
 
-    // 設定 Cache-Control 標頭，解決 Vercel Cache HIT 導致資料過舊的問題
+    // 設定 Cache-Control 標頭
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
     res.status(200).json(validEvents);
   } catch (error) {
