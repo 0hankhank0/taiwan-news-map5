@@ -2,8 +2,8 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>剛剛發生什麼 - 縣市篩選全能版</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>剛剛發生什麼 - 專業交通地圖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -11,27 +11,38 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <style>
-        #map { height: 100vh; width: 100%; }
-        @media (min-width: 768px) {
-            #map { height: calc(100vh - 64px); }
+        /* 基礎佈局：完全佔滿且隱藏捲軸 */
+        html, body { 
+            height: 100vh; 
+            width: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
+            background: #111827;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #map { 
+            height: 100vh; 
+            width: 100%; 
+            z-index: 1;
         }
         
-        /* 現代化 Popup 樣式 */
+        /* 現代化 Popup 樣式優化 */
         .custom-popup .leaflet-popup-content-wrapper { 
-            background: rgba(255, 255, 255, 0.95); 
+            background: rgba(255, 255, 255, 0.98); 
             color: #1f2937; 
             border-radius: 16px; 
             padding: 4px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
             backdrop-filter: blur(8px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         .custom-popup .leaflet-popup-content {
             margin: 12px 16px;
-            line-height: 1.5;
+            font-size: 14px; /* 手機更好閱讀 */
+            line-height: 1.6; /* 增加行高 */
         }
         .custom-popup .leaflet-popup-tip {
-            background: rgba(255, 255, 255, 0.95);
+            background: white;
         }
 
         /* Marker Icon 樣式 */
@@ -41,436 +52,290 @@
             justify-content: center;
             border-radius: 50%;
             border: 2px solid white;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
             transition: all 0.2s;
             color: white;
             font-size: 14px;
         }
-        .custom-marker:hover {
-            transform: scale(1.1);
-            z-index: 1000 !important;
-        }
         
-        /* 交通路段動畫 - 黃黑虛線效果 */
-        .line-construction {
-            stroke-dasharray: 10, 10;
-            animation: dash-move 20s linear infinite;
-        }
-        @keyframes dash-move {
-            to { stroke-dashoffset: -200; }
-        }
-
-        @media (min-width: 768px) { .news-sidebar { width: 320px; max-width: 36vw; } }
-
+        /* 側邊欄 (桌機) / 底部抽屜 (手機) */
         .news-sidebar { 
-            width: 320px; 
-            max-width: 36vw; 
             display: flex;
             flex-direction: column;
+            background: #1f2937;
+            border-right: 1px solid #374151;
+            z-index: 100;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
+
+        /* 桌機樣式 */
+        @media (min-width: 768px) {
+            .news-sidebar {
+                width: 360px;
+                height: 100vh;
+            }
+            .main-container {
+                display: flex;
+                flex-direction: row;
+                height: 100vh;
+            }
+        }
+
+        /* 手機版：底部抽屜式設計 (Bottom Sheet) */
+        @media (max-width: 767px) {
+            .news-sidebar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 120px; /* 初始露出一小截 */
+                width: 100%;
+                border-top: 1px solid #374151;
+                border-radius: 24px 24px 0 0;
+                box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
+                z-index: 1000;
+            }
+            .news-sidebar.expanded {
+                height: 75vh; /* 展開高度 */
+            }
+            .news-sidebar .drag-handle {
+                width: 40px;
+                height: 4px;
+                background: #4b5563;
+                border-radius: 2px;
+                margin: 12px auto;
+                cursor: pointer;
+            }
+            /* 調整地圖控制項，避免被抽屜擋住 */
+            .leaflet-bottom.leaflet-right {
+                bottom: 130px !important;
+                transition: bottom 0.3s;
+            }
+            .news-sidebar.expanded ~ #map .leaflet-bottom.leaflet-right {
+                bottom: 76vh !important;
+            }
+        }
+
         .news-list { 
             flex: 1;
             overflow-y: auto !important; 
             -webkit-overflow-scrolling: touch;
         }
-        .news-item:hover { transform: translateX(2px); }
-        
-        /* 依 source 控制 Marker 顏色：新聞=藍、警政=紅、交叉比對=金 */
-        .marker-news { filter: hue-rotate(210deg) saturate(1.2); }
-        .marker-police { filter: hue-rotate(140deg) saturate(1.2); }
-        .marker-cross { filter: hue-rotate(20deg) saturate(1.8) brightness(1.15); }
-
         .news-list::-webkit-scrollbar { width: 4px; }
-        .news-list::-webkit-scrollbar-track { background: transparent; }
-        .news-list::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
+        .news-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
 
-        /* 事件分類標籤現代風格 (Pill Style) */
+        /* 標籤樣式 */
         .badge {
-            display: inline-block;
             padding: 4px 10px;
             font-size: 0.75rem;
             font-weight: 600;
-            color: white !important;
             border-radius: 12px;
-            line-height: 1;
-            text-align: center;
-            white-space: nowrap;
-            border: none !important;
+            color: white !important;
         }
         .badge-traffic { background-color: #ef4444 !important; }
         .badge-construction { background-color: #f97316 !important; }
-        .badge-crime { background-color: #3b82f6 !important; }
         .badge-disaster { background-color: #8b5cf6 !important; }
         .badge-activity { background-color: #10b981 !important; }
         .badge-other { background-color: #6b7280 !important; }
-        .badge-all { background-color: #374151 !important; }
 
-        .filter-btn {
-            transition: all 0.2s;
-            cursor: pointer;
-            opacity: 0.7;
-        }
-        .filter-btn:hover {
-            opacity: 1;
-            transform: translateY(-1px);
-        }
-        .filter-btn.active {
-            opacity: 1;
-            box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
-        }
+        /* 隱藏原生捲軸 (手機) */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-        /* Beta 版免責聲明 Modal 樣式 */
-        .modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 9999;
-            backdrop-filter: blur(4px);
+        /* 讓選單更適合手機觸控 */
+        .news-item {
+            padding: 16px;
+            border-bottom: 1px solid #374151;
+            transition: background 0.2s;
         }
-        .modal-card {
-            background: white;
-            color: #1f2937;
-            padding: 2rem;
-            border-radius: 20px;
-            max-width: 450px;
-            width: 90%;
-            text-align: center;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-        }
-        .modal-btn {
-            background: #3b82f6;
-            color: white;
-            padding: 10px 30px;
-            border-radius: 12px;
-            font-weight: 600;
-            margin-top: 20px;
-            transition: all 0.2s;
-        }
-        .modal-btn:hover {
-            background: #2563eb;
-            transform: translateY(-2px);
-        }
-
-        .report-btn {
-            color: #94a3b8;
-            font-size: 11px;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            transition: color 0.2s;
-        }
-        .report-btn:hover { color: #ef4444; }
-
-        .report-modal-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 10000;
-            backdrop-filter: blur(4px);
-        }
-        .report-modal-card {
-            background: white;
-            color: #1f2937;
-            padding: 1.5rem;
-            border-radius: 16px;
-            max-width: 400px;
-            width: 90%;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-        }
-
+        .news-item:active { background: #374151; }
     </style>
 </head>
-<body class="bg-gray-900 text-white overflow-hidden">
+<body class="bg-gray-900 text-white">
     
-    <!-- 錯誤回報 Modal -->
-    <div id="report-modal" class="report-modal-overlay hidden">
-        <div class="report-modal-card">
-            <h2 class="text-lg font-bold mb-4 flex items-center gap-2 text-red-600">
-                <i class="fa-solid fa-triangle-exclamation"></i> 內建錯誤回報
-            </h2>
-            <div class="space-y-4">
-                <div>
-                    <label class="text-xs text-gray-500 block mb-1">新聞標題</label>
-                    <input type="text" id="report-title" readonly class="w-full bg-gray-100 border border-gray-200 rounded px-3 py-2 text-sm outline-none">
+    <div class="main-container h-screen overflow-hidden flex flex-col md:flex-row">
+        
+        <!-- 側邊欄 / 底部抽屜 -->
+        <aside id="sidebar" class="news-sidebar order-2 md:order-1">
+            <!-- 手機端拖動把手 -->
+            <div class="md:hidden drag-handle" onclick="toggleSidebar()"></div>
+            
+            <div class="px-4 pb-4 border-b border-gray-700">
+                <div class="flex justify-between items-center py-2 md:pt-4">
+                    <h2 class="text-lg font-bold flex items-center gap-2">
+                        <span class="md:hidden">最新 10 則新聞</span>
+                        <span class="hidden md:inline">📍 剛剛發生什麼</span>
+                    </h2>
+                    <span id="mobile-count" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full font-bold">載入中</span>
                 </div>
-                <div>
-                    <label class="text-xs text-gray-500 block mb-1">錯誤類型</label>
-                    <select id="report-type" class="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500">
-                        <option value="地點錯了">📍 地點錯了</option>
-                        <option value="分類錯了">🏷️ 分類錯了</option>
-                        <option value="內容不實">❌ 內容不實</option>
-                        <option value="其他">💬 其他</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-xs text-gray-500 block mb-1">補充說明 (選填)</label>
-                    <textarea id="report-message" class="w-full border border-gray-200 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 h-20" placeholder="請描述詳細錯誤..."></textarea>
-                </div>
-                <div class="flex gap-2 pt-2">
-                    <button onclick="closeReportModal()" class="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-600 py-2 rounded-lg text-sm font-medium transition-colors">取消</button>
-                    <button onclick="submitReport()" id="report-submit-btn" class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded-lg text-sm font-medium transition-colors">送出回報</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Beta 免責聲明 Modal -->
-    <div id="beta-modal" class="modal-overlay hidden">
-        <div class="modal-card">
-            <div class="text-4xl mb-4">📢</div>
-            <h2 class="text-xl font-bold mb-4 text-gray-800">歡迎來到台灣新聞地圖 (Beta)！</h2>
-            <p class="text-gray-600 leading-relaxed text-sm">
-                本系統由 AI 自動閱讀新聞並標記位置。由於 AI 可能會產生幻覺或誤判，地標位置與事件內容僅供參考，並非百分之百正確。出門請以官方交通與防災資訊為主！
-            </p>
-            <button onclick="closeModal()" class="modal-btn">我了解了</button>
-        </div>
-    </div>
-
-    <header class="hidden md:flex h-16 items-center px-6 bg-gray-800 border-b border-gray-700 justify-between shadow-lg z-10 relative">
-        <div class="flex items-center gap-4">
-            <h1 class="text-xl font-bold flex items-center gap-2">📍 剛剛發生什麼</h1>
-            <select id="city-filter" onchange="loadData()" class="bg-gray-700 text-sm rounded px-2 py-1 border border-gray-600 outline-none focus:border-blue-500 transition-all">
-                <option value="all">全台灣</option>
-                <optgroup label="北部地區">
-                    <option value="基隆市">基隆市</option>
-                    <option value="臺北市">臺北市</option>
-                    <option value="新北市">新北市</option>
-                    <option value="桃園市">桃園市</option>
-                    <option value="新竹市">新竹市</option>
-                    <option value="新竹縣">新竹縣</option>
-                    <option value="宜蘭縣">宜蘭縣</option>
-                </optgroup>
-                <optgroup label="中部地區">
-                    <option value="苗栗縣">苗栗縣</option>
-                    <option value="臺中市">臺中市</option>
-                    <option value="彰化縣">彰化縣</option>
-                    <option value="南投縣">南投縣</option>
-                    <option value="雲林縣">雲林縣</option>
-                </optgroup>
-                <optgroup label="南部地區">
-                    <option value="嘉義市">嘉義市</option>
-                    <option value="嘉義縣">嘉義縣</option>
-                    <option value="臺南市">臺南市</option>
-                    <option value="高雄市">高雄市</option>
-                    <option value="屏東縣">屏東縣</option>
-                </optgroup>
-                <optgroup label="東部及離島">
-                    <option value="花蓮縣">花蓮縣</option>
-                    <option value="臺東縣">臺東縣</option>
-                    <option value="澎湖縣">澎湖縣</option>
-                    <option value="金門縣">金門縣</option>
-                    <option value="連江縣">連江縣</option>
-                </optgroup>
-            </select>
-        </div>
-        <div class="flex items-center gap-3">
-            <div class="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
-                <button onclick="switchMode(true)" id="btn-tw" class="px-6 py-1.5 rounded-md bg-blue-600 font-medium transition-all duration-200">台灣模式</button>
-                <button onclick="switchMode(false)" id="btn-global" class="px-6 py-1.5 rounded-md hover:bg-gray-800 transition-all duration-200">全球模式</button>
-            </div>
-            <a href="https://taiwan-map.bobaboba.me" target="_blank" class="flex items-center gap-2 px-6 py-2 rounded-full bg-[#f3e3d3] hover:bg-[#e6d2bc] text-[#5d4037] font-bold text-sm shadow-md transition-all duration-300 transform hover:scale-105 active:scale-95">
-                <span>🧋 請我喝杯珍奶</span>
-            </a>
-        </div>
-        <div id="status-text" class="text-sm text-gray-400 font-mono">系統連線中...</div>
-    </header>
-
-    <div class="md:hidden fixed top-4 left-4 right-4 z-[1000] flex flex-col gap-2">
-        <div class="relative group shadow-2xl">
-            <input type="text" id="event-search-mobile" oninput="handleSearch(event)" 
-                placeholder="🔍 搜尋地點、路況或事件..." 
-                class="w-full bg-white/95 backdrop-blur-md text-gray-900 border-none rounded-2xl px-5 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-lg">
-        </div>
-        <div class="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-            <select id="city-filter-mobile" onchange="syncCityFilter(this.value)" class="bg-white/95 backdrop-blur-md text-gray-900 text-sm font-bold rounded-xl px-4 py-2 shadow-lg outline-none flex-shrink-0">
-                <option value="all">全台灣</option>
-                <optgroup label="北部地區">
-                    <option value="基隆市">基隆市</option>
-                    <option value="臺北市">臺北市</option>
-                    <option value="新北市">新北市</option>
-                    <option value="桃園市">桃園市</option>
-                    <option value="新竹市">新竹市</option>
-                    <option value="新竹縣">新竹縣</option>
-                    <option value="宜蘭縣">宜蘭縣</option>
-                </optgroup>
-                <optgroup label="中部地區">
-                    <option value="苗栗縣">苗栗縣</option>
-                    <option value="臺中市">臺中市</option>
-                    <option value="彰化縣">彰化縣</option>
-                    <option value="南投縣">南投縣</option>
-                    <option value="雲林縣">雲林縣</option>
-                </optgroup>
-                <optgroup label="南部地區">
-                    <option value="嘉義市">嘉義市</option>
-                    <option value="嘉義縣">嘉義縣</option>
-                    <option value="臺南市">臺南市</option>
-                    <option value="高雄市">高雄市</option>
-                    <option value="屏東縣">屏東縣</option>
-                </optgroup>
-                <optgroup label="東部及離島">
-                    <option value="花蓮縣">花蓮縣</option>
-                    <option value="臺東縣">臺東縣</option>
-                    <option value="澎湖縣">澎湖縣</option>
-                    <option value="金門縣">金門縣</option>
-                    <option value="連江縣">連江縣</option>
-                </optgroup>
-            </select>
-        </div>
-    </div>
-
-    <main class="flex flex-col md:flex-row h-screen overflow-hidden">
-        <aside class="news-sidebar fixed md:relative bottom-0 left-0 right-0 md:h-[calc(100vh-64px)] bg-white md:bg-gray-900/95 border-t md:border-t-0 md:border-r border-gray-200 md:border-gray-700 z-[1001] md:z-10 rounded-t-3xl md:rounded-none shadow-[0_-10px_25px_-5px_rgba(0,0,0,0.1)] md:shadow-none transition-all duration-300">
-            <div class="md:hidden w-12 h-1.5 bg-gray-300 rounded-full mx-auto mt-3 mb-1"></div>
-            <div class="px-4 py-3 border-b border-gray-100 md:border-gray-700">
-                <div class="flex justify-between items-center mb-2 md:mb-0">
-                    <h2 class="text-sm font-bold text-gray-800 md:text-gray-200">即時事件列表</h2>
-                    <span id="mobile-count" class="md:hidden text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full font-bold">載入中</span>
-                </div>
-                <div class="hidden md:block relative mb-3 group">
-                    <input type="text" id="event-search" oninput="handleSearch(event)" 
-                        placeholder="🔍 搜尋地點..." 
-                        class="w-full bg-gray-800 text-sm text-gray-200 border border-gray-700 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-all shadow-inner">
-                </div>
-                <div class="mt-1 flex flex-wrap gap-1.5 overflow-x-auto no-scrollbar pb-1 md:pb-0">
-                    <button onclick="setCategoryFilter('all')" id="cat-all" class="filter-btn badge badge-all">全部</button>
-                    <button onclick="setCategoryFilter('traffic')" id="cat-traffic" class="filter-btn badge badge-traffic">交通</button>
-                    <button onclick="setCategoryFilter('construction')" id="cat-construction" class="filter-btn badge badge-construction">施工</button>
-                    <button onclick="setCategoryFilter('crime')" id="cat-crime" class="filter-btn badge badge-crime">治安</button>
-                    <button onclick="setCategoryFilter('disaster')" id="cat-disaster" class="filter-btn badge badge-disaster">災害</button>
-                    <button onclick="setCategoryFilter('activity')" id="cat-activity" class="filter-btn badge badge-activity">活動</button>
-                    <button onclick="setCategoryFilter('other')" id="cat-other" class="filter-btn badge badge-other">其他</button>
+                
+                <!-- 搜尋與篩選 (手機展開或桌機才顯示) -->
+                <div class="mt-3 space-y-3">
+                    <div class="relative">
+                        <input type="text" id="event-search" oninput="handleSearch(event)" 
+                            placeholder="🔍 搜尋地點、路況..." 
+                            class="w-full bg-gray-800 text-sm border border-gray-700 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-all">
+                    </div>
+                    
+                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                        <select id="city-filter" onchange="loadData()" class="bg-gray-800 text-xs rounded-lg px-3 py-1.5 border border-gray-700 outline-none flex-shrink-0">
+                            <option value="all">全台灣</option>
+                            <optgroup label="北部">
+                                <option value="臺北市">臺北市</option>
+                                <option value="新北市">新北市</option>
+                                <option value="桃園市">桃園市</option>
+                            </optgroup>
+                            <!-- 更多縣市... -->
+                        </select>
+                        <button onclick="setCategoryFilter('all')" class="badge bg-gray-700 flex-shrink-0">全部</button>
+                        <button onclick="setCategoryFilter('traffic')" class="badge badge-traffic flex-shrink-0">交通</button>
+                        <button onclick="setCategoryFilter('construction')" class="badge badge-construction flex-shrink-0">施工</button>
+                    </div>
                 </div>
             </div>
-            <div id="event-list" class="news-list divide-y divide-gray-100 md:divide-gray-800 max-h-[40vh] md:max-h-none overflow-y-auto"></div>
+
+            <div id="event-list" class="news-list divide-y divide-gray-800">
+                <!-- 事件項目會動態插入 -->
+            </div>
         </aside>
-        <section id="map" class="flex-1"></section>
-    </main>
+
+        <!-- 地圖容器 -->
+        <section id="map" class="flex-1 order-1 md:order-2"></section>
+    </div>
+
+    <!-- Beta 免責聲明 -->
+    <div id="beta-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[9999] flex items-center justify-center hidden p-6">
+        <div class="bg-white text-gray-900 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
+            <div class="text-5xl mb-4">📢</div>
+            <h2 class="text-xl font-bold mb-4">台灣新聞地圖 (Beta)</h2>
+            <p class="text-sm text-gray-600 leading-relaxed mb-6">
+                本系統由 AI 自動標記位置。地標與內容僅供參考，出門請以官方資訊為主！
+            </p>
+            <button onclick="closeModal()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all">我了解了</button>
+        </div>
+    </div>
 
     <script>
-        const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
-        L.control.zoom({ position: 'bottomright' }).addTo(map);
-        const markers = L.layerGroup().addTo(map);
-        let geoLayer = null;
-        let taiwanGeoJSON = null;
+        // 側邊欄切換邏輯 (手機版)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('expanded');
+        }
 
+        // 點擊清單項目後在手機版自動縮回
+        function handleItemClick(lat, lng, layer) {
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.remove('expanded');
+            }
+            map.flyTo([lat, lng], 15, { duration: 0.8 });
+            layer.openPopup();
+        }
+
+        const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
+        // 將縮放控制移到右下角，並在手機版微調位置
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
             attribution: '&copy; OpenStreetMap'
         }).addTo(map);
 
-        let isTaiwanMode = true;
+        const markers = L.layerGroup().addTo(map);
         let parsedEvents = [];
         let activeCategory = "all";
-        let searchKeyword = "";
 
         const CATEGORY_CONFIG = {
-            traffic: { text: "🚦 交通路況", icon: "fa-car", color: "#3b82f6", badgeClass: "badge badge-traffic" },
-            construction: { text: "🚧 道路施工", icon: "fa-person-digging", color: "#f97316", badgeClass: "badge badge-construction" },
-            disaster: { text: "🔥 災害事故", icon: "fa-triangle-exclamation", color: "#ef4444", badgeClass: "badge badge-disaster" },
-            police: { text: "👮 警察執法", icon: "fa-shield-halved", color: "#8b5cf6", badgeClass: "badge badge-police" },
-            activity: { text: "🎊 活動訊息", icon: "fa-users", color: "#10b981", badgeClass: "badge badge-activity" },
-            other: { text: "ℹ️ 其他資訊", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
+            traffic: { text: "🚦 交通", icon: "fa-car", color: "#ef4444", badgeClass: "badge badge-traffic" },
+            construction: { text: "🚧 施工", icon: "fa-person-digging", color: "#f97316", badgeClass: "badge badge-construction" },
+            disaster: { text: "🔥 災害", icon: "fa-triangle-exclamation", color: "#8b5cf6", badgeClass: "badge badge-disaster" },
+            other: { text: "ℹ️ 其他", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
         };
 
-        /**
-         * 核心：從後端同步資料並渲染
-         * (警廣抓取邏輯已移回後端 TDX API，前端恢復單一呼叫)
-         */
         async function syncNewsAndRender() {
-            const statusEl = document.getElementById("status-text");
-            statusEl.textContent = "📡 正在從雲端更新資料...";
-
             try {
-                // 恢復成最單純的狀態：只呼叫後端 API
-                const response = await fetch("/api/events");
-                if (!response.ok) throw new Error("後端 API 請求失敗");
-                
-                parsedEvents = await response.json();
-                console.log(`✅ 抓取完成：共 ${parsedEvents.length} 則事件 (含 TDX 國道/台北與 AI 新聞)`);
-
-                if (!parsedEvents.length) {
-                    statusEl.textContent = "⚠️ 目前暫無最新事件";
-                    return;
-                }
-
+                const res = await fetch("/api/events");
+                const data = await res.json();
+                parsedEvents = Array.isArray(data) ? data : (data.events || []);
                 loadData();
-                statusEl.textContent = `✅ 資料已更新 (${parsedEvents.length} 則)`;
             } catch (err) {
-                console.error("❌ 載入失敗:", err);
-                statusEl.textContent = "❌ 資料載入失敗";
+                console.error("載入失敗", err);
             }
         }
 
-        // 渲染邏輯
         function loadData() {
-            const listEl = document.getElementById("event-list");
-            const cityFilter = document.getElementById("city-filter");
             markers.clearLayers();
+            const listEl = document.getElementById("event-list");
             listEl.innerHTML = "";
+            const cityFilter = document.getElementById("city-filter").value;
 
-            let data = parsedEvents.filter(e => {
-                if (activeCategory !== "all" && e.category !== activeCategory) return false;
-                if (cityFilter.value !== "all" && e.city !== cityFilter.value) return false;
-                if (searchKeyword && !e.title.toLowerCase().includes(searchKeyword.toLowerCase())) return false;
+            const filtered = parsedEvents.filter(ev => {
+                if (activeCategory !== "all" && ev.category !== activeCategory) return false;
+                if (cityFilter !== "all" && ev.city !== cityFilter) return false;
                 return true;
             });
 
-            data.forEach(event => {
-                const config = CATEGORY_CONFIG[event.category] || CATEGORY_CONFIG.other;
-                const latlng = [event.lat, event.lng];
+            document.getElementById('mobile-count').textContent = `${filtered.length} 則`;
 
-                // Marker
+            filtered.forEach(event => {
+                const config = CATEGORY_CONFIG[event.category] || CATEGORY_CONFIG.other;
+                const lat = parseFloat(event.lat);
+                const lng = parseFloat(event.lng);
+
+                if (isNaN(lat) || isNaN(lng)) return;
+
                 const icon = L.divIcon({
-                    html: `<div class="custom-marker" style="background-color: ${config.color}; width: 32px; height: 32px;"><i class="fa-solid ${config.icon}"></i></div>`,
-                    className: '', iconSize: [32, 32], iconAnchor: [16, 16]
+                    html: `<div class="custom-marker" style="background: ${config.color}; width: 32px; height: 32px;">
+                            <i class="fa-solid ${config.icon}"></i>
+                           </div>`,
+                    className: '',
+                    iconSize: [32, 32],
+                    iconAnchor: [16, 16]
                 });
 
-                const marker = L.marker(latlng, { icon }).addTo(markers);
-                marker.bindPopup(`<b class="text-gray-900">${event.title}</b><p class="text-xs text-gray-600 mt-1">${event.content}</p><div class="mt-2 text-[10px] text-gray-400">${event.source}</div>`);
+                const popupHtml = `
+                    <div class="font-sans">
+                        <div class="flex items-center gap-2 mb-2">
+                            <b class="text-sm">${event.title}</b>
+                        </div>
+                        <p class="text-xs text-gray-600 mb-2">${event.content}</p>
+                        <div class="text-[10px] text-gray-400 border-t pt-2">${event.city} · 即時路況</div>
+                    </div>
+                `;
 
-                // List Item
+                const layer = L.marker([lat, lng], { icon }).addTo(markers)
+                    .bindPopup(popupHtml, { className: 'custom-popup', maxWidth: 260 });
+
                 const item = document.createElement("div");
-                item.className = "news-item p-4 hover:bg-gray-100 cursor-pointer text-gray-800 bg-white border-b";
+                item.className = "news-item cursor-pointer";
                 item.innerHTML = `
-                    <div class="flex justify-between mb-1">
-                        <span class="text-xs font-bold text-blue-500">${event.city}</span>
+                    <div class="flex justify-between items-start mb-1">
+                        <span class="text-xs font-bold text-blue-400">${event.city}</span>
                         <span class="${config.badgeClass}">${config.text}</span>
                     </div>
-                    <div class="text-[10px] text-gray-400 mb-1">${event.source}</div>
-                    <h3 class="text-sm font-semibold">${event.title}</h3>
+                    <h3 class="text-sm font-semibold text-gray-100">${event.title}</h3>
                 `;
-                item.onclick = () => {
-                    map.flyTo(latlng, 14);
-                    marker.openPopup();
-                };
+                item.onclick = () => handleItemClick(lat, lng, layer);
                 listEl.appendChild(item);
             });
-            
-            const mobileCount = document.getElementById('mobile-count');
-            if (mobileCount) mobileCount.textContent = `${data.length} 則事件`;
         }
 
-        function handleSearch(e) { searchKeyword = e.target.value; loadData(); }
-        function setCategoryFilter(c) { activeCategory = c; loadData(); }
-        function syncCityFilter(v) { document.getElementById('city-filter').value = v; loadData(); }
-        function closeModal() { document.getElementById('beta-modal').classList.add('hidden'); }
-        
-        document.addEventListener('DOMContentLoaded', () => {
+        function setCategoryFilter(cat) {
+            activeCategory = cat;
+            loadData();
+        }
+
+        function closeModal() {
+            document.getElementById('beta-modal').classList.add('hidden');
+            localStorage.setItem('beta_accepted', 'true');
+        }
+
+        window.onload = () => {
+            if (!localStorage.getItem('beta_accepted')) {
+                document.getElementById('beta-modal').classList.remove('hidden');
+            }
             syncNewsAndRender();
-        });
+        };
     </script>
 </body>
 </html>
+
 
