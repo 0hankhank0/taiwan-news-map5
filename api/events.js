@@ -37,18 +37,75 @@ async function fetchOneRssFeed(rssUrl) {
   }
 }
 
+/**
+ * 抓取 TDX 官方警廣即時路況
+ */
+async function fetchTDXPoliceRecords() {
+  try {
+    console.log('📡 正在請求 TDX 認證 Token...');
+    
+    // 1. 取得 Token
+    const authRes = await axios.post(
+      "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
+      new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: process.env.TDX_CLIENT_ID,
+        client_secret: process.env.TDX_CLIENT_SECRET,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    const accessToken = authRes.data.access_token;
+    if (!accessToken) throw new Error("無法取得 TDX Token");
+
+    console.log('✅ TDX Token 取得成功，正在抓取路況資料...');
+
+    // 2. 抓取路況資料
+    const recordRes = await axios.get(
+      "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Record?$format=JSON",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: "application/json",
+        },
+        timeout: 15000,
+      }
+    );
+
+    const records = recordRes.data || [];
+    
+    // 3. 資料轉換
+    return records.map((item) => ({
+      title: `${item.RoadName || item.AreaName || "未知路段"} - ${item.RoadType || "路況"}`,
+      content: item.Description || "無詳細說明",
+      category: (item.RoadType || "").includes("施工") ? "construction" : "traffic",
+      lat: parseFloat(item.LocationPt?.PositionLat),
+      lng: parseFloat(item.LocationPt?.PositionLon),
+      city: (item.AreaName || "全國").split("-")[0],
+      source: "警廣路況",
+      url: "",
+    })).filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
+
+  } catch (err) {
+    console.error('❌ TDX 抓取失敗 (已優雅降級):', err.response?.data || err.message);
+    return [];
+  }
+}
+
 app.use(cors());
 app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
-    // 後端現在只專注抓取 RSS 新聞
-    const rawRssFeeds = await Promise.all(
-      DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))
-    );
+    // 同時抓取 RSS 新聞與 TDX 警廣資料
+    const [rawRssFeeds, pbsEvents] = await Promise.all([
+      Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))),
+      fetchTDXPoliceRecords(),
+    ]);
 
     const newsItems = rawRssFeeds.flatMap((f) => f.items);
     console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
+    console.log('📻 TDX 抓到的警廣數量:', pbsEvents.length);
 
     const latestNews = newsItems.slice(0, 10);
 
@@ -154,10 +211,11 @@ If no precise address is found, use these coordinates:
       console.error('❌ AI JSON 解析失敗:', parseErr.message);
     }
 
-    console.log(`✅ 最終解析出 ${aiEvents.length} 筆 AI 新聞事件`);
+    // 合併 TDX 警廣與 AI 新聞
+    const finalEvents = [...pbsEvents, ...aiEvents];
 
     // 過濾有效經緯度
-    const validEvents = aiEvents.filter((item) => {
+    const validEvents = finalEvents.filter((item) => {
       const lat = parseFloat(item.lat);
       const lng = parseFloat(item.lng);
       return !isNaN(lat) && !isNaN(lng) && lat >= 21 && lat <= 26 && lng >= 118 && lng <= 122;
@@ -167,7 +225,7 @@ If no precise address is found, use these coordinates:
       lng: parseFloat(item.lng),
     }));
 
-    console.log('✅ 過濾後有效 AI 事件總數:', validEvents.length);
+    console.log('✅ 最終合併準備回傳總數:', validEvents.length);
 
     res.setHeader("Vercel-CDN-Cache-Control", "s-maxage=300, stale-while-revalidate=600");
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
