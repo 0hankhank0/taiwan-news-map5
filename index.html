@@ -384,14 +384,14 @@
             other: { text: "ℹ️ 其他資訊", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
         };
 
-        // 1. 前端直接抓取警廣資料的函數 (加上 corsproxy.io 代理)
+        // 1. 前端直接抓取警廣資料的函數 (使用 GAS 專屬代理)
         async function fetchPBSDirectly() {
             try {
-                console.log('📡 前端正在透過 corsproxy.io 抓取警廣資料...');
-                const PBS_URL = "https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata";
-                const PROXY_URL = "https://corsproxy.io/?url=" + encodeURIComponent(PBS_URL);
+                console.log('📡 前端正在透過最新的 GAS 代理抓取警廣資料...');
+                // 更新為最新的 GAS 網址
+                const GAS_URL = "https://script.google.com/macros/s/AKfycbxLVOPg-itt7fKnQfzteZ63P3T1kOrTyD7AHD1I50CGMYzNcyl5Ie80KLvGs8GpE1De/exec";
                 
-                const res = await fetch(PROXY_URL);
+                const res = await fetch(GAS_URL);
                 if (!res.ok) throw new Error("警廣抓取失敗");
                 
                 const data = await res.json();
@@ -408,7 +408,7 @@
                     source: "警廣路況"
                 })).filter(r => !isNaN(r.lat) && !isNaN(r.lng));
             } catch (err) {
-                console.error('❌ 前端抓取警廣失敗 (CORS Proxy 可能也受限):', err.message);
+                console.error('❌ 前端抓取警廣失敗 (GAS 代理可能也受限或發生錯誤):', err.message);
                 return [];
             }
         }
