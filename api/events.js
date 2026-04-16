@@ -1,3 +1,4 @@
+require("dotenv").config(); // 加入這行，確保本地端能讀到 .env
 const express = require("express");
 const cors = require("cors");
 const Parser = require("rss-parser");
@@ -6,7 +7,10 @@ const { OpenAI } = require("openai");
 
 const app = express();
 const parser = new Parser();
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// 檢查 OpenAI API Key
+const openaiApiKey = process.env.OPENAI_API_KEY;
+const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
@@ -38,10 +42,16 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 終極版 TDX 抓取：使用 V3 API、縮減抓取範圍、1.5秒強制延遲避開 429
+ * 終極版 TDX 抓取：加上環境變數檢查、使用 V3 API、1.5秒延遲
  */
 async function fetchTDXPoliceRecords() {
   try {
+    // 【防呆機制】如果在 Vercel 上忘記設定變數，直接跳過，避免 400 錯誤死當
+    if (!process.env.TDX_CLIENT_ID || !process.env.TDX_CLIENT_SECRET) {
+      console.warn("⚠️ 警告: 找不到 TDX_CLIENT_ID 或 TDX_CLIENT_SECRET 環境變數！已跳過 TDX 抓取。(請至 Vercel 後台的 Environment Variables 設定)");
+      return [];
+    }
+
     console.log('📡 正在請求 TDX 認證 Token...');
     
     // 1. 取得 Token
@@ -65,7 +75,7 @@ async function fetchTDXPoliceRecords() {
       Accept: "application/json",
     };
 
-    // 2. 升級為 TDX V3 API，精簡抓取目標並加長延遲以避開 429
+    // 2. 升級為 TDX V3 API，精簡抓取目標並加長延遲
     const tdxPaths = [
       'Freeway',
       'ProvincialHighway',
@@ -79,13 +89,12 @@ async function fetchTDXPoliceRecords() {
         const url = `https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/${path}?$format=JSON`;
         const res = await axios.get(url, { headers, timeout: 10000 });
         
-        // V3 API 結構通常為 { Events: [...] }，加入防呆機制
         const data = res.data?.Events || res.data?.Event || res.data || [];
         if (Array.isArray(data)) {
           combinedRecords.push(...data);
         }
         
-        // 強制延遲 1.5 秒，徹底避開 429 頻率限制
+        // 強制延遲 1.5 秒，避開 429 頻率限制
         await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (err) {
         console.error(`⚠️ TDX 抓取失敗 (${path}):`, err.message);
@@ -94,9 +103,8 @@ async function fetchTDXPoliceRecords() {
 
     console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
-    // 3. 彈性解析與轉換 (相容 V2/V3)
+    // 3. 彈性解析與轉換
     const formatted = combinedRecords.map((item) => {
-      // 支援多種 V3 經緯度結構
       const lng = parseFloat(item.LocationPt?.PositionLon || item.PositionLon || item.Geometry?.Coordinates?.[0]);
       const lat = parseFloat(item.LocationPt?.PositionLat || item.PositionLat || item.Geometry?.Coordinates?.[1]);
       const content = item.Comment || item.EventDescription || item.Description || "無詳細說明";
@@ -136,20 +144,24 @@ app.get("/api/events", async (req, res) => {
     const newsItems = rawRssFeeds.flatMap((f) => f.items);
     console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
 
-    const latestNews = newsItems.slice(0, 10);
+    let aiEvents = [];
+    
+    if (!openai) {
+      console.warn("⚠️ 警告: 找不到 OPENAI_API_KEY，跳過 AI 新聞解析。");
+    } else if (newsItems.length > 0) {
+      const latestNews = newsItems.slice(0, 10);
+      const cleanAndTruncate = (text) => {
+        if (!text) return "";
+        return text.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim().substring(0, 300);
+      };
 
-    const cleanAndTruncate = (text) => {
-      if (!text) return "";
-      return text.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim().substring(0, 300);
-    };
+      const simplifiedNews = latestNews.map((item) => ({
+        title: item.title || "",
+        content: cleanAndTruncate(item.contentSnippet || item.content || ""),
+        link: item.link || "",
+      }));
 
-    const simplifiedNews = latestNews.map((item) => ({
-      title: item.title || "",
-      content: cleanAndTruncate(item.contentSnippet || item.content || ""),
-      link: item.link || "",
-    }));
-
-    const systemPrompt = `You are a geographic labeling assistant. Your job is to extract EVERY single physical event from the provided Taiwan news.
+      const systemPrompt = `You are a geographic labeling assistant. Your job is to extract EVERY single physical event from the provided Taiwan news.
 
 【CRITICAL RULES】
 1. 請盡可能把所有新聞都轉換成 JSON 格式。
@@ -184,60 +196,60 @@ If no precise address is found, use these coordinates:
 - 花蓮縣: 23.9872, 121.6015
 - 其他: 23.5, 120.5`;
 
-    const userContent = `【新聞】${JSON.stringify(simplifiedNews)}`;
+      const userContent = `【新聞】${JSON.stringify(simplifiedNews)}`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userContent },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "taiwan_events",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              events: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    content: { type: "string" },
-                    category: { type: "string", enum: ["traffic", "construction", "disaster", "police", "activity", "politics", "social", "life", "tech", "fire", "other"] },
-                    url: { type: "string" },
-                    lat: { type: "number" },
-                    lng: { type: "number" },
-                    city: { type: "string" },
-                    source: { type: "string" },
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent },
+          ],
+          response_format: {
+            type: "json_schema",
+            json_schema: {
+              name: "taiwan_events",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  events: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        title: { type: "string" },
+                        content: { type: "string" },
+                        category: { type: "string", enum: ["traffic", "construction", "disaster", "police", "activity", "politics", "social", "life", "tech", "fire", "other"] },
+                        url: { type: "string" },
+                        lat: { type: "number" },
+                        lng: { type: "number" },
+                        city: { type: "string" },
+                        source: { type: "string" },
+                      },
+                      required: ["title", "content", "category", "url", "lat", "lng", "city", "source"],
+                      additionalProperties: false,
+                    },
                   },
-                  required: ["title", "content", "category", "url", "lat", "lng", "city", "source"],
-                  additionalProperties: false,
                 },
+                required: ["events"],
+                additionalProperties: false,
               },
             },
-            required: ["events"],
-            additionalProperties: false,
           },
-        },
-      },
-      temperature: 0,
-    });
+          temperature: 0,
+        });
 
-    const responseContent = completion.choices[0].message.content;
-    let aiEvents = [];
-    try {
-      const parsedData = completion.choices[0].message.parsed || JSON.parse(responseContent || "{}");
-      if (Array.isArray(parsedData)) {
-        aiEvents = parsedData;
-      } else if (parsedData && Array.isArray(parsedData.events)) {
-        aiEvents = parsedData.events;
+        const responseContent = completion.choices[0].message.content;
+        const parsedData = completion.choices[0].message.parsed || JSON.parse(responseContent || "{}");
+        if (Array.isArray(parsedData)) {
+          aiEvents = parsedData;
+        } else if (parsedData && Array.isArray(parsedData.events)) {
+          aiEvents = parsedData.events;
+        }
+      } catch (parseErr) {
+        console.error('❌ AI JSON 解析失敗:', parseErr.message);
       }
-    } catch (parseErr) {
-      console.error('❌ AI JSON 解析失敗:', parseErr.message);
     }
 
     // 合併 TDX 與 AI 新聞
@@ -256,7 +268,6 @@ If no precise address is found, use these coordinates:
 
     console.log('✅ 最終合併準備回傳總數:', validEvents.length);
 
-    // 設定 Cache-Control 標頭，解決 Vercel Cache HIT 導致資料過舊的問題
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
     res.status(200).json(validEvents);
   } catch (error) {
