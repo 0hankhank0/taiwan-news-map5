@@ -9,78 +9,142 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <style>
-        /* 基礎設置 */
-        html, body { height: 100vh; width: 100%; margin: 0; padding: 0; overflow: hidden; background: #111827; }
-        
-        /* 響應式佈局架構 */
-        .main-container { display: flex; height: 100vh; width: 100%; flex-direction: column; }
-        @media (min-width: 768px) {
-            .main-container { flex-direction: row; }
-        }
-
-        #map { flex: 1; height: 100%; width: 100%; z-index: 1; }
-
-        /* 電腦版側邊欄 */
-        .news-sidebar { 
+        /* 基礎佈局 */
+        html, body { 
+            height: 100vh; 
+            width: 100%; 
+            margin: 0; 
+            padding: 0; 
+            overflow: hidden; 
             background: #111827; 
-            display: flex; 
-            flex-direction: column; 
-            border-right: 1px solid #374151;
-            z-index: 10;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }
+
+        /* 🌟 電腦版核心排版 (Media Queries) */
         @media (min-width: 768px) {
-            .news-sidebar { width: 350px; height: 100vh; }
-        }
-
-        /* 手機版底部抽屜 (Bottom Sheet) */
-        @media (max-width: 767px) {
-            .news-sidebar { 
-                position: fixed; 
-                bottom: 0; left: 0; right: 0; 
-                height: 70vh; 
-                background: white; 
-                border-radius: 24px 24px 0 0;
-                box-shadow: 0 -10px 25px rgba(0,0,0,0.2);
-                transform: translateY(calc(70vh - 100px)); /* 預設露出 100px */
-                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-                z-index: 9999 !important;
-                color: #1f2937;
+            .app-container {
+                display: flex; /* 啟動左右排版 */
+                flex-direction: row;
+                height: 100vh;
+                width: 100%;
+                overflow: hidden; /* 隱藏整個網頁的全域捲軸 */
             }
-            .news-sidebar.expanded { transform: translateY(0); }
-            .news-sidebar .news-list { color: #1f2937; background: white; }
-            .news-sidebar .news-item { border-bottom: 1px solid #f3f4f6; }
+            .sidebar {
+                width: 380px; /* 左側清單固定寬度 */
+                height: 100vh;
+                display: flex;
+                flex-direction: column;
+                background: #1e1e1e; /* 確保符合深色主題 */
+                border-right: 1px solid #374151;
+                z-index: 100;
+                box-shadow: 4px 0 15px rgba(0,0,0,0.3);
+            }
+            .map-wrapper {
+                flex: 1; /* 右側地圖佔滿所有剩餘空間 */
+                height: 100vh;
+                position: relative;
+                overflow: hidden;
+            }
+            #map {
+                height: 100%;
+                width: 100%;
+            }
+            /* 隱藏手機版專用的底部抽屜拉桿等 UI */
+            .bottom-sheet-handle { display: none !important; }
         }
 
-        /* 分類過濾按鈕區域 - 優化滑動 */
-        .category-filters {
+        /* 手機版佈局 (Bottom Sheet) */
+        @media (max-width: 767px) {
+            .app-container {
+                display: flex;
+                flex-direction: column;
+                height: 100vh;
+                position: relative;
+            }
+            .sidebar {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 70vh;
+                background: white;
+                color: #1f2937;
+                z-index: 9999 !important;
+                border-radius: 24px 24px 0 0;
+                box-shadow: 0 -10px 25px rgba(0,0,0,0.15);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+                transform: translateY(calc(70vh - 100px)); /* 預設露出 100px */
+                display: flex;
+                flex-direction: column;
+            }
+            .sidebar.expanded {
+                transform: translateY(0);
+            }
+            .map-wrapper {
+                flex: 1;
+                height: 100vh;
+            }
+            #map {
+                height: 100%;
+                width: 100%;
+            }
+            /* 手機版地圖縮放按鈕上移，避免被抽屜擋住 */
+            .leaflet-bottom.leaflet-right {
+                bottom: 110px !important;
+                transition: bottom 0.3s;
+            }
+            .sidebar.expanded ~ .map-wrapper .leaflet-bottom.leaflet-right {
+                bottom: 71vh !important;
+            }
+        }
+
+        /* 現代化 Popup 樣式 */
+        .custom-popup .leaflet-popup-content-wrapper { 
+            background: rgba(255, 255, 255, 0.98); 
+            color: #1f2937; 
+            border-radius: 16px; 
+            padding: 4px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            backdrop-filter: blur(8px);
+        }
+        .custom-popup .leaflet-popup-content { margin: 12px 16px; font-size: 14px; line-height: 1.6; }
+
+        /* Marker Icon 樣式 */
+        .custom-marker {
             display: flex;
-            overflow-x: auto;       /* 允許橫向滑動 */
-            white-space: nowrap;    /* 強制按鈕排成一列不換行 */
-            -webkit-overflow-scrolling: touch; /* 讓手機版手指滑動更滑順 */
-            gap: 8px;               /* 按鈕之間的間距 */
-            padding-bottom: 4px;    /* 稍微留白，避免按鈕底部被切到 */
-            scrollbar-width: none;  /* Firefox 隱藏捲軸 */
-        }
-        /* Chrome / Safari 隱藏醜醜的捲軸 */
-        .category-filters::-webkit-scrollbar {
-            display: none;
-        }
-        .category-filters {
-            -ms-overflow-style: none; /* IE/Edge 隱藏捲軸 */
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            transition: all 0.2s;
+            color: white;
         }
 
-        .filter-btn {
-            flex-shrink: 0;         /* 🌟 防止按鈕被螢幕寬度擠壓變形 */
-            opacity: 0.6;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: none;
+        /* 捲軸美化 */
+        .news-list { flex: 1; overflow-y: auto !important; -webkit-overflow-scrolling: touch; }
+        .news-list::-webkit-scrollbar { width: 4px; }
+        .news-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
+        
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 標籤樣式 */
+        .badge {
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 12px;
+            color: white !important;
+            white-space: nowrap;
         }
-        .filter-btn.active {
-            opacity: 1;
-            transform: scale(1.05);
-            box-shadow: 0 0 12px rgba(255,255,255,0.2);
-        }
+        .badge-all { background-color: #4b5563 !important; }
+        .badge-traffic { background-color: #ef4444 !important; }
+        .badge-construction { background-color: #f97316 !important; }
+        .badge-police { background-color: #3b82f6 !important; }
+        .badge-social { background-color: #ec4899 !important; }
+        .badge-life { background-color: #f59e0b !important; }
+        .badge-other { background-color: #6b7280 !important; }
 
         /* 贊助按鈕樣式 - 金色 */
         .sponsor-btn {
@@ -97,82 +161,60 @@
         }
         .sponsor-btn:hover { transform: scale(1.02); filter: brightness(1.05); }
 
-        /* 標籤樣式 */
-        .badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: white !important;
-            display: inline-block;
-        }
+        .filter-btn { opacity: 0.6; cursor: pointer; transition: all 0.2s; border: none; flex-shrink: 0; }
+        .filter-btn.active { opacity: 1; transform: scale(1.05); box-shadow: 0 0 12px rgba(255,255,255,0.2); }
 
-        /* 分類顏色 */
-        .bg-traffic { background-color: #ef4444 !important; }
-        .bg-police { background-color: #3b82f6 !important; }
-        .bg-social { background-color: #ec4899 !important; }
-        .bg-life { background-color: #f59e0b !important; }
-        .bg-construction { background-color: #f97316 !important; }
-        .bg-activity { background-color: #10b981 !important; }
-        .bg-other { background-color: #6b7280 !important; }
-        .bg-all { background-color: #4b5563 !important; }
-
-        /* 地圖控制項微調 */
-        .leaflet-bottom.leaflet-right { margin-bottom: 110px; }
-        @media (min-width: 768px) {
-            .leaflet-bottom.leaflet-right { margin-bottom: 20px; }
-        }
-
-        /* Popup 樣式 */
-        .custom-popup .leaflet-popup-content-wrapper { border-radius: 12px; padding: 5px; box-shadow: 0 10px 20px rgba(0,0,0,0.15); }
-        
-        /* 捲軸美化 */
-        .news-list::-webkit-scrollbar { width: 4px; }
-        .news-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
-        
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Beta Modal */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 10001; backdrop-filter: blur(4px); }
+        .modal-card { background: white; color: #1f2937; padding: 2rem; border-radius: 24px; max-width: 400px; width: 90%; text-align: center; }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
 
-    <div class="main-container">
+    <div class="app-container">
         <!-- 側邊欄 / 底部抽屜 -->
-        <aside id="sidebar" class="news-sidebar">
-            <!-- 手機版拖動把手 -->
-            <div class="md:hidden w-full py-4 cursor-pointer" onclick="toggleSidebar()">
+        <aside id="sidebar" class="sidebar">
+            <!-- 底部抽屜拉桿 (手機版) -->
+            <div class="bottom-sheet-handle md:hidden w-full py-4 cursor-pointer" onclick="toggleSidebar()">
                 <div class="w-12 h-1.5 bg-gray-300 rounded-full mx-auto"></div>
             </div>
 
+            <!-- 標題與篩選器 -->
             <div class="px-5 py-4 border-b border-gray-700 md:border-gray-700 border-gray-100">
                 <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-lg font-bold">📍 剛剛發生什麼</h1>
+                    <h1 class="text-lg font-bold flex items-center gap-2">
+                        <span>📍 剛剛發生什麼</span>
+                    </h1>
                     <span id="event-count" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full">載入中</span>
                 </div>
                 
                 <input type="text" id="search-input" oninput="handleSearch(event)" 
-                    placeholder="🔍 搜尋地點或事件關鍵字..." 
+                    placeholder="🔍 搜尋地點或路況..." 
                     class="w-full bg-gray-800 md:bg-gray-800 bg-gray-100 text-gray-900 md:text-white text-sm border border-gray-700 md:border-gray-700 border-gray-200 rounded-xl px-4 py-2.5 mb-4 outline-none focus:border-blue-500">
                 
                 <!-- 固定分類按鈕 -->
-                <div class="category-filters no-scrollbar">
-                    <button class="filter-btn badge bg-all active" data-category="all">全部</button>
-                    <button class="filter-btn badge bg-traffic" data-category="traffic">交通</button>
-                    <button class="filter-btn badge bg-police" data-category="police">治安</button>
-                    <button class="filter-btn badge bg-social" data-category="social">社會</button>
-                    <button class="filter-btn badge bg-life" data-category="life">生活</button>
-                    <button class="filter-btn badge bg-construction" data-category="construction">施工</button>
-                    <button class="filter-btn badge bg-activity" data-category="activity">活動</button>
-                    <button class="filter-btn badge bg-other" data-category="other">其他</button>
+                <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                    <button class="filter-btn badge badge-all active" data-category="all">全部</button>
+                    <button class="filter-btn badge badge-traffic" data-category="traffic">交通</button>
+                    <button class="filter-btn badge badge-police" data-category="police">治安</button>
+                    <button class="filter-btn badge badge-social" data-category="social">社會</button>
+                    <button class="filter-btn badge badge-life" data-category="life">生活</button>
+                    <button class="filter-btn badge badge-construction" data-category="construction">施工</button>
+                    <button class="filter-btn badge badge-other" data-category="other">其他</button>
                 </div>
             </div>
 
-            <!-- 事件清單 -->
-            <div id="news-list" class="news-list flex-1 overflow-y-auto divide-y divide-gray-700">
-                <!-- 卡片動態插入 -->
+            <!-- 手機版抽屜頂部的贊助按鈕 -->
+            <div class="md:hidden px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <a href="https://taiwan-map.bobaboba.me" target="_blank" class="sponsor-btn w-full py-2 rounded-xl text-sm">
+                    <span>☕ 贊助作者</span>
+                </a>
             </div>
 
-            <!-- 電腦版贊助按鈕 -->
+            <!-- 事件列表 -->
+            <div id="news-list" class="news-list divide-y divide-gray-700 md:divide-gray-700 divide-gray-100"></div>
+
+            <!-- 電腦版贊助按鈕 (固定於底部) -->
             <div class="hidden md:block p-4 border-t border-gray-700 bg-gray-800">
                 <a href="https://taiwan-map.bobaboba.me" target="_blank" class="sponsor-btn w-full py-3 rounded-xl">
                     <span>☕ 贊助作者</span>
@@ -180,24 +222,48 @@
             </div>
         </aside>
 
-        <!-- 地圖區域 -->
-        <section id="map"></section>
+        <!-- 地圖包裝層 -->
+        <div class="map-wrapper">
+            <!-- 桌機頂部標籤列 (隱藏於手機) -->
+            <header class="hidden md:flex h-16 items-center px-6 bg-gray-800 border-b border-gray-700 justify-between shadow-lg z-10 relative">
+                <div class="flex items-center gap-4">
+                    <select id="city-filter" onchange="loadData()" class="bg-gray-700 text-sm rounded px-3 py-1.5 border border-gray-600 outline-none focus:border-blue-500 transition-all">
+                        <option value="all">全台灣地區</option>
+                        <option value="臺北市">臺北市</option>
+                        <option value="新北市">新北市</option>
+                        <option value="桃園市">桃園市</option>
+                        <option value="臺中市">臺中市</option>
+                        <option value="臺南市">臺南市</option>
+                        <option value="高雄市">高雄市</option>
+                    </select>
+                    <div id="status-text" class="text-xs text-gray-400 font-mono">系統初始化中...</div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
+                        <button onclick="switchMode(true)" id="btn-tw" class="px-6 py-1.5 rounded-md bg-blue-600 text-xs font-bold transition-all">台灣模式</button>
+                        <button onclick="switchMode(false)" id="btn-global" class="px-6 py-1.5 rounded-md hover:bg-gray-800 text-xs font-bold transition-all">全球模式</button>
+                    </div>
+                </div>
+            </header>
+            
+            <section id="map"></section>
 
-        <!-- 手機版懸浮贊助按鈕 -->
-        <a href="https://taiwan-map.bobaboba.me" target="_blank" class="md:hidden fixed bottom-28 right-4 z-[500] w-14 h-14 rounded-full sponsor-btn shadow-2xl text-xl">
-            ☕
-        </a>
+            <!-- 手機版懸浮贊助按鈕 (位於右下角) -->
+            <a href="https://taiwan-map.bobaboba.me" target="_blank" class="md:hidden fixed bottom-28 right-4 z-[500] w-14 h-14 rounded-full sponsor-btn shadow-2xl text-xl">
+                ☕
+            </a>
+        </div>
     </div>
 
-    <!-- Beta 宣告 Modal -->
-    <div id="beta-modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[10000] flex items-center justify-center hidden p-6">
-        <div class="bg-white text-gray-900 p-8 rounded-3xl max-w-sm w-full text-center shadow-2xl">
-            <div class="text-5xl mb-4">📢</div>
-            <h2 class="text-xl font-bold mb-4">歡迎使用 Beta 版</h2>
+    <!-- Beta Modal -->
+    <div id="beta-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="text-4xl mb-4">📢</div>
+            <h2 class="text-xl font-bold mb-4">歡迎來到剛剛發生什麼 (Beta)</h2>
             <p class="text-sm text-gray-600 leading-relaxed mb-6">
-                本系統由 AI 自動分析新聞位置。地圖資訊僅供參考，實際路況請依官方公告為準。
+                本系統由 AI 自動爬取新聞並標註位置。地圖資訊僅供參考，實際路況請依官方與即時路況資訊為準。
             </p>
-            <button onclick="closeModal()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">我瞭解了</button>
+            <button onclick="closeModal()" class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold">我已瞭解</button>
         </div>
     </div>
 
@@ -213,6 +279,7 @@
         let parsedEvents = [];
         let activeCategory = "all";
         let searchKeyword = "";
+        let isTaiwanMode = true;
 
         const CATEGORY_COLORS = {
             traffic: "#ef4444",
@@ -220,19 +287,25 @@
             social: "#ec4899",
             life: "#f59e0b",
             construction: "#f97316",
-            activity: "#10b981",
             other: "#6b7280",
             all: "#4b5563"
         };
 
-        // 監聽固定按鈕點擊
+        const CATEGORY_ICONS = {
+            traffic: "fa-car",
+            police: "fa-shield-halved",
+            social: "fa-handshake",
+            life: "fa-heart",
+            construction: "fa-person-digging",
+            other: "fa-circle-info",
+            all: "fa-list"
+        };
+
+        // 監聽按鈕點擊
         document.querySelectorAll('.filter-btn').forEach(btn => {
             btn.addEventListener('click', function() {
-                // 更新按鈕樣式
                 document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
-                
-                // 更新過濾條件
                 activeCategory = this.getAttribute('data-category');
                 loadData();
             });
@@ -249,31 +322,42 @@
             loadData();
         }
 
+        function switchMode(mode) {
+            isTaiwanMode = mode;
+            document.getElementById("btn-tw").classList.toggle("bg-blue-600", mode);
+            document.getElementById("btn-global").classList.toggle("bg-blue-600", !mode);
+            map.flyTo(mode ? [23.6, 120.9] : [20, 0], mode ? 7 : 2);
+            loadData();
+        }
+
         function loadData() {
             markers.clearLayers();
             const listEl = document.getElementById('news-list');
+            const cityFilter = document.getElementById('city-filter').value;
             listEl.innerHTML = "";
 
             const filtered = parsedEvents.filter(ev => {
                 const matchCat = activeCategory === 'all' || ev.category === activeCategory;
                 const matchSearch = (ev.title + ev.content).toLowerCase().includes(searchKeyword);
-                return matchCat && matchSearch;
+                const matchCity = cityFilter === 'all' || (ev.city && ev.city.includes(cityFilter.replace("臺", "台")));
+                return matchCat && matchSearch && matchCity;
             });
 
             document.getElementById('event-count').textContent = `${filtered.length} 則`;
 
             filtered.forEach(ev => {
                 const color = CATEGORY_COLORS[ev.category] || CATEGORY_COLORS.other;
+                const icon = CATEGORY_ICONS[ev.category] || CATEGORY_ICONS.other;
                 const latlng = [parseFloat(ev.lat), parseFloat(ev.lng)];
                 
                 if (isNaN(latlng[0]) || isNaN(latlng[1])) return;
 
-                // 地圖 Marker
                 const marker = L.marker(latlng, {
                     icon: L.divIcon({
-                        html: `<div style="background:${color}; width:14px; height:14px; border-radius:50%; border:2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.3);"></div>`,
+                        html: `<div class="custom-marker" style="background:${color}; width:32px; height:32px;"><i class="fa-solid ${icon}"></i></div>`,
                         className: '',
-                        iconAnchor: [7, 7]
+                        iconSize: [32, 32],
+                        iconAnchor: [16, 16]
                     })
                 }).addTo(markers);
 
@@ -281,11 +365,9 @@
                     <div class="p-1">
                         <b class="text-sm block mb-1">${ev.title}</b>
                         <p class="text-xs text-gray-600">${ev.content}</p>
-                        <a href="${ev.url}" target="_blank" class="text-[10px] text-blue-500 mt-2 inline-block">原始連結</a>
                     </div>
                 `, { className: 'custom-popup' });
 
-                // 列表卡片
                 const card = document.createElement('div');
                 card.className = "p-4 hover:bg-gray-800 md:hover:bg-gray-800 hover:bg-gray-50 cursor-pointer transition-colors";
                 
@@ -307,6 +389,9 @@
                 };
                 listEl.appendChild(card);
             });
+            
+            const statusEl = document.getElementById("status-text");
+            if (statusEl) statusEl.textContent = `✅ 已同步 (${filtered.length} 則)`;
         }
 
         async function init() {
@@ -314,13 +399,13 @@
                 const res = await fetch('/api/events');
                 parsedEvents = await res.json();
                 loadData();
-                
-                // 顯示免責聲明
                 if (!localStorage.getItem('beta_accepted')) {
                     document.getElementById('beta-modal').classList.remove('hidden');
                 }
             } catch (e) {
-                console.error("初始化失敗", e);
+                console.error("載入失敗", e);
+                const statusEl = document.getElementById("status-text");
+                if (statusEl) statusEl.textContent = "❌ 資料載入失敗";
             }
         }
 
