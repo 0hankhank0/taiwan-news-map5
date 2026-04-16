@@ -3,297 +3,242 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>剛剛發生什麼 - 專業交通地圖</title>
+    <title>剛剛發生什麼 - 台灣即時地圖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
     <style>
-        /* 基礎佈局：完全佔滿且隱藏捲軸 */
-        html, body { 
-            height: 100vh; 
-            width: 100%; 
-            margin: 0; 
-            padding: 0; 
-            overflow: hidden; 
-            background: #111827;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        #map { 
-            height: 100vh; 
-            width: 100%; 
-            z-index: 1;
-        }
+        /* 基礎設置 */
+        html, body { height: 100vh; width: 100%; margin: 0; padding: 0; overflow: hidden; }
         
-        /* 現代化 Popup 樣式優化 */
-        .custom-popup .leaflet-popup-content-wrapper { 
-            background: rgba(255, 255, 255, 0.98); 
-            color: #1f2937; 
-            border-radius: 16px; 
-            padding: 4px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(8px);
-        }
-        .custom-popup .leaflet-popup-content {
-            margin: 12px 16px;
-            font-size: 14px;
-            line-height: 1.6;
-        }
-        .custom-popup .leaflet-popup-tip {
-            background: white;
-        }
-
-        /* Marker Icon 樣式 */
-        .custom-marker {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            border: 2px solid white;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-            transition: all 0.2s;
-            color: white;
-            font-size: 14px;
-        }
-        
-        /* 側邊欄 (桌機) / 底部抽屜 (手機) */
-        .news-sidebar { 
-            display: flex;
-            flex-direction: column;
-            background: #1f2937;
-            border-right: 1px solid #374151;
-            z-index: 100;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* 桌機樣式 */
+        /* 響應式佈局架構 */
+        .main-container { display: flex; height: 100vh; width: 100%; flex-direction: column; }
         @media (min-width: 768px) {
-            .news-sidebar {
-                width: 360px;
-                height: 100vh;
-            }
-            .main-container {
-                display: flex;
-                flex-direction: row;
-                height: 100vh;
-            }
+            .main-container { flex-direction: row; }
         }
 
-        /* 手機版：底部抽屜式設計 (Bottom Sheet) */
+        #map { flex: 1; height: 100%; width: 100%; z-index: 1; }
+
+        /* 電腦版側邊欄 */
+        .news-sidebar { 
+            background: #111827; 
+            display: flex; 
+            flex-direction: column; 
+            border-right: 1px solid #374151;
+            z-index: 10;
+        }
+        @media (min-width: 768px) {
+            .news-sidebar { width: 350px; height: 100vh; }
+        }
+
+        /* 手機版底部抽屜 (Bottom Sheet) */
         @media (max-width: 767px) {
-            .news-sidebar {
-                position: fixed;
-                bottom: 0;
-                left: 0;
-                right: 0;
-                height: 120px;
-                width: 100%;
-                border-top: 1px solid #374151;
+            .news-sidebar { 
+                position: fixed; 
+                bottom: 0; left: 0; right: 0; 
+                height: 70vh; 
+                background: white; 
                 border-radius: 24px 24px 0 0;
-                box-shadow: 0 -10px 30px rgba(0,0,0,0.5);
-                z-index: 1000;
+                box-shadow: 0 -10px 25px rgba(0,0,0,0.2);
+                transform: translateY(calc(70vh - 100px));
+                transition: transform 0.3s ease-out;
+                z-index: 9999 !important;
+                color: #1f2937;
             }
-            .news-sidebar.expanded {
-                height: 75vh;
-            }
-            .news-sidebar .drag-handle {
-                width: 40px;
-                height: 4px;
-                background: #4b5563;
-                border-radius: 2px;
-                margin: 12px auto;
-                cursor: pointer;
-            }
-            /* 調整地圖控制項位置 */
-            .leaflet-bottom.leaflet-right {
-                bottom: 130px !important;
-                transition: bottom 0.3s;
-            }
-            .news-sidebar.expanded ~ #map .leaflet-bottom.leaflet-right {
-                bottom: 76vh !important;
-            }
+            .news-sidebar.expanded { transform: translateY(0); }
+            .news-sidebar .news-list { color: #1f2937; }
         }
 
-        .news-list { 
-            flex: 1;
-            overflow-y: auto !important; 
-            -webkit-overflow-scrolling: touch;
+        /* 贊助按鈕樣式 */
+        .sponsor-btn {
+            background: linear-gradient(135deg, #ffd700 0%, #ffcc00 100%);
+            color: #5d4037 !important;
+            font-weight: 800;
+            border: 2px solid #5d4037;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.2s;
         }
+        .sponsor-btn:hover { transform: scale(1.05); filter: brightness(1.1); }
+
+        /* 標籤與按鈕樣式 */
+        .badge {
+            padding: 4px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; color: white !important;
+        }
+        .filter-btn { opacity: 0.7; cursor: pointer; transition: 0.2s; }
+        .filter-btn.active { opacity: 1; transform: scale(1.1); box-shadow: 0 0 10px rgba(255,255,255,0.3); }
+
+        /* 地圖控制項位置微調 */
+        .leaflet-bottom.leaflet-right { margin-bottom: 110px; }
+        @media (min-width: 768px) {
+            .leaflet-bottom.leaflet-right { margin-bottom: 20px; }
+        }
+
+        /* Popup 樣式 */
+        .custom-popup .leaflet-popup-content-wrapper { border-radius: 12px; padding: 5px; }
         .news-list::-webkit-scrollbar { width: 4px; }
         .news-list::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 10px; }
-
-        .badge {
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            border-radius: 12px;
-            color: white !important;
-        }
-        .badge-traffic { background-color: #ef4444 !important; }
-        .badge-construction { background-color: #f97316 !important; }
-        .badge-disaster { background-color: #8b5cf6 !important; }
-        .badge-activity { background-color: #10b981 !important; }
-        .badge-other { background-color: #6b7280 !important; }
-
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        .news-item {
-            padding: 16px;
-            border-bottom: 1px solid #374151;
-            transition: background 0.2s;
-        }
-        .news-item:active { background: #374151; }
     </style>
 </head>
 <body class="bg-gray-900 text-white">
-    
-    <div class="main-container h-screen overflow-hidden flex flex-col md:flex-row">
-        
+
+    <div class="main-container">
         <!-- 側邊欄 / 底部抽屜 -->
-        <aside id="sidebar" class="news-sidebar order-2 md:order-1">
-            <div class="md:hidden drag-handle" onclick="toggleSidebar()"></div>
-            
-            <div class="px-4 pb-4 border-b border-gray-700">
-                <div class="flex justify-between items-center py-2 md:pt-4">
-                    <h2 class="text-lg font-bold flex items-center gap-2">
-                        <span class="md:hidden">最新 10 則新聞</span>
-                        <span class="hidden md:inline">📍 剛剛發生什麼</span>
-                    </h2>
-                    <span id="mobile-count" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full font-bold">載入中</span>
+        <aside id="sidebar" class="news-sidebar">
+            <!-- 手機版拉條 -->
+            <div class="md:hidden w-full py-4 cursor-pointer" onclick="toggleSidebar()">
+                <div class="w-12 h-1.5 bg-gray-300 rounded-full mx-auto"></div>
+            </div>
+
+            <!-- 標題與過濾器 -->
+            <div class="px-5 py-4 border-b border-gray-700">
+                <div class="flex justify-between items-center mb-4">
+                    <h1 class="text-lg font-bold">📍 剛剛發生什麼</h1>
+                    <span id="event-count" class="text-xs bg-blue-600 px-2 py-0.5 rounded-full">載入中</span>
                 </div>
                 
-                <div class="mt-3 space-y-3">
-                    <div class="relative">
-                        <input type="text" id="event-search" oninput="handleSearch(event)" 
-                            placeholder="🔍 搜尋地點、路況..." 
-                            class="w-full bg-gray-800 text-sm border border-gray-700 rounded-xl px-4 py-2.5 outline-none focus:border-blue-500 transition-all">
-                    </div>
-                    
-                    <div class="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-                        <select id="city-filter" onchange="loadData()" class="bg-gray-800 text-xs rounded-lg px-3 py-1.5 border border-gray-700 outline-none flex-shrink-0">
-                            <option value="all">全台灣</option>
-                            <option value="臺北市">臺北市</option>
-                            <option value="新北市">新北市</option>
-                            <option value="桃園市">桃園市</option>
-                        </select>
-                        <button onclick="setCategoryFilter('all')" class="badge bg-gray-700 flex-shrink-0">全部</button>
-                        <button onclick="setCategoryFilter('traffic')" class="badge badge-traffic flex-shrink-0">交通</button>
-                    </div>
+                <input type="text" id="search-input" oninput="handleSearch(event)" 
+                    placeholder="🔍 搜尋事件..." 
+                    class="w-full bg-gray-800 text-sm border border-gray-700 rounded-lg px-3 py-2 mb-4 outline-none focus:border-blue-500">
+                
+                <div id="category-container" class="flex flex-wrap gap-2 overflow-x-auto no-scrollbar">
+                    <!-- 動態生成的按鈕會放在這 -->
                 </div>
             </div>
 
-            <div id="event-list" class="news-list divide-y divide-gray-800"></div>
+            <!-- 事件列表 -->
+            <div id="news-list" class="news-list flex-1 overflow-y-auto divide-y divide-gray-700">
+                <!-- 卡片會動態插入 -->
+            </div>
+
+            <!-- 電腦版贊助按鈕 -->
+            <div class="hidden md:block p-4 border-t border-gray-700">
+                <a href="https://taiwan-map.bobaboba.me" target="_blank" class="flex items-center justify-center gap-2 w-full py-3 rounded-xl sponsor-btn">
+                    <span>☕ 贊助作者</span>
+                </a>
+            </div>
         </aside>
 
-        <section id="map" class="flex-1 order-1 md:order-2"></section>
+        <!-- 地圖 -->
+        <section id="map"></section>
+
+        <!-- 手機版懸浮贊助按鈕 -->
+        <a href="https://taiwan-map.bobaboba.me" target="_blank" class="md:hidden fixed bottom-28 right-4 z-[500] w-14 h-14 rounded-full sponsor-btn flex items-center justify-center text-2xl shadow-2xl">
+            ☕
+        </a>
     </div>
 
     <script>
-        function toggleSidebar() {
-            document.getElementById('sidebar').classList.toggle('expanded');
-        }
-
-        function handleItemClick(lat, lng, layer) {
-            if (window.innerWidth < 768) {
-                document.getElementById('sidebar').classList.remove('expanded');
-            }
-            map.flyTo([lat, lng], 15, { duration: 0.8 });
-            layer.openPopup();
-        }
-
         const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
-        
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
         const markers = L.layerGroup().addTo(map);
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+
         let parsedEvents = [];
         let activeCategory = "all";
+        let searchKeyword = "";
 
         const CATEGORY_CONFIG = {
-            traffic: { text: "🚦 交通", icon: "fa-car", color: "#ef4444", badgeClass: "badge badge-traffic" },
-            construction: { text: "🚧 施工", icon: "fa-person-digging", color: "#f97316", badgeClass: "badge badge-construction" },
-            disaster: { text: "🔥 災害", icon: "fa-triangle-exclamation", color: "#8b5cf6", badgeClass: "badge badge-disaster" },
-            other: { text: "ℹ️ 其他", icon: "fa-circle-info", color: "#6b7280", badgeClass: "badge badge-other" }
+            all: { text: "全部", color: "#4b5563" },
+            traffic: { text: "交通", color: "#ef4444" },
+            construction: { text: "施工", color: "#f97316" },
+            politics: { text: "政治", color: "#3b82f6" },
+            social: { text: "社會", color: "#ec4899" },
+            disaster: { text: "災害", color: "#dc2626" },
+            life: { text: "生活", color: "#f59e0b" },
+            other: { text: "其他", color: "#6b7280" }
         };
 
-        async function syncNewsAndRender() {
-            try {
-                const res = await fetch("/api/events");
-                const data = await res.json();
-                parsedEvents = Array.isArray(data) ? data : (data.events || []);
-                loadData();
-            } catch (err) {
-                console.error("載入失敗", err);
+        function toggleSidebar() {
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.toggle('expanded');
             }
         }
 
-        function loadData() {
-            markers.clearLayers();
-            const listEl = document.getElementById("event-list");
-            listEl.innerHTML = "";
-            const cityFilter = document.getElementById("city-filter").value;
+        function renderCategories() {
+            const container = document.getElementById('category-container');
+            const categories = new Set(['all']);
+            parsedEvents.forEach(ev => categories.add(ev.category));
 
-            const filtered = parsedEvents.filter(ev => {
-                if (activeCategory !== "all" && ev.category !== activeCategory) return false;
-                if (cityFilter !== "all" && ev.city !== cityFilter) return false;
-                return true;
-            });
-
-            document.getElementById('mobile-count').textContent = `${filtered.length} 則`;
-
-            filtered.forEach(event => {
-                const config = CATEGORY_CONFIG[event.category] || CATEGORY_CONFIG.other;
-                const lat = parseFloat(event.lat);
-                const lng = parseFloat(event.lng);
-
-                if (isNaN(lat) || isNaN(lng)) return;
-
-                const icon = L.divIcon({
-                    html: `<div class="custom-marker" style="background: ${config.color}; width: 32px; height: 32px;">
-                            <i class="fa-solid ${config.icon}"></i>
-                           </div>`,
-                    className: '',
-                    iconSize: [32, 32],
-                    iconAnchor: [16, 16]
-                });
-
-                const popupHtml = `
-                    <div class="font-sans">
-                        <b class="text-sm">${event.title}</b>
-                        <p class="text-xs text-gray-600 mt-1">${event.content}</p>
-                        <div class="text-[10px] text-gray-400 border-t mt-2 pt-2">${event.city} · 即時路況</div>
-                    </div>
-                `;
-
-                const layer = L.marker([lat, lng], { icon }).addTo(markers)
-                    .bindPopup(popupHtml, { className: 'custom-popup', maxWidth: 260 });
-
-                const item = document.createElement("div");
-                item.className = "news-item cursor-pointer";
-                item.innerHTML = `
-                    <div class="flex justify-between items-start mb-1">
-                        <span class="text-xs font-bold text-blue-400">${event.city}</span>
-                        <span class="${config.badgeClass}">${config.text}</span>
-                    </div>
-                    <h3 class="text-sm font-semibold text-gray-100">${event.title}</h3>
-                `;
-                item.onclick = () => handleItemClick(lat, lng, layer);
-                listEl.appendChild(item);
-            });
+            container.innerHTML = Array.from(categories).map(cat => {
+                const config = CATEGORY_CONFIG[cat] || { text: cat, color: "#6b7280" };
+                const activeClass = activeCategory === cat ? 'active' : '';
+                return `<button onclick="setFilter('${cat}')" class="filter-btn badge ${activeClass}" style="background-color: ${config.color} !important">${config.text}</button>`;
+            }).join('');
         }
 
-        function setCategoryFilter(cat) {
+        function setFilter(cat) {
             activeCategory = cat;
             loadData();
         }
 
-        window.onload = syncNewsAndRender;
+        function handleSearch(e) {
+            searchKeyword = e.target.value.toLowerCase();
+            loadData();
+        }
+
+        async function loadData() {
+            markers.clearLayers();
+            const listEl = document.getElementById('news-list');
+            listEl.innerHTML = "";
+
+            const filtered = parsedEvents.filter(ev => {
+                const matchCat = activeCategory === 'all' || ev.category === activeCategory;
+                const matchSearch = (ev.title + ev.content).toLowerCase().includes(searchKeyword);
+                return matchCat && matchSearch;
+            });
+
+            document.getElementById('event-count').textContent = `${filtered.length} 則`;
+
+            filtered.forEach(ev => {
+                const config = CATEGORY_CONFIG[ev.category] || CATEGORY_CONFIG.other;
+                const latlng = [ev.lat, ev.lng];
+                
+                // 地圖圖釘
+                const marker = L.marker(latlng, {
+                    icon: L.divIcon({
+                        html: `<div style="background:${config.color}; width:12px; height:12px; border-radius:50%; border:2px solid white;"></div>`,
+                        className: ''
+                    })
+                }).addTo(markers);
+
+                marker.bindPopup(`<b class="text-gray-900">${ev.title}</b><p class="text-xs text-gray-600">${ev.content}</p>`);
+
+                // 列表卡片
+                const card = document.createElement('div');
+                card.className = "p-4 hover:bg-gray-800 cursor-pointer transition-colors";
+                if (window.innerWidth < 768) card.className = "p-4 hover:bg-gray-100 cursor-pointer border-b";
+                
+                card.innerHTML = `
+                    <div class="flex justify-between mb-1">
+                        <span class="text-xs text-blue-400 font-bold">${ev.city || '台灣'}</span>
+                        <span class="badge" style="background:${config.color} !important">${config.text || ev.category}</span>
+                    </div>
+                    <div class="text-sm font-bold">${ev.title}</div>
+                    <div class="text-xs text-gray-400 mt-1 line-clamp-2">${ev.content}</div>
+                `;
+                card.onclick = () => {
+                    map.flyTo(latlng, 15);
+                    marker.openPopup();
+                    if (window.innerWidth < 768) toggleSidebar();
+                };
+                listEl.appendChild(card);
+            });
+            renderCategories();
+        }
+
+        async function init() {
+            try {
+                const res = await fetch('/api/events');
+                parsedEvents = await res.json();
+                loadData();
+            } catch (e) {
+                console.error("載入失敗", e);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
