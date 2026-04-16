@@ -1,35 +1,12 @@
-import cors from "cors";
-import dotenv from "dotenv";
-import express from "express";
-import Parser from "rss-parser";
-import axios from "axios";
-import { OpenAI } from "openai";
-
-dotenv.config();
+const express = require("express");
+const cors = require("cors");
+const Parser = require("rss-parser");
+const axios = require("axios");
+const { OpenAI } = require("openai");
 
 const app = express();
 const parser = new Parser();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-/**
- * CategoryEnum 摰儔
- * ?嚗漱?瘝颯冗??瘣颯???瓷蝬???璅?隞亙????楝瘜?憿?
- */
-const CategoryEnum = {
-  TRAFFIC: "traffic",
-  POLITICS: "politics",
-  SOCIAL: "social",
-  LIFE: "life",
-  TECH: "tech",
-  FINANCE: "finance",
-  INTERNATIONAL: "international",
-  ENTERTAINMENT: "entertainment",
-  CONSTRUCTION: "construction",
-  DISASTER: "disaster",
-  POLICE: "police",
-  ACTIVITY: "activity",
-  OTHER: "other"
-};
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
@@ -37,29 +14,37 @@ const DEFAULT_RSS_SOURCES = [
   "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
 ];
 
-const PBS_TRAFFIC_URL = "https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata";
-
 async function fetchOneRssFeed(rssUrl) {
   try {
     const xmlResponse = await axios.get(rssUrl, {
-      timeout: 15000,
+      timeout: 10000,
       responseType: "text",
       headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RSSFetcher/1.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
       },
     });
     const feed = await parser.parseString(String(xmlResponse.data || ""));
     return { items: feed.items || [] };
-  } catch {
-    const feed = await parser.parseURL(rssUrl);
-    return { items: feed.items || [] };
+  } catch (err) {
+    console.log(`⚠️ RSS fetch failed for ${rssUrl}:`, err.message);
+    try {
+      const feed = await parser.parseURL(rssUrl);
+      return { items: feed.items || [] };
+    } catch (innerErr) {
+      return { items: [] };
+    }
   }
 }
 
+/**
+ * 強化版 TDX 抓取：同時抓取台北台與國道事件
+ */
 async function fetchTDXPoliceRecords() {
   try {
-    // 1. 取得 TDX Token
+    console.log('📡 正在請求 TDX 認證 Token...');
+    
+    // 1. 取得 Token
     const authRes = await axios.post(
       "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
       new URLSearchParams({
@@ -70,98 +55,54 @@ async function fetchTDXPoliceRecords() {
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
 
-    const accessToken = authRes.data?.access_token;
+    const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
+
+    console.log('✅ TDX Token 取得成功，正在依序抓取 PBS 分區路況...');
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     };
 
-    // 2. 嚴格使用你提供的 sequential 抓取迴圈（含 regions + 300ms 延遲）
-    const regions = ['N', 'C', 'S', 'E']; // 期望用北/中/南/東四區
+    // 2. /PBS/Region 在你目前的 TDX API 版本下回傳 404，
+    //    改用 /PBS/Record 取得全量資料，再交由後續解析/過濾處理。
     const combinedRecords = [];
-    let anyRegionSuccess = false;
+    const recordRes = await axios.get(
+      "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Record?$format=JSON",
+      { headers, timeout: 10000 }
+    );
+    combinedRecords.push(...(recordRes.data || []));
+    // 保留 300ms 禮貌性延遲（避免頻率限制）
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    for (const region of regions) {
-      try {
-        const res = await axios.get(`https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/${region}?$format=JSON`, { headers, timeout: 10000 });
-        combinedRecords.push(...(res.data || []));
-        anyRegionSuccess = true;
-        // 加上 300 毫秒的禮貌性延遲，避免 429 錯誤
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } catch (err) {
-        console.error(
-          `⚠️ TDX 抓取失敗 (${region}): status=${err?.response?.status} url=${err?.config?.url}`,
-          err?.response?.data || err.message
-        );
-      }
-    }
+    console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
-    // 若 N/C/S/E 全部失敗/無資料，嘗試抓取可用的 Region 代碼（用於修正代碼不符造成的 404）
-    if (!anyRegionSuccess || combinedRecords.length === 0) {
-      try {
-        const regionListRes = await axios.get(
-          "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region?$format=JSON",
-          { headers, timeout: 10000 }
-        );
-        const regionList = regionListRes.data?.result || regionListRes.data || [];
+    // 3. 彈性解析與轉換
+    const formatted = combinedRecords.map((item) => {
+      const lng = parseFloat(item.LocationPt?.PositionLon);
+      const lat = parseFloat(item.LocationPt?.PositionLat);
+      const content = item.Comment || item.EventDescription || "無詳細說明";
+      const title = item.AreaName || item.RoadName || item.EventTitle || "即時路況";
 
-        const regionIds = Array.isArray(regionList)
-          ? [...new Set(
-              regionList
-                .map((r) => r.RegionID || r.RegionId || r.region || r.id || r.ID || r.code || r.Code || r.Value || r.value)
-                .filter(Boolean)
-            )]
-          : [];
+      return {
+        title: `${title} - ${content}`,
+        content,
+        // 所有 TDX 資料類別強制為交通
+        category: "traffic",
+        lat: lat,
+        lng: lng,
+        city: (item.AreaName || item.CityName || "全國").split("-")[0],
+        source: "即時路況",
+        url: "",
+      };
+    }).filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
 
-        if (regionIds.length > 0) {
-          combinedRecords.length = 0;
-          for (const regionId of regionIds) {
-            try {
-              const res = await axios.get(
-                `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/${regionId}?$format=JSON`,
-                { headers, timeout: 10000 }
-              );
-              combinedRecords.push(...(res.data || []));
-              await new Promise(resolve => setTimeout(resolve, 300));
-            } catch (err) {
-              console.error(
-                `⚠️ TDX 抓取失敗 (regionId=${regionId}): status=${err?.response?.status} url=${err?.config?.url}`,
-                err?.response?.data || err.message
-              );
-            }
-          }
-        }
-      } catch (err) {
-        console.error("⚠️ TDX Region 代碼列表抓取失敗:", err?.response?.data || err.message);
-      }
-    }
-
-    // 3. 資料解析與容錯
-    const formatted = combinedRecords
-      .map((item) => {
-        const lng = parseFloat(item.LocationPt?.PositionLon);
-        const lat = parseFloat(item.LocationPt?.PositionLat);
-        const content = item.Comment || item.EventDescription;
-
-        return {
-          title: `${item.AreaName || "路況"} - ${content || "無詳細說明"}`,
-          content: content || "無詳細說明",
-          // 所有 TDX 資料類別強制為交通
-          category: CategoryEnum.TRAFFIC,
-          url: "",
-          lat,
-          lng,
-          city: (item.AreaName || item.CityName || "全國").split("-")[0],
-          source: "警廣路況",
-        };
-      })
-      .filter((r) => !isNaN(r.lat) && !isNaN(r.lng));
-
+    console.log(`✅ TDX 解析成功：${formatted.length} 筆有效事件`);
     return formatted;
-  } catch (error) {
-    console.error("❌ TDX 流程發生錯誤:", error.message);
+
+  } catch (err) {
+    console.error('❌ TDX 流程發生錯誤:', err.message);
     return [];
   }
 }
@@ -171,105 +112,143 @@ app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
-    // 1. ???? RSS ?啗??郎撱????
-    const [rawRssFeeds, policeRecords] = await Promise.all([
-      Promise.all(DEFAULT_RSS_SOURCES.map(url => fetchOneRssFeed(url))),
-      fetchTDXPoliceRecords()
+    const [rawRssFeeds, pbsEvents] = await Promise.all([
+      Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))),
+      fetchTDXPoliceRecords(),
     ]);
 
-    const newsItems = rawRssFeeds.flatMap(f => f.items).slice(0, 12);
+    const newsItems = rawRssFeeds.flatMap((f) => f.items);
+    console.log('✅ RSS 抓到的新聞數量:', newsItems.length);
 
-    // 2. 皜???瑟?摰?
+    const latestNews = newsItems.slice(0, 10);
+
     const cleanAndTruncate = (text) => {
       if (!text) return "";
-      return text.replace(/<[^>]*>?/gm, '').replace(/\s+/g, ' ').trim().substring(0, 300);
+      return text.replace(/<[^>]*>?/gm, "").replace(/\s+/g, " ").trim().substring(0, 300);
     };
 
-    const simplifiedNews = newsItems.map(item => ({
+    const simplifiedNews = latestNews.map((item) => ({
       title: item.title || "",
       content: cleanAndTruncate(item.contentSnippet || item.content || ""),
-      link: item.link || ""
+      link: item.link || "",
     }));
 
-    // 3. 撱箸? AI Prompt
-    const systemPrompt = `You are a professional news and geographic labeling assistant. 
-Your task is to extract real physical events in Taiwan from news and classify them into the most appropriate category.
+    const systemPrompt = `You are a geographic labeling assistant. Your job is to extract EVERY single physical event from the provided Taiwan news.
 
-?TRICT CATEGORY ENUM??
-You MUST pick EXACTLY one category from this list:
-- traffic: Traffic congestion, road reports, vehicle breakdowns.
-- politics: Government policies, elections, political movements.
-- social: Crime, social issues, human interest stories, accidents (if not traffic).
-- life: Lifestyle, health, entertainment, weather, local news.
-- tech: Technology, AI, gadgets, internet, science.
-- finance: Economy, stock market, business, real estate.
-- international: World news, foreign affairs.
-- entertainment: Celebrity news, movies, music, arts.
-- construction: Road construction, maintenance, closures.
-- disaster: Fires, floods, earthquakes, major accidents.
-- police: Police enforcement, checkpoints.
-- activity: Festivals, parades, public events.
-
-?SON SCHEMA??
-Output MUST be a JSON object with a root key "events":
+【CRITICAL RULES】
+1. 請盡可能把所有新聞都轉換成 JSON 格式。
+2. 即使新聞中沒有精確的街道地址，也請務必給它一個該縣市的概略經緯度中心點。
+3. 絕對不要略過任何一條新聞，禁止回傳空陣列 []。
+4. Output MUST follow this JSON schema:
 {
   "events": [
     {
-      "title": "Specific Location - Event Description",
-      "content": "Brief summary",
-      "category": "one_from_the_enum_above",
-      "url": "original_link",
-      "lat": number,
-      "lng": number,
-      "city": "Taiwanese City Name",
+      "title": "Location - Event Description",
+      "content": "Brief description...",
+      "category": "traffic|construction|disaster|police|activity|politics|social|life|tech|fire|other",
+      "url": "https://...",
+      "lat": 25.0330,
+      "lng": 121.5654,
+      "city": "台北市",
       "source": "news"
     }
   ]
 }
 
-?ULES??
-1. If an event has no clear physical location in Taiwan, skip it.
-2. TITLE format: "Location - Event" (e.g., "?啣?撣縑蝢拙? - ?琿?撌亦??賢極").
-3. Use traditional Chinese for content and title.`;
+【CITY TO COORDINATE FALLBACK】
+If no precise address is found, use these coordinates:
+- 台北市: 25.0330, 121.5654
+- 新北市: 25.0169, 121.4628
+- 桃園市: 24.9937, 121.3009
+- 台中市: 24.1477, 120.6736
+- 高雄市: 22.6273, 120.3014
+- 台南市: 22.9997, 120.2270
+- 彰化縣: 24.0685, 120.5575
+- 宜蘭縣: 24.7021, 121.7378
+- 花蓮縣: 23.9872, 121.6015
+- 其他: 23.5, 120.5`;
 
-    const userContent = `Analyze the following news items and extract physical events in Taiwan:
-${JSON.stringify(simplifiedNews, null, 2)}`;
+    const userContent = `【新聞】${JSON.stringify(simplifiedNews)}`;
 
-    // 4. ?澆 OpenAI
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userContent }
+        { role: "user", content: userContent },
       ],
-      response_format: { type: "json_object" },
-      temperature: 0
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "taiwan_events",
+          strict: true,
+          schema: {
+            type: "object",
+            properties: {
+              events: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    title: { type: "string" },
+                    content: { type: "string" },
+                    category: { type: "string", enum: ["traffic", "construction", "disaster", "police", "activity", "politics", "social", "life", "tech", "fire", "other"] },
+                    url: { type: "string" },
+                    lat: { type: "number" },
+                    lng: { type: "number" },
+                    city: { type: "string" },
+                    source: { type: "string" },
+                  },
+                  required: ["title", "content", "category", "url", "lat", "lng", "city", "source"],
+                  additionalProperties: false,
+                },
+              },
+            },
+            required: ["events"],
+            additionalProperties: false,
+          },
+        },
+      },
+      temperature: 0,
     });
 
-    const parsed = JSON.parse(completion.choices[0].message.content);
-    let eventsArray = parsed?.events || [];
+    const responseContent = completion.choices[0].message.content;
+    let aiEvents = [];
+    try {
+      const parsedData = completion.choices[0].message.parsed || JSON.parse(responseContent || "{}");
+      if (Array.isArray(parsedData)) {
+        aiEvents = parsedData;
+      } else if (parsedData && Array.isArray(parsedData.events)) {
+        aiEvents = parsedData.events;
+      }
+    } catch (parseErr) {
+      console.error('❌ AI JSON 解析失敗:', parseErr.message);
+    }
 
-    // 5. ?蔥霅行鞈?嚗歇??fetchPoliceRecords 銝剖撥?嗉身??traffic嚗?
-    const allEvents = [...eventsArray, ...policeRecords];
+    // 合併 TDX 與 AI 新聞
+    const finalEvents = [...pbsEvents, ...aiEvents];
 
-    // 6. ?蕪????
-    const validEvents = allEvents.filter(item => {
+    // 過濾有效經緯度
+    const validEvents = finalEvents.filter((item) => {
       const lat = parseFloat(item.lat);
       const lng = parseFloat(item.lng);
-      return !isNaN(lat) && !isNaN(lng) && 
-             lat >= 21 && lat <= 26 && 
-             lng >= 118 && lng <= 122;
-    });
+      return !isNaN(lat) && !isNaN(lng) && lat >= 21 && lat <= 26 && lng >= 118 && lng <= 122;
+    }).map((item) => ({
+      ...item,
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lng),
+    }));
 
-    // 7. 敹怠?閮剖?
-    res.setHeader('Vercel-CDN-Cache-Control', 's-maxage=300, stale-while-revalidate=600');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.json(validEvents);
+    console.log('✅ 最終合併準備回傳總數:', validEvents.length);
 
+    // 設定 Cache-Control 標頭，解決 Vercel Cache HIT 導致資料過舊的問題
+    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=30");
+    res.status(200).json(validEvents);
   } catch (error) {
-    console.error("??/api/events ?航炊:", error.message);
-    res.status(500).json({ error: "Internal Server Error" });
+    console.error('❌ 後端發生嚴重錯誤:', error);
+    // 即使發生錯誤也回傳空陣列並設定 Cache-Control，避免錯誤也被長時間快取
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+    res.status(200).json([]); 
   }
 });
 
-export default app;
+module.exports = app;
