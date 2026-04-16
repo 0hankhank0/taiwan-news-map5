@@ -79,43 +79,58 @@ async function getTDXToken() {
 // ─────────────────────────────────────────────
 // 1. TDX 路況事件（traffic）
 // ─────────────────────────────────────────────
+// ─────────────────────────────────────────────
+// 1. TDX 路況事件（優化版：加入城市巡迴抓取）
+// ─────────────────────────────────────────────
 async function fetchTDXTraffic(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
-  // 修改：改用 basic/v2 路徑作為首選，因為 advanced/v3 常常會有權限 404 問題
-  const urls = [
+  
+  // 定義要抓取的重點城市 (TDX 規範名稱)
+  const cities = ["Taipei", "NewTaipei", "Taoyuan", "Taichung", "Tainan", "Kaohsiung"];
+  
+  // 組合所有 API 網址：包含你提供的城市級 API 以及原本的備用網址
+  const cityUrls = cities.map(city => 
+    `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/${city}?$format=JSON`
+  );
+  
+  const globalUrls = [
     "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/ProvincialHighway?$format=JSON",
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/Freeway?$format=JSON" // 保留舊版作為備用
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/ProvincialHighway?$format=JSON"
   ];
 
+  const allUrls = [...cityUrls, ...globalUrls];
+
+  // 使用 allSettled 確保其中一個城市掛掉不會影響全盤
   const results = await Promise.allSettled(
-    urls.map(url => axios.get(url, { headers, timeout: 8000 }))
+    allUrls.map(url => axios.get(url, { headers, timeout: 6000 }))
   );
 
   const records = [];
-  for (const r of results) {
-    if (r.status !== "fulfilled") {
-      // 優化：印出具體失敗的 URL 方便未來除錯
-      console.warn(`❌ TDX Traffic 失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status, r.reason?.message);
-      continue;
+  results.forEach(r => {
+    if (r.status === "fulfilled") {
+      const raw = r.value.data;
+      // TDX 的回傳格式可能是 Events 或直接是陣列
+      const data = raw?.Events ?? raw?.Event ?? raw ?? [];
+      if (Array.isArray(data)) records.push(...data);
+    } else {
+      // 記錄哪些城市或路段失效，但不中斷程式
+      console.warn(`⚠️ 局部抓取失敗: ${r.reason?.config?.url} | 狀態: ${r.reason?.response?.status}`);
     }
-    const raw = r.value.data;
-    const data = raw?.Events ?? raw?.Event ?? raw?.TrafficEvents ?? raw?.data ?? raw ?? [];
-    if (Array.isArray(data)) records.push(...data);
-  }
+  });
 
   return records.map(item => {
     const lng = parseFloat(item.LocationPt?.PositionLon ?? item.StartPositionLon ?? "");
     const lat = parseFloat(item.LocationPt?.PositionLat ?? item.StartPositionLat ?? "");
-    const content = item.Comment || item.EventDescription || item.Description || "無詳細說明";
+    const content = item.Comment || item.EventDescription || item.Description || "即時路況";
     const road = item.RoadName || item.AreaName || item.EventTitle || "道路";
+    
     return {
       title: `${road} - ${content}`.substring(0, 80),
       content,
       category: "traffic",
       lat, lng,
       city: (item.CityName || item.AreaName || "全國").replace(/市$|縣$/, "市").split("-")[0],
-      source: "TDX路況",
+      source: "TDX即時路況",
       url: "",
     };
   }).filter(r => isValidTW(r.lat, r.lng));
