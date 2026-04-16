@@ -127,7 +127,7 @@ app.get("/api/events", async (req, res) => {
       fetchTDXPoliceRecords()
     ]);
 
-    const newsItems = rawRssFeeds.flatMap(f => f.items).slice(0, 12);
+    const newsItems = rawRssFeeds.flatMap(f => f.items).slice(0, 40);
 
     // 2. 簡化新聞內容供 AI 處理
     const cleanAndTruncate = (text) => {
