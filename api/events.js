@@ -85,91 +85,80 @@ async function fetchTDXTraffic(token) {
   // 定義重點抓取城市
   const cities = ["Taipei", "NewTaipei", "Taoyuan", "Taichung", "Tainan", "Kaohsiung", "Keelung", "Hsinchu"];
   
-  // 使用你提供的 LiveEvent 路徑 (補上 TDX 標準前綴)
-  const urls = cities.map(city => 
-    `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/LiveEvent/City/${city}?$format=JSON`
-  );
-
-  const results = await Promise.allSettled(
-    urls.map(url => axios.get(url, { headers, timeout: 8000 }))
-  );
+  // 使用你提供的 Li// ─────────────────────────────────────────────
+// 1. TDX 路況事件（修正路徑並加入延遲，避免 429）
+// ─────────────────────────────────────────────
+async function fetchTDXTraffic(token) {
+  const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+  
+  // 改回彙整型 API，減少請求次數以避免 429 錯誤
+  const urls = [
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/ProvincialHighway?$format=JSON"
+  ];
 
   const records = [];
-  for (const r of results) {
-    if (r.status !== "fulfilled") {
-      // 僅記錄失敗，不中斷整體流程
-      console.warn(`⚠️ 城市 API 抓取失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status);
-      continue;
+  for (const url of urls) {
+    try {
+      // 這裡改用 await 依序請求，不再併發，避免 429
+      const res = await axios.get(url, { headers, timeout: 8000 });
+      const data = res.data?.Events ?? res.data?.Event ?? res.data ?? [];
+      if (Array.isArray(data)) records.push(...data);
+      // 稍微停頓 200ms
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (err) {
+      console.warn(`❌ TDX Traffic 失敗 (${url}):`, err.response?.status);
     }
-    
-    const data = r.value.data;
-    // 根據 LiveEvent 格式解析，通常資料就在陣列裡或包裹在 LiveEvents 屬性中
-    const items = Array.isArray(data) ? data : (data.LiveEvents || []);
-    records.push(...items);
   }
 
-  console.log(`📡 TDX LiveEvent 原始抓取總數: ${records.length}`);
-
   return records.map(item => {
-    // 處理座標（LiveEvent 可能使用 PositionLon/Lat 或 StartPositionLon/Lat）
     const lng = parseFloat(item.LocationPt?.PositionLon ?? item.StartPositionLon ?? "");
     const lat = parseFloat(item.LocationPt?.PositionLat ?? item.StartPositionLat ?? "");
-    
-    const content = item.Comment || item.EventDescription || item.Description || "即時交通事件";
-    const road = item.RoadName || item.EventTitle || "相關路段";
-    
+    const content = item.Comment || item.EventDescription || "即時路況";
     return {
-      title: `${road} - ${content}`.substring(0, 80),
+      title: `${item.RoadName || "路況"} - ${content}`.substring(0, 80),
       content,
       category: "traffic",
-      lat, 
-      lng,
-      city: (item.CityName || "全國").replace(/市$|縣$/, "市").split("-")[0],
-      source: "TDX即時路況",
+      lat, lng,
+      city: (item.CityName || "全國").replace(/市$|縣$/, "市"),
+      source: "TDX",
       url: "",
     };
   }).filter(r => isValidTW(r.lat, r.lng));
 }
+
 // ─────────────────────────────────────────────
-// 2. TDX 道路施工（construction）
+// 2. TDX 道路施工（修正 v3 為 v2 以提高相容性）
 // ─────────────────────────────────────────────
 async function fetchTDXConstruction(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
-  // 修改：新增 API 路徑備案
+  // 將 v3 改為 v2，因為 v3 進階版權限較嚴
   const urls = [
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/Freeway?$format=JSON",
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/ProvincialHighway?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Construction/Freeway?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Construction/ProvincialHighway?$format=JSON"
   ];
 
-  const results = await Promise.allSettled(
-    urls.map(url => axios.get(url, { headers, timeout: 8000 }))
-  );
-
   const records = [];
-  for (const r of results) {
-    if (r.status !== "fulfilled") {
-      console.warn(`❌ TDX Construction 失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status, r.reason?.message);
-      continue;
+  for (const url of urls) {
+    try {
+      const res = await axios.get(url, { headers, timeout: 8000 });
+      const data = res.data?.Constructions ?? res.data?.Construction ?? res.data ?? [];
+      if (Array.isArray(data)) records.push(...data);
+      await new Promise(resolve => setTimeout(resolve, 200));
+    } catch (err) {
+      console.warn(`❌ TDX Construction 失敗 (${url}):`, err.response?.status);
     }
-    const raw = r.value.data;
-    const data = raw?.Constructions ?? raw?.Construction ?? raw?.data ?? raw ?? [];
-    if (Array.isArray(data)) records.push(...data);
   }
 
   return records.map(item => {
     const lng = parseFloat(item.StartPositionLon ?? item.LocationPt?.PositionLon ?? "");
     const lat = parseFloat(item.StartPositionLat ?? item.LocationPt?.PositionLat ?? "");
-    const content = item.ConstructionDescription || item.Comment || item.Description || "道路施工中";
-    const road = item.RoadName || item.AreaName || "施工路段";
-    const start = item.StartTime ? item.StartTime.substring(0, 10) : "";
-    const end = item.EndTime ? item.EndTime.substring(0, 10) : "";
-    const timeInfo = start ? `（${start}${end ? " ~ " + end : ""}）` : "";
     return {
-      title: `${road} 施工${timeInfo}`.substring(0, 80),
-      content,
+      title: `${item.RoadName || "施工"} - ${item.ConstructionDescription || "道路施工"}`.substring(0, 80),
+      content: item.ConstructionDescription || "施工中",
       category: "construction",
       lat, lng,
-      city: (item.CityName || item.AreaName || "全國").split("-")[0],
+      city: "全國",
       source: "TDX施工",
       url: "",
     };
