@@ -81,9 +81,11 @@ async function getTDXToken() {
 // ─────────────────────────────────────────────
 async function fetchTDXTraffic(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+  // 修改：改用 basic/v2 路徑作為首選，因為 advanced/v3 常常會有權限 404 問題
   const urls = [
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/Freeway?$format=JSON",
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/ProvincialHighway?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/ProvincialHighway?$format=JSON",
+    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/Freeway?$format=JSON" // 保留舊版作為備用
   ];
 
   const results = await Promise.allSettled(
@@ -93,15 +95,12 @@ async function fetchTDXTraffic(token) {
   const records = [];
   for (const r of results) {
     if (r.status !== "fulfilled") {
-      console.warn("❌ TDX Traffic 失敗:", r.reason?.response?.status, r.reason?.message);
+      // 優化：印出具體失敗的 URL 方便未來除錯
+      console.warn(`❌ TDX Traffic 失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status, r.reason?.message);
       continue;
     }
     const raw = r.value.data;
-    const keys = Object.keys(raw || {});
-    console.log("🔍 TDX Traffic 回傳 keys:", keys, "| 第一層型別:", typeof raw);
-
     const data = raw?.Events ?? raw?.Event ?? raw?.TrafficEvents ?? raw?.data ?? raw ?? [];
-    console.log(`  → 取得陣列長度: ${Array.isArray(data) ? data.length : "非陣列"}`);
     if (Array.isArray(data)) records.push(...data);
   }
 
@@ -127,6 +126,7 @@ async function fetchTDXTraffic(token) {
 // ─────────────────────────────────────────────
 async function fetchTDXConstruction(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
+  // 修改：新增 API 路徑備案
   const urls = [
     "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/Freeway?$format=JSON",
     "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/ProvincialHighway?$format=JSON",
@@ -139,15 +139,11 @@ async function fetchTDXConstruction(token) {
   const records = [];
   for (const r of results) {
     if (r.status !== "fulfilled") {
-      console.warn("❌ TDX Construction 失敗:", r.reason?.response?.status, r.reason?.message);
+      console.warn(`❌ TDX Construction 失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status, r.reason?.message);
       continue;
     }
     const raw = r.value.data;
-    const keys = Object.keys(raw || {});
-    console.log("🔍 TDX Construction 回傳 keys:", keys);
-
     const data = raw?.Constructions ?? raw?.Construction ?? raw?.data ?? raw ?? [];
-    console.log(`  → 取得陣列長度: ${Array.isArray(data) ? data.length : "非陣列"}`);
     if (Array.isArray(data)) records.push(...data);
   }
 
@@ -175,10 +171,10 @@ async function fetchTDXConstruction(token) {
 // 3. 消防事件（fire）
 // ─────────────────────────────────────────────
 async function fetchFireEvents() {
+  // 修改：移除了已經出現 ENOTFOUND 錯誤的 opendata.nfa.gov.tw 網址
   const FIRE_URLS = [
     "https://data.gov.tw/api/v2/rest/datastore/301000000A-000076-001?limit=50&format=json",
     "https://data.gov.tw/api/v2/rest/datastore/301000000A-000223-001?limit=50&format=json",
-    "https://opendata.nfa.gov.tw/api/FireDepartmentData/GetFireDepartmentData?$format=JSON",
   ];
 
   for (const url of FIRE_URLS) {
@@ -191,7 +187,6 @@ async function fetchFireEvents() {
         res.data || [];
 
       if (Array.isArray(records) && records.length > 0) {
-        console.log("✅ 消防資料成功，第一筆 keys:", Object.keys(records[0] || {}));
         return records.slice(0, 50).map(item => {
           const lat = parseFloat(item.Lat ?? item.lat ?? item.latitude ?? item.Y ?? "");
           const lng = parseFloat(item.Lon ?? item.lon ?? item.longitude ?? item.Lng ?? item.X ?? "");
@@ -213,7 +208,6 @@ async function fetchFireEvents() {
           };
         }).filter(r => isValidTW(r.lat, r.lng));
       }
-      console.warn(`⚠️ 消防 URL 無資料: ${url}`);
     } catch (err) {
       console.warn(`⚠️ 消防 API 失敗 (${url}):`, err.response?.status ?? err.message);
     }
@@ -223,22 +217,25 @@ async function fetchFireEvents() {
   return [];
 }
 
+// ─────────────────────────────────────────────
 // 從已抓好的 RSS items 過濾消防新聞
+// ─────────────────────────────────────────────
 function extractFireFromRSS(newsItems) {
-  const FIRE_RE = /火災|消防|救援|火警|爆炸|火勢|起火|燃燒/;
+  // 修改：大幅擴充關鍵字，增加救護、車禍、事故、受困等字眼，避免回傳 0 筆
+  const FIRE_RE = /火災|消防|救援|火警|爆炸|火勢|起火|燃燒|受困|救護|事故|災情|車禍|交通管制/;
   const matched = newsItems
-    .filter(item => FIRE_RE.test(item.title || ""))
+    .filter(item => FIRE_RE.test(item.title || "") || FIRE_RE.test(item.contentSnippet || ""))
     .slice(0, 10)
     .map(item => ({
-      title: item.title || "消防事件",
+      title: item.title || "突發事件",
       content: (item.contentSnippet || "").substring(0, 200),
-      category: "fire",
+      category: "fire", // 這裡依舊標為 fire 作為前端 icon 的依據
       lat: 23.5, lng: 120.5,
       city: "全國",
       source: "RSS",
       url: item.link || "",
     }));
-  console.log(`🔄 RSS 消防過濾: ${matched.length} 筆`);
+  console.log(`🔄 RSS 事件過濾: 取得 ${matched.length} 筆備用資料`);
   return matched;
 }
 
@@ -349,7 +346,7 @@ app.get("/api/events", async (req, res) => {
       ? fireApiEvents
       : extractFireFromRSS(newsItems);
 
-    console.log(`RSS: ${newsItems.length} 則 | 路況: ${trafficEvents.length} 筆 | 施工: ${constructionEvents.length} 筆 | 消防: ${fireEvents.length} 筆`);
+    console.log(`RSS: ${newsItems.length} 則 | 路況: ${trafficEvents.length} 筆 | 施工: ${constructionEvents.length} 筆 | 消防(含備用): ${fireEvents.length} 筆`);
 
     const aiEvents = await parseWithAI(newsItems);
     console.log(`AI 解析: ${aiEvents.length} 則`);
