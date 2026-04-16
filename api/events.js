@@ -77,65 +77,59 @@ async function getTDXToken() {
 }
 
 // ─────────────────────────────────────────────
-// 1. TDX 路況事件（traffic）
-// ─────────────────────────────────────────────
-// ─────────────────────────────────────────────
-// 1. TDX 路況事件（優化版：加入城市巡迴抓取）
+// 1. TDX 即時路況事件（Live Events）
 // ─────────────────────────────────────────────
 async function fetchTDXTraffic(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
   
-  // 定義要抓取的重點城市 (TDX 規範名稱)
-  const cities = ["Taipei", "NewTaipei", "Taoyuan", "Taichung", "Tainan", "Kaohsiung"];
+  // 定義重點抓取城市
+  const cities = ["Taipei", "NewTaipei", "Taoyuan", "Taichung", "Tainan", "Kaohsiung", "Keelung", "Hsinchu"];
   
-  // 組合所有 API 網址：包含你提供的城市級 API 以及原本的備用網址
-  const cityUrls = cities.map(city => 
-    `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/City/${city}?$format=JSON`
+  // 使用你提供的 LiveEvent 路徑 (補上 TDX 標準前綴)
+  const urls = cities.map(city => 
+    `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/LiveEvent/City/${city}?$format=JSON`
   );
-  
-  const globalUrls = [
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/Freeway?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/ProvincialHighway?$format=JSON"
-  ];
 
-  const allUrls = [...cityUrls, ...globalUrls];
-
-  // 使用 allSettled 確保其中一個城市掛掉不會影響全盤
   const results = await Promise.allSettled(
-    allUrls.map(url => axios.get(url, { headers, timeout: 6000 }))
+    urls.map(url => axios.get(url, { headers, timeout: 8000 }))
   );
 
   const records = [];
-  results.forEach(r => {
-    if (r.status === "fulfilled") {
-      const raw = r.value.data;
-      // TDX 的回傳格式可能是 Events 或直接是陣列
-      const data = raw?.Events ?? raw?.Event ?? raw ?? [];
-      if (Array.isArray(data)) records.push(...data);
-    } else {
-      // 記錄哪些城市或路段失效，但不中斷程式
-      console.warn(`⚠️ 局部抓取失敗: ${r.reason?.config?.url} | 狀態: ${r.reason?.response?.status}`);
+  for (const r of results) {
+    if (r.status !== "fulfilled") {
+      // 僅記錄失敗，不中斷整體流程
+      console.warn(`⚠️ 城市 API 抓取失敗 (${r.reason?.config?.url}):`, r.reason?.response?.status);
+      continue;
     }
-  });
+    
+    const data = r.value.data;
+    // 根據 LiveEvent 格式解析，通常資料就在陣列裡或包裹在 LiveEvents 屬性中
+    const items = Array.isArray(data) ? data : (data.LiveEvents || []);
+    records.push(...items);
+  }
+
+  console.log(`📡 TDX LiveEvent 原始抓取總數: ${records.length}`);
 
   return records.map(item => {
+    // 處理座標（LiveEvent 可能使用 PositionLon/Lat 或 StartPositionLon/Lat）
     const lng = parseFloat(item.LocationPt?.PositionLon ?? item.StartPositionLon ?? "");
     const lat = parseFloat(item.LocationPt?.PositionLat ?? item.StartPositionLat ?? "");
-    const content = item.Comment || item.EventDescription || item.Description || "即時路況";
-    const road = item.RoadName || item.AreaName || item.EventTitle || "道路";
+    
+    const content = item.Comment || item.EventDescription || item.Description || "即時交通事件";
+    const road = item.RoadName || item.EventTitle || "相關路段";
     
     return {
       title: `${road} - ${content}`.substring(0, 80),
       content,
       category: "traffic",
-      lat, lng,
-      city: (item.CityName || item.AreaName || "全國").replace(/市$|縣$/, "市").split("-")[0],
+      lat, 
+      lng,
+      city: (item.CityName || "全國").replace(/市$|縣$/, "市").split("-")[0],
       source: "TDX即時路況",
       url: "",
     };
   }).filter(r => isValidTW(r.lat, r.lng));
 }
-
 // ─────────────────────────────────────────────
 // 2. TDX 道路施工（construction）
 // ─────────────────────────────────────────────
