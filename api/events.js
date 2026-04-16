@@ -38,7 +38,7 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 強化版 TDX 抓取：改用 Event API 依序抓取國道、省道與主要縣市
+ * 終極版 TDX 抓取：使用 V3 API、縮減抓取範圍、1.5秒強制延遲避開 429
  */
 async function fetchTDXPoliceRecords() {
   try {
@@ -58,34 +58,35 @@ async function fetchTDXPoliceRecords() {
     const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
 
-    console.log('✅ TDX Token 取得成功，正在依序抓取各地區路況事件...');
+    console.log('✅ TDX Token 取得成功，正在依序抓取 V3 版路況事件...');
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     };
 
-    // 2. 改用 TDX 官方維護的 Event (路況事件) API，並依序抓取重要路段與縣市
+    // 2. 升級為 TDX V3 API，精簡抓取目標並加長延遲以避開 429
     const tdxPaths = [
       'Freeway',
       'ProvincialHighway',
-      'City/Taipei',
-      'City/NewTaipei',
-      'City/Taichung',
-      'City/Tainan',
-      'City/Kaohsiung'
+      'City/Taipei'
     ];
 
     const combinedRecords = [];
     
     for (const path of tdxPaths) {
       try {
-        const url = `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/${path}?$format=JSON`;
+        const url = `https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/${path}?$format=JSON`;
         const res = await axios.get(url, { headers, timeout: 10000 });
-        combinedRecords.push(...(res.data || []));
         
-        // 保留 300ms 禮貌性延遲，避免 429 Too Many Requests 錯誤
-        await new Promise(resolve => setTimeout(resolve, 300));
+        // V3 API 結構通常為 { Events: [...] }，加入防呆機制
+        const data = res.data?.Events || res.data?.Event || res.data || [];
+        if (Array.isArray(data)) {
+          combinedRecords.push(...data);
+        }
+        
+        // 強制延遲 1.5 秒，徹底避開 429 頻率限制
+        await new Promise(resolve => setTimeout(resolve, 1500));
       } catch (err) {
         console.error(`⚠️ TDX 抓取失敗 (${path}):`, err.message);
       }
@@ -93,17 +94,17 @@ async function fetchTDXPoliceRecords() {
 
     console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
-    // 3. 彈性解析與轉換
+    // 3. 彈性解析與轉換 (相容 V2/V3)
     const formatted = combinedRecords.map((item) => {
-      const lng = parseFloat(item.LocationPt?.PositionLon);
-      const lat = parseFloat(item.LocationPt?.PositionLat);
-      const content = item.Comment || item.EventDescription || "無詳細說明";
+      // 支援多種 V3 經緯度結構
+      const lng = parseFloat(item.LocationPt?.PositionLon || item.PositionLon || item.Geometry?.Coordinates?.[0]);
+      const lat = parseFloat(item.LocationPt?.PositionLat || item.PositionLat || item.Geometry?.Coordinates?.[1]);
+      const content = item.Comment || item.EventDescription || item.Description || "無詳細說明";
       const title = item.AreaName || item.RoadName || item.EventTitle || "即時路況";
 
       return {
         title: `${title} - ${content}`,
         content,
-        // 所有 TDX 資料類別強制為交通
         category: "traffic",
         lat: lat,
         lng: lng,
@@ -260,7 +261,6 @@ If no precise address is found, use these coordinates:
     res.status(200).json(validEvents);
   } catch (error) {
     console.error('❌ 後端發生嚴重錯誤:', error);
-    // 即使發生錯誤也回傳空陣列並設定 Cache-Control，避免錯誤也被長時間快取
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
     res.status(200).json([]); 
   }
