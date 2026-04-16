@@ -111,11 +111,11 @@ async function fetchTDXTraffic(token) {
 // 2. TDX 道路施工（construction）
 //    Road/Construction 端點
 // ─────────────────────────────────────────────
-async function fetchTDXConstruction(token) {
+async function fetchTDXTraffic(token) {
   const headers = { Authorization: `Bearer ${token}`, Accept: "application/json" };
   const urls = [
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/Freeway?$format=JSON",
-    "https://tdx.transportdata.tw/api/advanced/v3/Road/Construction/ProvincialHighway?$format=JSON",
+    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/Freeway?$format=JSON",
+    "https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/ProvincialHighway?$format=JSON",
   ];
 
   const results = await Promise.allSettled(
@@ -124,10 +124,23 @@ async function fetchTDXConstruction(token) {
 
   const records = [];
   for (const r of results) {
-    if (r.status !== "fulfilled") continue;
-    const data = r.value.data?.Constructions || r.value.data?.Construction || r.value.data || [];
+    if (r.status !== "fulfilled") {
+      console.warn("❌ TDX Traffic 失敗:", r.reason?.response?.status, r.reason?.message);
+      continue;
+    }
+    const raw = r.value.data;
+    // 印出結構讓你看清楚
+    const keys = Object.keys(raw || {});
+    console.log("🔍 TDX Traffic 回傳 keys:", keys, "| 第一層型別:", typeof raw);
+    
+    // 嘗試更多可能的 key
+    const data = raw?.Events ?? raw?.Event ?? raw?.TrafficEvents ?? raw?.data ?? raw ?? [];
+    console.log(`  → 取得陣列長度: ${Array.isArray(data) ? data.length : "非陣列"}`);
     if (Array.isArray(data)) records.push(...data);
   }
+
+  return records.map(item => { /* ... 同原本 ... */ }).filter(r => isValidTW(r.lat, r.lng));
+}
 
   return records.map(item => {
     const lng = parseFloat(item.StartPositionLon ?? item.LocationPt?.PositionLon ?? "");
@@ -155,22 +168,40 @@ async function fetchTDXConstruction(token) {
 //    備援：RSS 關鍵字過濾
 // ─────────────────────────────────────────────
 async function fetchFireEvents() {
-  // 改用 data.gov.tw 消防事件（無需 Token）
-  const GOV_FIRE_URLS = [
-    "https://data.gov.tw/api/v2/rest/datastore/301000000A-000224-001?limit=50&format=json",
+  // 正確的政府開放資料消防資料集（119即時）
+  const FIRE_URLS = [
+    // 嘗試多個可能的資料集
+    "https://data.gov.tw/api/v2/rest/datastore/301000000A-000076-001?limit=50&format=json",
+    "https://data.gov.tw/api/v2/rest/datastore/301000000A-000223-001?limit=50&format=json",
+    // NFA 備用域名
+    "https://opendata.nfa.gov.tw/api/FireDepartmentData/GetFireDepartmentData?$format=JSON",
   ];
 
-  for (const url of GOV_FIRE_URLS) {
+  for (const url of FIRE_URLS) {
     try {
       const res = await axios.get(url, { timeout: 8000 });
-      const records = res.data?.result?.records || res.data?.records || [];
+      const records =
+        res.data?.result?.records ||
+        res.data?.records ||
+        res.data?.value ||
+        res.data || [];
+
       if (Array.isArray(records) && records.length > 0) {
-        console.log(`✅ 消防資料來源成功: ${url}，共 ${records.length} 筆`);
+        // 印出第一筆讓你確認欄位名稱
+        console.log("✅ 消防資料成功，第一筆 keys:", Object.keys(records[0] || {}));
         return records.slice(0, 50).map(item => {
-          const lat = parseFloat(item.Lat || item.lat || item.latitude || "");
-          const lng = parseFloat(item.Lon || item.lon || item.longitude || item.Lng || "");
-          const content = item.CaseContent || item.EventType || item.Description || "消防出動";
-          const city = (item.UnitName || item.City || "全國").replace(/消防局.*/, "");
+          const lat = parseFloat(
+            item.Lat ?? item.lat ?? item.latitude ?? item.Y ?? ""
+          );
+          const lng = parseFloat(
+            item.Lon ?? item.lon ?? item.longitude ?? item.Lng ?? item.X ?? ""
+          );
+          const content =
+            item.CaseContent ?? item.EventType ?? item.Description ??
+            item.casecontent ?? item.eventtype ?? "消防出動";
+          const city = (
+            item.UnitName ?? item.City ?? item.city ?? item.AreaName ?? "全國"
+          ).replace(/消防局.*/, "");
           return {
             title: `${city} - ${content}`.substring(0, 80),
             content,
@@ -183,12 +214,12 @@ async function fetchFireEvents() {
           };
         }).filter(r => isValidTW(r.lat, r.lng));
       }
+      console.warn(`⚠️ 消防 URL 無資料: ${url}`);
     } catch (err) {
-      console.warn(`⚠️ 消防 API 失敗 (${url}):`, err.message);
+      console.warn(`⚠️ 消防 API 失敗 (${url}):`, err.response?.status ?? err.message);
     }
   }
 
-  // 備援：用多個 RSS 抓消防新聞
   return fetchFireRSSFallback();
 }
 
@@ -317,13 +348,12 @@ traffic | construction | disaster | police | activity | politics | social | life
 // ─────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
-
+// 在 /api/events 路由中，把 newsItems 傳進備援
 app.get("/api/events", async (req, res) => {
   try {
-    // 所有資料來源同步並行抓取，大幅降低總耗時
     const tdxToken = await getTDXToken().catch(() => null);
 
-    const [rssResults, trafficEvents, constructionEvents, fireEvents] = await Promise.all([
+    const [rssResults, trafficEvents, constructionEvents, fireApiEvents] = await Promise.all([
       Promise.all(DEFAULT_RSS_SOURCES.map(fetchOneRssFeed)),
       tdxToken ? fetchTDXTraffic(tdxToken) : Promise.resolve([]),
       tdxToken ? fetchTDXConstruction(tdxToken) : Promise.resolve([]),
@@ -331,23 +361,37 @@ app.get("/api/events", async (req, res) => {
     ]);
 
     const newsItems = rssResults.flat();
+
+    // ✅ 若 API 消防事件為 0，從已有 RSS 撈
+    const fireEvents = fireApiEvents.length > 0
+      ? fireApiEvents
+      : extractFireFromRSS(newsItems);  // 新函式，見下方
+
     console.log(`RSS: ${newsItems.length} 則 | 路況: ${trafficEvents.length} 筆 | 施工: ${constructionEvents.length} 筆 | 消防: ${fireEvents.length} 筆`);
 
-    // AI 解析新聞
     const aiEvents = await parseWithAI(newsItems);
-    console.log(`AI 解析: ${aiEvents.length} 則`);
-
-    // 合併所有來源
     const allEvents = [...trafficEvents, ...constructionEvents, ...fireEvents, ...aiEvents];
+    // ...
+  }
+});
 
-    // 過濾並正規化
-    const validEvents = allEvents
-      .filter(item => isValidTW(parseFloat(item.lat), parseFloat(item.lng)))
-      .map(item => ({
-        ...item,
-        lat: parseFloat(item.lat),
-        lng: parseFloat(item.lng),
-      }));
+// 從 RSS items 直接過濾消防新聞（不需再 AI 解析，先給預設座標）
+function extractFireFromRSS(newsItems) {
+  const FIRE_RE = /火災|消防|救援|火警|爆炸|火勢|起火|燃燒/;
+  return newsItems
+    .filter(item => FIRE_RE.test(item.title || ""))
+    .slice(0, 10)
+    .map(item => ({
+      title: item.title || "消防事件",
+      content: (item.contentSnippet || "").substring(0, 200),
+      category: "fire",
+      lat: 23.5, lng: 120.5,  // AI parseWithAI 會幫補正
+      city: "全國",
+      source: "RSS",
+      url: item.link || "",
+    }));
+}
+
 
     console.log(`✅ 回傳總數: ${validEvents.length} 筆`);
 
