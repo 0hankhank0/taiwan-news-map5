@@ -17,19 +17,23 @@ const DEFAULT_RSS_SOURCES = [
   "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
 ];
 
-const RSS_TIMEOUT_MS = 8000;
-const TDX_TIMEOUT_MS = 5000;
-const OPENAI_TIMEOUT_MS = 8000;
+const RSS_TIMEOUT_MS = 5000;
+const TDX_TIMEOUT_MS = 1500;
+const OPENAI_TIMEOUT_MS = 3000;
 const MAX_NEWS_FOR_AI = 6;
 
-const CITY_FALLBACKS = {
-  Taipei: { city: "Taipei", lat: 25.033, lng: 121.5654 },
-  "New Taipei": { city: "New Taipei", lat: 25.0169, lng: 121.4628 },
-  Taoyuan: { city: "Taoyuan", lat: 24.9937, lng: 121.3009 },
-  Taichung: { city: "Taichung", lat: 24.1477, lng: 120.6736 },
-  Tainan: { city: "Tainan", lat: 22.9997, lng: 120.227 },
-  Kaohsiung: { city: "Kaohsiung", lat: 22.6273, lng: 120.3014 },
-};
+const TDX_CITY_SOURCES = [
+  { path: "Taipei", city: "Taipei", lat: 25.033, lng: 121.5654 },
+  { path: "NewTaipei", city: "New Taipei", lat: 25.0169, lng: 121.4628 },
+  { path: "Taoyuan", city: "Taoyuan", lat: 24.9937, lng: 121.3009 },
+];
+
+const CITY_FALLBACKS = Object.fromEntries(
+  TDX_CITY_SOURCES.map((item) => [
+    item.city,
+    { city: item.city, lat: item.lat, lng: item.lng },
+  ])
+);
 
 async function fetchOneRssFeed(rssUrl) {
   try {
@@ -113,36 +117,31 @@ async function fetchTDXPoliceRecords() {
       Accept: "application/json",
     };
 
-    const urls = Object.keys(CITY_FALLBACKS).map(
-      (city) =>
-        `https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/City/${encodeURIComponent(
-          city
-        )}?$format=JSON`
-    );
-
-    const results = await Promise.allSettled(
-      urls.map((url) => axios.get(url, { headers, timeout: TDX_TIMEOUT_MS }))
-    );
-
     const combinedRecords = [];
-    results.forEach((result, index) => {
-      if (result.status === "fulfilled") {
+    for (const source of TDX_CITY_SOURCES) {
+      const url = `https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/City/${source.path}?$format=JSON`;
+
+      try {
+        const response = await axios.get(url, { headers, timeout: TDX_TIMEOUT_MS });
         const data =
-          result.value.data?.Events ||
-          result.value.data?.Event ||
-          result.value.data ||
+          response.data?.Events ||
+          response.data?.Event ||
+          response.data ||
           [];
 
         if (Array.isArray(data)) {
           combinedRecords.push(...data);
         }
-        return;
-      }
+      } catch (err) {
+        const status = err.response?.status;
+        const detail = status ? `HTTP ${status}` : err.message;
+        console.error(`[events] TDX fetch failed for ${url}:`, detail);
 
-      const status = result.reason?.response?.status;
-      const detail = status ? `HTTP ${status}` : result.reason?.message;
-      console.error(`[events] TDX fetch failed for ${urls[index]}:`, detail);
-    });
+        if (status === 429) {
+          break;
+        }
+      }
+    }
 
     return combinedRecords
       .map(normalizeTdxRecord)
@@ -289,16 +288,28 @@ app.use(express.json());
 
 app.get("/api/events", async (req, res) => {
   try {
+    const startedAt = Date.now();
     const [rawRssFeeds, tdxEvents] = await Promise.all([
       Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url))),
       fetchTDXPoliceRecords(),
     ]);
+    const afterFeedsAt = Date.now();
 
     const newsItems = rawRssFeeds.flatMap((feed) => feed.items || []);
     const aiEvents = await extractAiEvents(newsItems);
+    const afterAiAt = Date.now();
     const finalEvents = normalizeFinalEvents([...tdxEvents, ...aiEvents]);
 
-    console.log("[events] rssItems=%d tdxEvents=%d aiEvents=%d final=%d", newsItems.length, tdxEvents.length, aiEvents.length, finalEvents.length);
+    console.log(
+      "[events] rssItems=%d tdxEvents=%d aiEvents=%d final=%d rss+tdxMs=%d aiMs=%d totalMs=%d",
+      newsItems.length,
+      tdxEvents.length,
+      aiEvents.length,
+      finalEvents.length,
+      afterFeedsAt - startedAt,
+      afterAiAt - afterFeedsAt,
+      afterAiAt - startedAt
+    );
 
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
     res.status(200).json(finalEvents);
