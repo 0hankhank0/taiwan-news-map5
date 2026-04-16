@@ -41,28 +41,33 @@ async function fetchOneRssFeed(rssUrl) {
     }
   }
 }
-
 // ─────────────────────────────────────────────
-// TDX Token 取得（共用）
+// TDX Token：加日誌、加錯誤細節
 // ─────────────────────────────────────────────
 async function getTDXToken() {
   if (!process.env.TDX_CLIENT_ID || !process.env.TDX_CLIENT_SECRET) {
     console.warn("⚠️ 未設定 TDX_CLIENT_ID / TDX_CLIENT_SECRET，跳過 TDX 抓取");
     return null;
   }
-  const authRes = await axios.post(
-    "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
-    new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: process.env.TDX_CLIENT_ID,
-      client_secret: process.env.TDX_CLIENT_SECRET,
-    }),
-    { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 8000 }
-  );
-  return authRes.data.access_token || null;
+  try {
+    const authRes = await axios.post(
+      "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
+      new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: process.env.TDX_CLIENT_ID,
+        client_secret: process.env.TDX_CLIENT_SECRET,
+      }),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" }, timeout: 8000 }
+    );
+    const token = authRes.data.access_token || null;
+    console.log(token ? "✅ TDX Token 取得成功" : "❌ TDX Token 回應無 access_token");
+    return token;
+  } catch (err) {
+    // 印出詳細錯誤讓你看清楚是 401/403 還是網路問題
+    console.error("❌ TDX Token 取得失敗:", err.response?.status, err.response?.data || err.message);
+    return null;
+  }
 }
-
-// ─────────────────────────────────────────────
 // 1. TDX 路況事件（traffic）
 //    全國高快速路 + 省道：用單一 All 端點一次搞定，不再逐縣市迴圈
 // ─────────────────────────────────────────────
@@ -145,60 +150,76 @@ async function fetchTDXConstruction(token) {
 }
 
 // ─────────────────────────────────────────────
-// 3. 消防署開放資料（fire）
-//    119 即時救災出動資料（無需 Token）
+// 3. 消防事件（fire）
+//    主源：政府開放資料平台（data.gov.tw）
+//    備援：RSS 關鍵字過濾
 // ─────────────────────────────────────────────
 async function fetchFireEvents() {
-  try {
-    // 消防署即時出勤資料（公開 API，無需金鑰）
-    const res = await axios.get(
-      "https://data.nfa.gov.tw/api/FireDepartmentData/GetFireDepartmentData?$format=JSON",
-      { timeout: 8000 }
-    );
-    const data = res.data?.value || res.data || [];
-    if (!Array.isArray(data)) return [];
+  // 改用 data.gov.tw 消防事件（無需 Token）
+  const GOV_FIRE_URLS = [
+    "https://data.gov.tw/api/v2/rest/datastore/301000000A-000224-001?limit=50&format=json",
+  ];
 
-    return data.slice(0, 50).map(item => {
-      const lat = parseFloat(item.Lat || item.lat || "");
-      const lng = parseFloat(item.Lon || item.lon || item.Lng || "");
-      const content = item.CaseContent || item.EventType || item.Description || "消防出動";
-      const city = item.UnitName?.replace(/消防局.*/, "") || item.City || "全國";
-      const time = item.AlarmTime || item.CreateTime || "";
-      return {
-        title: `${city} - ${content}`.substring(0, 80),
-        content: `${content}${time ? "　" + time.substring(0, 16) : ""}`,
-        category: "fire",
-        lat, lng,
-        city,
-        source: "消防署",
-        url: "",
-      };
-    }).filter(r => isValidTW(r.lat, r.lng));
-  } catch (err) {
-    console.warn("⚠️ 消防署 API 失敗:", err.message);
-    return fetchFireRSSFallback(); // 失敗時改抓 RSS
+  for (const url of GOV_FIRE_URLS) {
+    try {
+      const res = await axios.get(url, { timeout: 8000 });
+      const records = res.data?.result?.records || res.data?.records || [];
+      if (Array.isArray(records) && records.length > 0) {
+        console.log(`✅ 消防資料來源成功: ${url}，共 ${records.length} 筆`);
+        return records.slice(0, 50).map(item => {
+          const lat = parseFloat(item.Lat || item.lat || item.latitude || "");
+          const lng = parseFloat(item.Lon || item.lon || item.longitude || item.Lng || "");
+          const content = item.CaseContent || item.EventType || item.Description || "消防出動";
+          const city = (item.UnitName || item.City || "全國").replace(/消防局.*/, "");
+          return {
+            title: `${city} - ${content}`.substring(0, 80),
+            content,
+            category: "fire",
+            lat: isNaN(lat) ? 23.5 : lat,
+            lng: isNaN(lng) ? 120.5 : lng,
+            city,
+            source: "消防署",
+            url: "",
+          };
+        }).filter(r => isValidTW(r.lat, r.lng));
+      }
+    } catch (err) {
+      console.warn(`⚠️ 消防 API 失敗 (${url}):`, err.message);
+    }
   }
+
+  // 備援：用多個 RSS 抓消防新聞
+  return fetchFireRSSFallback();
 }
 
-// 消防 RSS 備援（中央社消防新聞）
+// 消防 RSS 備援（多來源 + 更多關鍵字）
 async function fetchFireRSSFallback() {
-  try {
-    const feed = await parser.parseURL("https://www.cna.com.tw/rss/aall.aspx");
-    return (feed.items || [])
-      .filter(item => /火災|消防|救援|火警/.test(item.title || ""))
-      .slice(0, 10)
-      .map(item => ({
-        title: item.title || "消防事件",
-        content: (item.contentSnippet || "").substring(0, 200),
-        category: "fire",
-        lat: 23.5, lng: 120.5, // AI 解析前的暫時位置，會被後續 AI 覆蓋
-        city: "全國",
-        source: "中央社",
-        url: item.link || "",
-      }));
-  } catch {
-    return [];
+  const RSS_URLS = [
+    "https://news.ltn.com.tw/rss/all.xml",
+    "https://udn.com/rssfeed/news/2/6638?ch=news",
+  ];
+  const FIRE_KEYWORDS = /火災|消防|救援|火警|爆炸|火勢|起火|燃燒/;
+
+  const allItems = [];
+  for (const url of RSS_URLS) {
+    try {
+      const items = await fetchOneRssFeed(url);
+      const matched = items.filter(item => FIRE_KEYWORDS.test(item.title || ""));
+      allItems.push(...matched);
+      if (allItems.length >= 10) break;
+    } catch { /* skip */ }
   }
+
+  console.log(`🔄 消防 RSS 備援: ${allItems.length} 筆`);
+  return allItems.slice(0, 10).map(item => ({
+    title: item.title || "消防事件",
+    content: (item.contentSnippet || "").substring(0, 200),
+    category: "fire",
+    lat: 23.5, lng: 120.5,
+    city: "全國",
+    source: "RSS備援",
+    url: item.link || "",
+  }));
 }
 
 // ─────────────────────────────────────────────
