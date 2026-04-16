@@ -38,7 +38,7 @@ async function fetchOneRssFeed(rssUrl) {
 }
 
 /**
- * 強化版 TDX 抓取：同時抓取台北台與國道事件
+ * 強化版 TDX 抓取：改用 Event API 依序抓取國道、省道與主要縣市
  */
 async function fetchTDXPoliceRecords() {
   try {
@@ -58,23 +58,38 @@ async function fetchTDXPoliceRecords() {
     const accessToken = authRes.data.access_token;
     if (!accessToken) throw new Error("無法取得 TDX Token");
 
-    console.log('✅ TDX Token 取得成功，正在依序抓取 PBS 分區路況...');
+    console.log('✅ TDX Token 取得成功，正在依序抓取各地區路況事件...');
 
     const headers = {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
     };
 
-    // 2. /PBS/Region 在你目前的 TDX API 版本下回傳 404，
-    //    改用 /PBS/Record 取得全量資料，再交由後續解析/過濾處理。
+    // 2. 改用 TDX 官方維護的 Event (路況事件) API，並依序抓取重要路段與縣市
+    const tdxPaths = [
+      'Freeway',
+      'ProvincialHighway',
+      'City/Taipei',
+      'City/NewTaipei',
+      'City/Taichung',
+      'City/Tainan',
+      'City/Kaohsiung'
+    ];
+
     const combinedRecords = [];
-    const recordRes = await axios.get(
-      "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Record?$format=JSON",
-      { headers, timeout: 10000 }
-    );
-    combinedRecords.push(...(recordRes.data || []));
-    // 保留 300ms 禮貌性延遲（避免頻率限制）
-    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    for (const path of tdxPaths) {
+      try {
+        const url = `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/${path}?$format=JSON`;
+        const res = await axios.get(url, { headers, timeout: 10000 });
+        combinedRecords.push(...(res.data || []));
+        
+        // 保留 300ms 禮貌性延遲，避免 429 Too Many Requests 錯誤
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (err) {
+        console.error(`⚠️ TDX 抓取失敗 (${path}):`, err.message);
+      }
+    }
 
     console.log(`📊 TDX 原始資料總計: ${combinedRecords.length} 筆`);
 
