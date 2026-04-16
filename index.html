@@ -51,16 +51,36 @@
             .news-sidebar .news-item { border-bottom: 1px solid #f3f4f6; }
         }
 
-        /* 分類過濾按鈕區域 */
+        /* 分類過濾按鈕區域 - 優化滑動 */
         .category-filters {
             display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            white-space: nowrap;
-            padding-bottom: 4px;
+            overflow-x: auto;       /* 允許橫向滑動 */
+            white-space: nowrap;    /* 強制按鈕排成一列不換行 */
+            -webkit-overflow-scrolling: touch; /* 讓手機版手指滑動更滑順 */
+            gap: 8px;               /* 按鈕之間的間距 */
+            padding-bottom: 4px;    /* 稍微留白，避免按鈕底部被切到 */
+            scrollbar-width: none;  /* Firefox 隱藏捲軸 */
         }
-        .category-filters::-webkit-scrollbar { display: none; }
-        .category-filters { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Chrome / Safari 隱藏醜醜的捲軸 */
+        .category-filters::-webkit-scrollbar {
+            display: none;
+        }
+        .category-filters {
+            -ms-overflow-style: none; /* IE/Edge 隱藏捲軸 */
+        }
+
+        .filter-btn {
+            flex-shrink: 0;         /* 🌟 防止按鈕被螢幕寬度擠壓變形 */
+            opacity: 0.6;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+        .filter-btn.active {
+            opacity: 1;
+            transform: scale(1.05);
+            box-shadow: 0 0 12px rgba(255,255,255,0.2);
+        }
 
         /* 贊助按鈕樣式 - 金色 */
         .sponsor-btn {
@@ -77,7 +97,7 @@
         }
         .sponsor-btn:hover { transform: scale(1.02); filter: brightness(1.05); }
 
-        /* 標籤與按鈕樣式 */
+        /* 標籤樣式 */
         .badge {
             padding: 4px 12px;
             border-radius: 12px;
@@ -85,17 +105,6 @@
             font-weight: 600;
             color: white !important;
             display: inline-block;
-        }
-        .filter-btn {
-            opacity: 0.6;
-            cursor: pointer;
-            transition: all 0.2s;
-            border: none;
-        }
-        .filter-btn.active {
-            opacity: 1;
-            transform: scale(1.05);
-            box-shadow: 0 0 12px rgba(255,255,255,0.2);
         }
 
         /* 分類顏色 */
