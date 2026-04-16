@@ -79,17 +79,62 @@ async function fetchTDXPoliceRecords() {
     };
 
     // 2. 嚴格使用你提供的 sequential 抓取迴圈（含 regions + 300ms 延遲）
-    const regions = ['N', 'C', 'S', 'E']; // 絕對不能改成別的
+    const regions = ['N', 'C', 'S', 'E']; // 期望用北/中/南/東四區
     const combinedRecords = [];
+    let anyRegionSuccess = false;
 
     for (const region of regions) {
       try {
         const res = await axios.get(`https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/${region}?$format=JSON`, { headers, timeout: 10000 });
         combinedRecords.push(...(res.data || []));
+        anyRegionSuccess = true;
         // 加上 300 毫秒的禮貌性延遲，避免 429 錯誤
         await new Promise(resolve => setTimeout(resolve, 300));
       } catch (err) {
-        console.error(`⚠️ TDX 抓取失敗 (${region}):`, err?.response?.data || err.message);
+        console.error(
+          `⚠️ TDX 抓取失敗 (${region}): status=${err?.response?.status} url=${err?.config?.url}`,
+          err?.response?.data || err.message
+        );
+      }
+    }
+
+    // 若 N/C/S/E 全部失敗/無資料，嘗試抓取可用的 Region 代碼（用於修正代碼不符造成的 404）
+    if (!anyRegionSuccess || combinedRecords.length === 0) {
+      try {
+        const regionListRes = await axios.get(
+          "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region?$format=JSON",
+          { headers, timeout: 10000 }
+        );
+        const regionList = regionListRes.data?.result || regionListRes.data || [];
+
+        const regionIds = Array.isArray(regionList)
+          ? [...new Set(
+              regionList
+                .map((r) => r.RegionID || r.RegionId || r.region || r.id || r.ID || r.code || r.Code || r.Value || r.value)
+                .filter(Boolean)
+            )]
+          : [];
+
+        if (regionIds.length > 0) {
+          combinedRecords.length = 0;
+          for (const regionId of regionIds) {
+            try {
+              const res = await axios.get(
+                `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/PBS/Region/${regionId}?$format=JSON`,
+                { headers, timeout: 10000 }
+              );
+              combinedRecords.push(...(res.data || []));
+              await new Promise(resolve => setTimeout(resolve, 300));
+            } catch (err) {
+              console.error(
+                `⚠️ TDX 抓取失敗 (regionId=${regionId}): status=${err?.response?.status} url=${err?.config?.url}`,
+                err?.response?.data || err.message
+              );
+            }
+          }
+        }
+      } catch (err) {
+        console.error("⚠️ TDX Region 代碼列表抓取失敗:", err?.response?.data || err.message);
       }
     }
 
@@ -228,5 +273,3 @@ ${JSON.stringify(simplifiedNews, null, 2)}`;
 });
 
 export default app;
-
-module.exports = app;
