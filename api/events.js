@@ -73,6 +73,7 @@ let tdxConstructionCache = {
   events: [],
   backoffUntil: 0,
 };
+let tdxStaticCmsCache = {
   expiresAt: 0,
   bySource: new Map(),
   backoffUntil: 0,
