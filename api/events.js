@@ -425,6 +425,7 @@ function normalizeCmsConstructionRecord(item, source) {
 }
 
 
+async function fetchTdxJson(url, headers, startedAt) {
   const response = await axios.get(url, {
     headers,
     timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
@@ -624,6 +625,7 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
 }
 
 
+function cleanNewsText(text) {
   return String(text || "")
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
