@@ -134,6 +134,27 @@ const CATEGORY_KEYWORDS = [
   { category: "social", keywords: ["命案", "受傷", "死亡", "失蹤", "糾紛"] },
 ];
 
+const TDX_REQUEST_DELAY_MS = 150;
+const TDX_MAX_CONCURRENT = 3;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithDelay(tasks, concurrency) {
+  const results = [];
+  for (let i = 0; i < tasks.length; i += concurrency) {
+    const batch = tasks.slice(i, i + concurrency);
+    const batchResults = await Promise.allSettled(batch.map((fn) => fn()));
+    results.push(...batchResults);
+    if (i + concurrency < tasks.length) {
+      await delay(TDX_REQUEST_DELAY_MS);
+    }
+  }
+  return results;
+}
+
+
 function getRemainingTime(startedAt) {
   return Math.max(0, SOFT_DEADLINE_MS - (Date.now() - startedAt));
 }
@@ -449,7 +470,7 @@ async function loadStaticCmsCache(accessToken, startedAt) {
   const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
   let sawRateLimit = false;
 
-  const requests = sourcesToFetch.map(async (source) => {
+  const requests = sourcesToFetch.map((source) => async () => {
     if (getRemainingTime(startedAt) < 800) {
       return;
     }
@@ -476,7 +497,7 @@ async function loadStaticCmsCache(accessToken, startedAt) {
     }
   });
 
-  await Promise.allSettled(requests);
+  await fetchWithDelay(requests, TDX_MAX_CONCURRENT);
 
   tdxStaticCmsCache = {
     bySource,
@@ -515,7 +536,7 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     const staticCache = await loadStaticCmsCache(accessToken, startedAt);
     const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
     let sawRateLimit = false;
-    const requests = sourcesToFetch.map(async (source) => {
+    const requests = sourcesToFetch.map((source) => async () => {
       if (getRemainingTime(startedAt) < 500) {
         return [];
       }
@@ -543,7 +564,7 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
       }
     });
 
-    const results = await Promise.allSettled(requests);
+    const results = await fetchWithDelay(requests, TDX_MAX_CONCURRENT);
     const trafficEvents = results.flatMap((result) =>
       result.status === "fulfilled" ? result.value : []
     );
@@ -581,7 +602,7 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     const headers = getTdxHeaders(accessToken);
     let sawRateLimit = false;
 
-    const requests = TDX_CONSTRUCTION_SOURCES.map(async (source) => {
+    const requests = TDX_CONSTRUCTION_SOURCES.map((source) => async () => {
       if (getRemainingTime(startedAt) < 500) {
         return [];
       }
@@ -606,7 +627,7 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
       }
     });
 
-    const results = await Promise.allSettled(requests);
+    const results = await fetchWithDelay(requests, TDX_MAX_CONCURRENT);
     const constructionEvents = results.flatMap((result) =>
       result.status === "fulfilled" ? result.value : []
     );
