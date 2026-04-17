@@ -17,7 +17,7 @@ const DEFAULT_RSS_SOURCES = [
 
 const RSS_TIMEOUT_MS = 2200;
 const TDX_TIMEOUT_MS = 1800;
-const OPENAI_TIMEOUT_MS = 2200;
+const OPENAI_TIMEOUT_MS = 5000;
 const MAX_NEWS_FOR_AI = 8;
 const SOFT_DEADLINE_MS = 7000;
 const TDX_PUBLIC_SOURCE_LIMIT = 2;
@@ -47,8 +47,6 @@ const TDX_CMS_SOURCES = [
 ];
 
 const TDX_PRIORITY_SOURCE_KEYS = new Set([
-  "City:Taipei",
-  "City:NewTaipei",
   "Freeway:Freeway",
 ]);
 
@@ -263,8 +261,17 @@ function normalizeCmsLiveRecord(item, source, staticLookup) {
       staticInfo?.lat ??
       source.lat
   );
+  const messageStatus = Number(
+    item.MessageStatus ??
+      item.messageStatus ??
+      item.MsgStatus ??
+      item.msgStatus ??
+      1
+  );
   const message = String(
-    item.Message ||
+    item.Text ||
+      item.text ||
+      item.Message ||
       item.message ||
       item.DisplayMessage ||
       item.displayMessage ||
@@ -274,7 +281,12 @@ function normalizeCmsLiveRecord(item, source, staticLookup) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!message || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+  if (
+    messageStatus === 0 ||
+    !message ||
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng)
+  ) {
     return null;
   }
 
