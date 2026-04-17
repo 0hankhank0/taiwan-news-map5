@@ -335,9 +335,17 @@ async function loadStaticCmsCache(accessToken, startedAt) {
     try {
       const url = buildTdxCmsUrl(source, false);
       const data = await fetchTdxJson(url, headers, startedAt);
-      const records = extractArrayFromTdxPayload(data)
+      const rawRecords = extractArrayFromTdxPayload(data);
+      const records = rawRecords
         .map((item) => normalizeCmsStaticRecord(item, source))
         .filter(Boolean);
+      console.log(
+        "[events] TDX static result %s/%s raw=%d normalized=%d",
+        source.type,
+        source.path,
+        rawRecords.length,
+        records.length
+      );
       bySource.set(`${source.type}:${source.path}`, new Map(records.map((item) => [item.cmsId, item])));
     } catch (error) {
       const status = error.response?.status;
@@ -405,11 +413,20 @@ async function fetchTDXTrafficEvents(startedAt) {
       try {
         const url = buildTdxCmsUrl(source, true);
         const data = await fetchTdxJson(url, headers, startedAt);
-        const records = extractArrayFromTdxPayload(data);
+        const rawRecords = extractArrayFromTdxPayload(data);
         const staticLookup = staticCache.get(`${source.type}:${source.path}`) || new Map();
-        return records
+        const normalizedRecords = rawRecords
           .map((item) => normalizeCmsLiveRecord(item, source, staticLookup))
           .filter(Boolean);
+        console.log(
+          "[events] TDX live result %s/%s raw=%d normalized=%d staticLookup=%d",
+          source.type,
+          source.path,
+          rawRecords.length,
+          normalizedRecords.length,
+          staticLookup.size
+        );
+        return normalizedRecords;
       } catch (error) {
         const status = error.response?.status;
         if (status === 429) {
