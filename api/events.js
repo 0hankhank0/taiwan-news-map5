@@ -20,7 +20,7 @@ const TDX_TIMEOUT_MS = 1800;
 const OPENAI_TIMEOUT_MS = 5000;
 const MAX_NEWS_FOR_AI = 8;
 const SOFT_DEADLINE_MS = 7000;
-const TDX_PUBLIC_SOURCE_LIMIT = 2;
+const TDX_PUBLIC_SOURCE_LIMIT = 10;
 const TDX_STATIC_CACHE_MS = 1000 * 60 * 30;
 const TDX_LIVE_CACHE_MS = 1000 * 60 * 3;
 const TDX_BACKOFF_MS = 1000 * 60 * 10;
@@ -47,7 +47,9 @@ const TDX_CMS_SOURCES = [
 ];
 
 const TDX_PRIORITY_SOURCE_KEYS = new Set([
-  "Freeway:Freeway",
+  "Freeway:Freeway", // 國道
+  "Highway:Highway", // 省道
+  ...TDX_CITY_SOURCES.map(item => `City:${item.path}`) // 動態加入所有已定義的縣市市區道路
 ]);
 
 let tdxStaticCmsCache = {
