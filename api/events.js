@@ -268,7 +268,36 @@ function normalizeCmsLiveRecord(item, source, staticLookup) {
       item.msgStatus ??
       1
   );
+  const messagesValue = Array.isArray(item.Messages)
+    ? item.Messages
+    : Array.isArray(item.messages)
+      ? item.messages
+      : [];
+  const joinedMessages = messagesValue
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry;
+      }
+
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      return String(
+        entry.Text ||
+          entry.text ||
+          entry.Message ||
+          entry.message ||
+          entry.DisplayMessage ||
+          entry.displayMessage ||
+          entry.Msg ||
+          ""
+      ).trim();
+    })
+    .filter(Boolean)
+    .join(" / ");
   const message = String(
+    joinedMessages ||
     item.Text ||
       item.text ||
       item.Message ||
