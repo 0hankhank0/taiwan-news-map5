@@ -62,6 +62,13 @@ let tdxLiveCmsCache = {
   backoffUntil: 0,
 };
 
+let aiEventsCache = {
+  expiresAt: 0,
+  events: [],
+  inFlight: null,
+  fingerprint: "",
+};
+
 const CITY_FALLBACKS = Object.fromEntries(
   TDX_CITY_SOURCES.map((item) => [
     item.city,
@@ -361,11 +368,6 @@ async function loadStaticCmsCache(accessToken, startedAt) {
   const headers = getTdxHeaders(accessToken);
   const bySource = new Map();
   const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
-  console.log(
-    "[events] TDX static sources=%s auth=%s",
-    sourcesToFetch.map((source) => `${source.type}:${source.path}`).join(","),
-    Boolean(accessToken)
-  );
   let sawRateLimit = false;
 
   const requests = sourcesToFetch.map(async (source) => {
@@ -380,13 +382,6 @@ async function loadStaticCmsCache(accessToken, startedAt) {
       const records = rawRecords
         .map((item) => normalizeCmsStaticRecord(item, source))
         .filter(Boolean);
-      console.log(
-        "[events] TDX static result %s/%s raw=%d normalized=%d",
-        source.type,
-        source.path,
-        rawRecords.length,
-        records.length
-      );
       bySource.set(`${source.type}:${source.path}`, new Map(records.map((item) => [item.cmsId, item])));
     } catch (error) {
       const status = error.response?.status;
@@ -440,11 +435,6 @@ async function fetchTDXTrafficEvents(startedAt) {
     const headers = getTdxHeaders(accessToken);
     const staticCache = await loadStaticCmsCache(accessToken, startedAt);
     const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
-    console.log(
-      "[events] TDX live sources=%s auth=%s",
-      sourcesToFetch.map((source) => `${source.type}:${source.path}`).join(","),
-      Boolean(accessToken)
-    );
     let sawRateLimit = false;
     const requests = sourcesToFetch.map(async (source) => {
       if (getRemainingTime(startedAt) < 500) {
@@ -455,33 +445,10 @@ async function fetchTDXTrafficEvents(startedAt) {
         const url = buildTdxCmsUrl(source, true);
         const data = await fetchTdxJson(url, headers, startedAt);
         const rawRecords = extractArrayFromTdxPayload(data);
-        if (rawRecords.length > 0) {
-          const sample = rawRecords[0];
-          const sampleKeys = Object.keys(sample).slice(0, 20).join(",");
-          console.log(
-            "[events] TDX live sample %s/%s keys=%s cmsId=%s text=%s message=%s status=%s messageStatus=%s",
-            source.type,
-            source.path,
-            sampleKeys,
-            sample.CMSID ?? sample.CmsID ?? sample.cmsId ?? "",
-            String(sample.Text ?? sample.text ?? "").slice(0, 80),
-            String(sample.Message ?? sample.message ?? "").slice(0, 80),
-            sample.Status ?? sample.status ?? "",
-            sample.MessageStatus ?? sample.messageStatus ?? ""
-          );
-        }
         const staticLookup = staticCache.get(`${source.type}:${source.path}`) || new Map();
         const normalizedRecords = rawRecords
           .map((item) => normalizeCmsLiveRecord(item, source, staticLookup))
           .filter(Boolean);
-        console.log(
-          "[events] TDX live result %s/%s raw=%d normalized=%d staticLookup=%d",
-          source.type,
-          source.path,
-          rawRecords.length,
-          normalizedRecords.length,
-          staticLookup.size
-        );
         return normalizedRecords;
       } catch (error) {
         const status = error.response?.status;
@@ -709,6 +676,51 @@ async function extractAiEvents(newsItems, startedAt) {
   }
 }
 
+function createAiFingerprint(newsItems) {
+  return newsItems
+    .slice(0, MAX_NEWS_FOR_AI)
+    .map((item) => `${item.title || ""}|${item.link || ""}`)
+    .join("||");
+}
+
+function refreshAiEventsInBackground(newsItems) {
+  const fingerprint = createAiFingerprint(newsItems);
+
+  if (!fingerprint) {
+    return;
+  }
+
+  if (aiEventsCache.inFlight && aiEventsCache.fingerprint === fingerprint) {
+    return;
+  }
+
+  aiEventsCache.fingerprint = fingerprint;
+  aiEventsCache.inFlight = extractAiEvents(newsItems, Date.now())
+    .then((events) => {
+      aiEventsCache.events = Array.isArray(events) ? events : [];
+      aiEventsCache.expiresAt = Date.now() + 1000 * 60 * 10;
+    })
+    .catch((error) => {
+      console.error("[events] AI background refresh failed:", error.message);
+    })
+    .finally(() => {
+      aiEventsCache.inFlight = null;
+    });
+}
+
+function getCachedAiEvents(newsItems) {
+  const fingerprint = createAiFingerprint(newsItems);
+  const cacheIsFresh =
+    Date.now() < aiEventsCache.expiresAt &&
+    aiEventsCache.fingerprint === fingerprint;
+
+  if (!cacheIsFresh) {
+    refreshAiEventsInBackground(newsItems);
+  }
+
+  return cacheIsFresh ? aiEventsCache.events : [];
+}
+
 function normalizeFinalEvents(events) {
   const dedupe = new Set();
 
@@ -765,17 +777,18 @@ module.exports = async (req, res) => {
       fetchTDXTrafficEvents(startedAt),
     ]);
     const rssItems = rssResults.flat();
-    const aiEvents = await extractAiEvents(rssItems, startedAt);
+    const aiEvents = getCachedAiEvents(rssItems);
     const ruleBasedEvents = extractRuleBasedEvents(rssItems);
     const finalEvents = normalizeFinalEvents(
       [...tdxEvents, ...aiEvents, ...ruleBasedEvents]
     );
 
     console.log(
-      "[events] rss=%d tdx=%d ai=%d rule=%d final=%d totalMs=%d",
+      "[events] rss=%d tdx=%d ai=%d aiCached=%s rule=%d final=%d totalMs=%d",
       rssItems.length,
       tdxEvents.length,
       aiEvents.length,
+      aiEvents.length > 0,
       ruleBasedEvents.length,
       finalEvents.length,
       Date.now() - startedAt
