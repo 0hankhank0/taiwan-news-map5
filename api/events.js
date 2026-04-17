@@ -37,6 +37,41 @@ const CITY_FALLBACKS = Object.fromEntries(
   ])
 );
 
+const CITY_ALIASES = [
+  { keywords: ["台北", "臺北", "Taipei"], city: "Taipei" },
+  { keywords: ["新北", "New Taipei"], city: "New Taipei" },
+  { keywords: ["桃園", "Taoyuan"], city: "Taoyuan" },
+  { keywords: ["台中", "臺中", "Taichung"], city: "Taichung" },
+  { keywords: ["台南", "臺南", "Tainan"], city: "Tainan" },
+  { keywords: ["高雄", "Kaohsiung"], city: "Kaohsiung" },
+  { keywords: ["基隆", "Keelung"], city: "Keelung", lat: 25.1276, lng: 121.7392 },
+  { keywords: ["新竹"], city: "Hsinchu", lat: 24.8138, lng: 120.9675 },
+  { keywords: ["苗栗"], city: "Miaoli", lat: 24.5602, lng: 120.8214 },
+  { keywords: ["彰化"], city: "Changhua", lat: 24.0817, lng: 120.5384 },
+  { keywords: ["南投"], city: "Nantou", lat: 23.9609, lng: 120.9719 },
+  { keywords: ["雲林"], city: "Yunlin", lat: 23.7092, lng: 120.4313 },
+  { keywords: ["嘉義"], city: "Chiayi", lat: 23.4801, lng: 120.4491 },
+  { keywords: ["屏東"], city: "Pingtung", lat: 22.5519, lng: 120.5488 },
+  { keywords: ["宜蘭"], city: "Yilan", lat: 24.7021, lng: 121.7378 },
+  { keywords: ["花蓮"], city: "Hualien", lat: 23.9872, lng: 121.6015 },
+  { keywords: ["台東", "臺東", "Taitung"], city: "Taitung", lat: 22.7583, lng: 121.1444 },
+  { keywords: ["澎湖"], city: "Penghu", lat: 23.5712, lng: 119.5793 },
+  { keywords: ["金門"], city: "Kinmen", lat: 24.4321, lng: 118.3171 },
+  { keywords: ["連江", "馬祖"], city: "Lienchiang", lat: 26.1602, lng: 119.9517 },
+ ];
+
+const CATEGORY_KEYWORDS = [
+  { category: "traffic", keywords: ["車禍", "撞", "塞車", "封路", "改道", "交通", "道路", "路段", "國道", "省道"] },
+  { category: "disaster", keywords: ["地震", "颱風", "豪雨", "淹水", "坍方", "土石流", "災情", "停電"] },
+  { category: "fire", keywords: ["火警", "火災", "燃燒", "爆炸"] },
+  { category: "police", keywords: ["警方", "警察", "嫌犯", "逮捕", "詐騙", "槍擊"] },
+  { category: "construction", keywords: ["施工", "工程", "開工", "封閉施工", "捷運"] },
+  { category: "activity", keywords: ["活動", "演唱會", "展覽", "賽事", "燈會", "遊行", "集會"] },
+  { category: "politics", keywords: ["市府", "縣府", "立院", "議會", "總統", "行政院"] },
+  { category: "finance", keywords: ["台積電", "投資", "股市", "漲價", "財報"] },
+  { category: "social", keywords: ["命案", "受傷", "死亡", "失蹤", "糾紛"] },
+];
+
 function getRemainingTime(startedAt) {
   return Math.max(0, SOFT_DEADLINE_MS - (Date.now() - startedAt));
 }
@@ -138,7 +173,7 @@ async function fetchTDXTrafficEvents(startedAt) {
         return [];
       }
 
-      const url = `https://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/City/${source.path}?$format=JSON`;
+      const url = `://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/City/${source.path}?$format=JSONhttps`;
 
       try {
         const response = await axios.get(url, {
@@ -186,6 +221,68 @@ function cleanNewsText(text) {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
+}
+
+function inferCityFromText(text) {
+  const sourceText = String(text || "");
+  const matched = CITY_ALIASES.find(({ keywords }) =>
+    keywords.some((keyword) => sourceText.includes(keyword))
+  );
+
+  if (!matched) {
+    return null;
+  }
+
+  const fallback = CITY_FALLBACKS[matched.city];
+  return {
+    city: matched.city,
+    lat: matched.lat ?? fallback?.lat,
+    lng: matched.lng ?? fallback?.lng,
+  };
+}
+
+function inferCategoryFromText(text) {
+  const sourceText = String(text || "");
+  const matched = CATEGORY_KEYWORDS.find(({ keywords }) =>
+    keywords.some((keyword) => sourceText.includes(keyword))
+  );
+
+  return matched?.category || "other";
+}
+
+function extractRuleBasedEvents(newsItems) {
+  const seen = new Set();
+
+  return newsItems
+    .map((item) => {
+      const title = String(item.title || "").trim();
+      const content = cleanNewsText(item.contentSnippet || item.content || "");
+      const combinedText = `${title} ${content}`;
+      const cityInfo = inferCityFromText(combinedText);
+
+      if (!cityInfo || !title) {
+        return null;
+      }
+
+      const dedupeKey = `${cityInfo.city}:${title.slice(0, 40)}`.toLowerCase();
+      if (seen.has(dedupeKey)) {
+        return null;
+      }
+      seen.add(dedupeKey);
+
+      return {
+        title: title.slice(0, 120),
+        content: content || title,
+        category: inferCategoryFromText(combinedText),
+        url: String(item.link || ""),
+        lat: cityInfo.lat,
+        lng: cityInfo.lng,
+        city: cityInfo.city,
+        source: "RSS",
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 40);
 }
 
 async function extractAiEvents(newsItems, startedAt) {
@@ -311,6 +408,8 @@ async function extractAiEvents(newsItems, startedAt) {
 }
 
 function normalizeFinalEvents(events) {
+  const dedupe = new Set();
+
   return events
     .filter((item) => {
       const lat = Number(item.lat);
@@ -333,7 +432,15 @@ function normalizeFinalEvents(events) {
       url: String(item.url || "").trim(),
       lat: Number(item.lat),
       lng: Number(item.lng),
-    }));
+    }))
+    .filter((item) => {
+      const key = `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
+      if (dedupe.has(key)) {
+        return false;
+      }
+      dedupe.add(key);
+      return true;
+    });
 }
 
 module.exports = async (req, res) => {
@@ -357,13 +464,17 @@ module.exports = async (req, res) => {
     ]);
     const rssItems = rssResults.flat();
     const aiEvents = await extractAiEvents(rssItems, startedAt);
-    const finalEvents = normalizeFinalEvents([...tdxEvents, ...aiEvents]);
+    const ruleBasedEvents = extractRuleBasedEvents(rssItems);
+    const finalEvents = normalizeFinalEvents(
+      [...tdxEvents, ...aiEvents, ...ruleBasedEvents]
+    );
 
     console.log(
-      "[events] rss=%d tdx=%d ai=%d final=%d totalMs=%d",
+      "[events] rss=%d tdx=%d ai=%d rule=%d final=%d totalMs=%d",
       rssItems.length,
       tdxEvents.length,
       aiEvents.length,
+      ruleBasedEvents.length,
       finalEvents.length,
       Date.now() - startedAt
     );
@@ -376,3 +487,4 @@ module.exports = async (req, res) => {
     return res.status(200).json([]);
   }
 };
+
