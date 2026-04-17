@@ -426,6 +426,21 @@ async function fetchTDXTrafficEvents(startedAt) {
         const url = buildTdxCmsUrl(source, true);
         const data = await fetchTdxJson(url, headers, startedAt);
         const rawRecords = extractArrayFromTdxPayload(data);
+        if (rawRecords.length > 0) {
+          const sample = rawRecords[0];
+          const sampleKeys = Object.keys(sample).slice(0, 20).join(",");
+          console.log(
+            "[events] TDX live sample %s/%s keys=%s cmsId=%s text=%s message=%s status=%s messageStatus=%s",
+            source.type,
+            source.path,
+            sampleKeys,
+            sample.CMSID ?? sample.CmsID ?? sample.cmsId ?? "",
+            String(sample.Text ?? sample.text ?? "").slice(0, 80),
+            String(sample.Message ?? sample.message ?? "").slice(0, 80),
+            sample.Status ?? sample.status ?? "",
+            sample.MessageStatus ?? sample.messageStatus ?? ""
+          );
+        }
         const staticLookup = staticCache.get(`${source.type}:${source.path}`) || new Map();
         const normalizedRecords = rawRecords
           .map((item) => normalizeCmsLiveRecord(item, source, staticLookup))
