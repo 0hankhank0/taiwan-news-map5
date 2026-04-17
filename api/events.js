@@ -46,6 +46,12 @@ const TDX_CMS_SOURCES = [
   { type: "Freeway", path: "Freeway", city: "Freeway", lat: 23.8, lng: 120.9 },
 ];
 
+const TDX_PRIORITY_SOURCE_KEYS = new Set([
+  "City:Taipei",
+  "City:NewTaipei",
+  "Freeway:Freeway",
+]);
+
 let tdxStaticCmsCache = {
   expiresAt: 0,
   bySource: new Map(),
@@ -165,6 +171,18 @@ function buildTdxCmsUrl(source, isLive = false) {
   }
 
   return `https://tdx.transportdata.tw/${basePath.join("/")}?$format=JSON`;
+}
+
+function getSelectedTdxSources(hasCredentials) {
+  if (!hasCredentials) {
+    return TDX_CMS_SOURCES.filter((source) =>
+      TDX_PRIORITY_SOURCE_KEYS.has(`${source.type}:${source.path}`)
+    ).slice(0, TDX_PUBLIC_SOURCE_LIMIT);
+  }
+
+  return TDX_CMS_SOURCES.filter((source) =>
+    TDX_PRIORITY_SOURCE_KEYS.has(`${source.type}:${source.path}`)
+  );
 }
 
 function extractArrayFromTdxPayload(payload) {
@@ -301,9 +319,12 @@ async function loadStaticCmsCache(accessToken, startedAt) {
 
   const headers = getTdxHeaders(accessToken);
   const bySource = new Map();
-  const sourcesToFetch = accessToken
-    ? TDX_CMS_SOURCES
-    : TDX_CMS_SOURCES.slice(0, TDX_PUBLIC_SOURCE_LIMIT);
+  const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
+  console.log(
+    "[events] TDX static sources=%s auth=%s",
+    sourcesToFetch.map((source) => `${source.type}:${source.path}`).join(","),
+    Boolean(accessToken)
+  );
   let sawRateLimit = false;
 
   const requests = sourcesToFetch.map(async (source) => {
@@ -369,9 +390,12 @@ async function fetchTDXTrafficEvents(startedAt) {
 
     const headers = getTdxHeaders(accessToken);
     const staticCache = await loadStaticCmsCache(accessToken, startedAt);
-    const sourcesToFetch = accessToken
-      ? TDX_CMS_SOURCES
-      : TDX_CMS_SOURCES.slice(0, TDX_PUBLIC_SOURCE_LIMIT);
+    const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
+    console.log(
+      "[events] TDX live sources=%s auth=%s",
+      sourcesToFetch.map((source) => `${source.type}:${source.path}`).join(","),
+      Boolean(accessToken)
+    );
     let sawRateLimit = false;
     const requests = sourcesToFetch.map(async (source) => {
       if (getRemainingTime(startedAt) < 500) {
