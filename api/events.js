@@ -16,7 +16,7 @@ const DEFAULT_RSS_SOURCES = [
 ];
 
 const RSS_TIMEOUT_MS = 2200;
-const TDX_TIMEOUT_MS = 1200;
+const TDX_TIMEOUT_MS = 1800;
 const OPENAI_TIMEOUT_MS = 2200;
 const MAX_NEWS_FOR_AI = 8;
 const SOFT_DEADLINE_MS = 7000;
@@ -29,6 +29,23 @@ const TDX_CITY_SOURCES = [
   { path: "Tainan", city: "Tainan", lat: 22.9997, lng: 120.227 },
   { path: "Kaohsiung", city: "Kaohsiung", lat: 22.6273, lng: 120.3014 },
 ];
+
+const TDX_CMS_SOURCES = [
+  ...TDX_CITY_SOURCES.map((item) => ({
+    type: "City",
+    path: item.path,
+    city: item.city,
+    lat: item.lat,
+    lng: item.lng,
+  })),
+  { type: "Highway", path: "Highway", city: "Highway", lat: 23.8, lng: 120.9 },
+  { type: "Freeway", path: "Freeway", city: "Freeway", lat: 23.8, lng: 120.9 },
+];
+
+let tdxStaticCmsCache = {
+  expiresAt: 0,
+  bySource: new Map(),
+};
 
 const CITY_FALLBACKS = Object.fromEntries(
   TDX_CITY_SOURCES.map((item) => [
@@ -115,87 +132,229 @@ async function fetchTDXAccessToken(startedAt) {
   return response.data?.access_token || "";
 }
 
-function normalizeTdxRecord(item) {
+function getTdxHeaders(accessToken) {
+  const headers = { Accept: "application/json" };
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return headers;
+}
+
+function buildTdxCmsUrl(source, isLive = false) {
+  const basePath = isLive
+    ? ["api", "basic", "v2", "Road", "Traffic", "Live", "CMS"]
+    : ["api", "basic", "v2", "Road", "Traffic", "CMS"];
+
+  if (source.type === "City") {
+    basePath.push("City", encodeURIComponent(source.path));
+  } else if (source.type === "Highway" || source.type === "Freeway") {
+    basePath.push(source.type);
+  } else {
+    throw new Error(`Unsupported TDX CMS source type: ${source.type}`);
+  }
+
+  return `https://tdx.transportdata.tw/${basePath.join("/")}?$format=JSON`;
+}
+
+function extractArrayFromTdxPayload(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  for (const key of Object.keys(payload)) {
+    if (Array.isArray(payload[key])) {
+      return payload[key];
+    }
+  }
+
+  return [];
+}
+
+function getCmsKey(item) {
+  return String(
+    item.CMSID ||
+      item.CmsID ||
+      item.cmsId ||
+      item.CMSId ||
+      item.DeviceID ||
+      item.id ||
+      ""
+  ).trim();
+}
+
+function normalizeCmsStaticRecord(item, source) {
+  const cmsId = getCmsKey(item);
   const lng = Number(
-    item.LocationPt?.PositionLon ??
-      item.PositionLon ??
-      item.Geometry?.Coordinates?.[0]
+    item.PositionLon ??
+      item.positionLon ??
+      item.px ??
+      item.Location?.PositionLon ??
+      item.LocationPt?.PositionLon
   );
   const lat = Number(
-    item.LocationPt?.PositionLat ??
-      item.PositionLat ??
-      item.Geometry?.Coordinates?.[1]
+    item.PositionLat ??
+      item.positionLat ??
+      item.py ??
+      item.Location?.PositionLat ??
+      item.LocationPt?.PositionLat
   );
 
-  const content =
-    item.Comment ||
-    item.EventDescription ||
-    item.Description ||
-    "Traffic event";
-  const title = item.AreaName || item.RoadName || item.EventTitle || "Traffic";
-  const city = String(item.AreaName || item.CityName || "Taiwan").split("-")[0];
+  if (!cmsId || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
 
   return {
-    title: `${title} - ${content}`.slice(0, 120),
-    content: String(content).slice(0, 220),
+    cmsId,
+    city: source.city,
+    lat,
+    lng,
+    roadName: String(item.RoadName || item.roadName || item.LinkName || "").trim(),
+    location: String(item.LocationDescription || item.locationDescription || "").trim(),
+  };
+}
+
+function normalizeCmsLiveRecord(item, source, staticLookup) {
+  const cmsId = getCmsKey(item);
+  const staticInfo = cmsId ? staticLookup.get(cmsId) : null;
+  const lng = Number(
+    item.PositionLon ??
+      item.positionLon ??
+      item.LocationPt?.PositionLon ??
+      staticInfo?.lng ??
+      source.lng
+  );
+  const lat = Number(
+    item.PositionLat ??
+      item.positionLat ??
+      item.LocationPt?.PositionLat ??
+      staticInfo?.lat ??
+      source.lat
+  );
+  const message = String(
+    item.Message ||
+      item.message ||
+      item.DisplayMessage ||
+      item.displayMessage ||
+      item.Msg ||
+      ""
+  )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!message || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  const roadName =
+    staticInfo?.roadName ||
+    String(item.RoadName || item.roadName || item.LinkName || "").trim();
+  const location =
+    staticInfo?.location ||
+    String(item.LocationDescription || item.locationDescription || "").trim();
+  const titleBase = roadName || location || `${source.city} CMS`;
+
+  return {
+    title: `${titleBase} - CMS`.slice(0, 120),
+    content: message.slice(0, 220),
     category: "traffic",
     lat,
     lng,
-    city,
-    source: "TDX",
+    city: staticInfo?.city || source.city,
+    source: "TDX CMS",
     url: "",
   };
 }
 
-async function fetchTDXTrafficEvents(startedAt) {
-  if (!process.env.TDX_CLIENT_ID || !process.env.TDX_CLIENT_SECRET) {
-    console.warn("[events] Missing TDX credentials; skipping traffic feed.");
-    return [];
+async function fetchTdxJson(url, headers, startedAt) {
+  const response = await axios.get(url, {
+    headers,
+    timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
+  });
+
+  return response.data;
+}
+
+async function loadStaticCmsCache(accessToken, startedAt) {
+  if (Date.now() < tdxStaticCmsCache.expiresAt && tdxStaticCmsCache.bySource.size > 0) {
+    return tdxStaticCmsCache.bySource;
   }
 
+  const headers = getTdxHeaders(accessToken);
+  const bySource = new Map();
+
+  const requests = TDX_CMS_SOURCES.map(async (source) => {
+    if (getRemainingTime(startedAt) < 800) {
+      return;
+    }
+
+    try {
+      const url = buildTdxCmsUrl(source, false);
+      const data = await fetchTdxJson(url, headers, startedAt);
+      const records = extractArrayFromTdxPayload(data)
+        .map((item) => normalizeCmsStaticRecord(item, source))
+        .filter(Boolean);
+      bySource.set(`${source.type}:${source.path}`, new Map(records.map((item) => [item.cmsId, item])));
+    } catch (error) {
+      const status = error.response?.status;
+      console.warn(
+        `[events] TDX static CMS failed for ${source.type}/${source.path}:`,
+        status ? `HTTP ${status}` : error.message,
+        `url=${buildTdxCmsUrl(source, false)}`
+      );
+      bySource.set(`${source.type}:${source.path}`, new Map());
+    }
+  });
+
+  await Promise.allSettled(requests);
+
+  tdxStaticCmsCache = {
+    bySource,
+    expiresAt: Date.now() + 1000 * 60 * 60 * 12,
+  };
+
+  return bySource;
+}
+
+async function fetchTDXTrafficEvents(startedAt) {
   try {
     if (getRemainingTime(startedAt) < 1200) {
       return [];
     }
 
-    const accessToken = await fetchTDXAccessToken(startedAt);
-    if (!accessToken) {
-      return [];
+    let accessToken = "";
+    if (process.env.TDX_CLIENT_ID && process.env.TDX_CLIENT_SECRET) {
+      try {
+        accessToken = await fetchTDXAccessToken(startedAt);
+      } catch (error) {
+        console.warn("[events] Failed to get TDX token, falling back to public CMS endpoints:", error.message);
+      }
     }
 
-    const headers = {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
-    };
-
-    const requests = TDX_CITY_SOURCES.map(async (source) => {
+    const headers = getTdxHeaders(accessToken);
+    const staticCache = await loadStaticCmsCache(accessToken, startedAt);
+    const requests = TDX_CMS_SOURCES.map(async (source) => {
       if (getRemainingTime(startedAt) < 500) {
         return [];
       }
 
-      const url = `://tdx.transportdata.tw/api/advanced/v3/Road/Traffic/Event/City/${source.path}?$format=JSONhttps`;
-
       try {
-        const response = await axios.get(url, {
-          headers,
-          timeout: Math.max(600, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
-        });
-        const records =
-          response.data?.Events ||
-          response.data?.Event ||
-          response.data ||
-          [];
-
-        if (Array.isArray(records)) {
-          return records.map(normalizeTdxRecord);
-        }
-
-        return [];
+        const url = buildTdxCmsUrl(source, true);
+        const data = await fetchTdxJson(url, headers, startedAt);
+        const records = extractArrayFromTdxPayload(data);
+        const staticLookup = staticCache.get(`${source.type}:${source.path}`) || new Map();
+        return records
+          .map((item) => normalizeCmsLiveRecord(item, source, staticLookup))
+          .filter(Boolean);
       } catch (error) {
         const status = error.response?.status;
         console.warn(
-          `[events] TDX fetch failed for ${source.path}:`,
-          status ? `HTTP ${status}` : error.message
+          `[events] TDX live CMS failed for ${source.type}/${source.path}:`,
+          status ? `HTTP ${status}` : error.message,
+          `url=${buildTdxCmsUrl(source, true)}`
         );
         return [];
       }
@@ -487,4 +646,3 @@ module.exports = async (req, res) => {
     return res.status(200).json([]);
   }
 };
-
