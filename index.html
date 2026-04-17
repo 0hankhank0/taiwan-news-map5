@@ -170,12 +170,6 @@
             <h1 class="text-xl font-bold tracking-wide">台灣新聞事件地圖</h1>
             <select id="city-filter" class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none focus:border-blue-500">
                 <option value="all">全部城市</option>
-                <option value="Taipei">Taipei</option>
-                <option value="New Taipei">New Taipei</option>
-                <option value="Taoyuan">Taoyuan</option>
-                <option value="Taichung">Taichung</option>
-                <option value="Tainan">Tainan</option>
-                <option value="Kaohsiung">Kaohsiung</option>
             </select>
         </div>
         <div class="flex items-center gap-3">
@@ -196,12 +190,6 @@
         <div class="flex gap-2 overflow-x-auto">
             <select id="city-filter-mobile" class="rounded-2xl bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg outline-none">
                 <option value="all">全部城市</option>
-                <option value="Taipei">Taipei</option>
-                <option value="New Taipei">New Taipei</option>
-                <option value="Taoyuan">Taoyuan</option>
-                <option value="Taichung">Taichung</option>
-                <option value="Tainan">Tainan</option>
-                <option value="Kaohsiung">Kaohsiung</option>
             </select>
             <div class="flex rounded-2xl bg-white/95 p-1 shadow-lg">
                 <button id="btn-tw-mobile" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold">台灣</button>
@@ -289,6 +277,29 @@
             default: { text: "其他來源", shortText: "其他", color: "#475569", bg: "#e2e8f0", textColor: "#334155" }
         };
 
+        const CITY_OPTIONS = [
+            { value: "Taipei", label: "Taipei" },
+            { value: "New Taipei", label: "New Taipei" },
+            { value: "Taoyuan", label: "Taoyuan" },
+            { value: "Taichung", label: "Taichung" },
+            { value: "Tainan", label: "Tainan" },
+            { value: "Kaohsiung", label: "Kaohsiung" },
+            { value: "Keelung", label: "Keelung" },
+            { value: "Hsinchu", label: "Hsinchu" },
+            { value: "Miaoli", label: "Miaoli" },
+            { value: "Changhua", label: "Changhua" },
+            { value: "Nantou", label: "Nantou" },
+            { value: "Yunlin", label: "Yunlin" },
+            { value: "Chiayi", label: "Chiayi" },
+            { value: "Pingtung", label: "Pingtung" },
+            { value: "Yilan", label: "Yilan" },
+            { value: "Hualien", label: "Hualien" },
+            { value: "Taitung", label: "Taitung" },
+            { value: "Penghu", label: "Penghu" },
+            { value: "Kinmen", label: "Kinmen" },
+            { value: "Lienchiang", label: "Lienchiang" }
+        ];
+
         const taiwanView = {
             center: [23.6, 120.9],
             zoom: 7
@@ -314,6 +325,26 @@
 
         function currentCityFilter() {
             return document.getElementById("city-filter")?.value || "all";
+        }
+
+        function populateCityFilters() {
+            const desktopFilter = document.getElementById("city-filter");
+            const mobileFilter = document.getElementById("city-filter-mobile");
+
+            if (!desktopFilter || !mobileFilter) {
+                return;
+            }
+
+            const selectedValue = desktopFilter.value || "all";
+            const optionsHtml = [
+                '<option value="all">全部城市</option>',
+                ...CITY_OPTIONS.map((item) => `<option value="${item.value}">${item.label}</option>`)
+            ].join("");
+
+            desktopFilter.innerHTML = optionsHtml;
+            mobileFilter.innerHTML = optionsHtml;
+            desktopFilter.value = selectedValue;
+            mobileFilter.value = selectedValue;
         }
 
         function setStatus(text) {
@@ -412,9 +443,21 @@
             });
         }
 
+        function getEventZoom(eventItem) {
+            if (eventItem.source === "TDX CMS") {
+                return 14;
+            }
+
+            if (eventItem.category === "traffic" || eventItem.category === "disaster" || eventItem.category === "fire") {
+                return 13;
+            }
+
+            return 12;
+        }
+
         function flyToEvent(eventItem) {
             const latlng = [Number(eventItem.lat), Number(eventItem.lng)];
-            map.flyTo(latlng, 13, { duration: 0.8 });
+            map.flyTo(latlng, getEventZoom(eventItem), { duration: 0.8 });
         }
 
         function openReportModal(title) {
@@ -670,6 +713,7 @@
         });
 
         document.addEventListener("DOMContentLoaded", () => {
+            populateCityFilters();
             checkBetaModal();
             syncNewsAndRender();
         });
