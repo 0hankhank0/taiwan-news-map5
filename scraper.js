@@ -26,20 +26,27 @@ async function getTDXToken() {
   
   const data = await res.json();
   if (!data.access_token) {
-    console.error("❌ 取得 Token 失敗！回傳錯誤：", data);
-    throw new Error("請檢查 GitHub Secrets 的 TDX_CLIENT_ID 與 TDX_CLIENT_SECRET 是否正確。");
+    throw new Error("取得 Token 失敗！請檢查 TDX_CLIENT_ID 與 TDX_CLIENT_SECRET。");
   }
-  console.log("✅ 成功取得 TDX Token！");
   return data.access_token;
 }
 
-async function fetchTDX(url, token, desc) {
+// 加入 Retry 機制的 fetch
+async function fetchTDX(url, token, desc, retries = 1) {
   console.log(`⏳ [${desc}] 抓取中...`);
-  await delay(1500); 
+  await delay(3000); // 延長至 3 秒，避免被 TDX 鎖 IP
+  
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   
+  // 遇到 429 頻率限制，等 5 秒後重試
+  if (res.status === 429 && retries > 0) {
+    console.log(`⚠️ [${desc}] 抓取太快觸發 429 限制，等待 5 秒後重試...`);
+    await delay(5000);
+    return fetchTDX(url, token, desc, retries - 1);
+  }
+
   if (!res.ok) {
-    console.error(`❌ [${desc}] API 請求失敗 (狀態碼: ${res.status})：`, await res.text());
+    console.error(`❌ [${desc}] 請求失敗 (狀態碼: ${res.status})`);
     return null;
   }
   return res.json();
@@ -55,29 +62,12 @@ async function aiFilterEvents(rawEvents) {
 1. 判斷是否為具有「地圖新聞價值」的事件 (isReal: true/false)。
    - ✅ 保留 (true)：嚴重車禍、火警、倒塌、淹水、土石流、大型抗爭、化學品洩漏、全線封閉。
    - ❌ 拒絕 (false)：單純施工公告、例行性交管、沒內容的測試、宣導標語、過期訊息。
-2. 重新潤飾標題 (title)：將口語或簡碼轉成易讀的新聞標題 (例如將 "國1南向10K車禍" 改為 "國道1號南向10K處發生車禍")。
-3. 精準分類 (category)：
-   - accident: 車禍、火燒車、散落物
-   - disaster: 淹水、土石流、天候災情
-   - construction: 重大施工封閉
-   - activity: 大型活動交管
-4. 預估事件存活時間 (ttl_hours)：
-   - 事故/災情 (accident/disaster)：4 (小時)
-   - 施工/活動 (construction/activity)：168 (7天)
-   - 無效事件 (isReal=false)：720 (30天)
+2. 重新潤飾標題 (title)：將簡碼轉成易讀的新聞標題 (如 "國1南向10K車禍" 改為 "國道1號南向10K處車禍")。
+3. 精準分類 (category)：accident / disaster / construction / activity
+4. 預估存活時間 (ttl_hours)：事故/災情 4，施工/活動 168，無效事件 720。
 
-請回傳 JSON 格式，包含 events 陣列：
-{
-  "events": [
-    {
-      "id": "原始ID", 
-      "title": "潤飾後的新聞標題", 
-      "category": "accident|disaster|construction|activity", 
-      "isReal": true/false, 
-      "ttl_hours": 數字
-    }
-  ]
-}
+請回傳 JSON 格式：
+{"events": [{"id": "原始ID", "title": "潤飾標題", "category": "分類", "isReal": true/false, "ttl_hours": 數字}]}
 
 待處理資料：
 ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
@@ -89,8 +79,7 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
       messages: [{ role: "system", content: "你只會回傳 JSON" }, { role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });
-    const result = JSON.parse(response.choices[0].message.content);
-    return result.events || [];
+    return JSON.parse(response.choices[0].message.content).events || [];
   } catch (err) {
     console.error("❌ AI 錯誤:", err);
     return [];
@@ -99,7 +88,7 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
 
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞事件同步 (抓鬼除錯版)...");
+    console.log("🚀 啟動全台新聞事件同步 (破解 POINT 座標 + 防 429 版)...");
     const token = await getTDXToken();
     
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -112,21 +101,15 @@ async function main() {
     console.log(`🗃️ 載入有效快取：${cacheMap.size} 筆`);
 
     let candidatesMap = new Map(); 
-    let hasLoggedSample = false; // 抓鬼標記
     
+    // 只保留 TDX 官方有支援的 9 大縣市 + 國道 + 省道
     const targets = [
       { path: "City/Keelung", name: "基隆市" }, { path: "City/Taipei", name: "台北市" },
       { path: "City/NewTaipei", name: "新北市" }, { path: "City/Taoyuan", name: "桃園市" },
-      { path: "City/Hsinchu", name: "新竹市" }, { path: "City/HsinchuCounty", name: "新竹縣" },
-      { path: "City/MiaoliCounty", name: "苗栗縣" }, { path: "City/Taichung", name: "台中市" },
-      { path: "City/ChanghuaCounty", name: "彰化縣" }, { path: "City/NantouCounty", name: "南投縣" },
-      { path: "City/YunlinCounty", name: "雲林縣" }, { path: "City/Chiayi", name: "嘉義市" },
-      { path: "City/ChiayiCounty", name: "嘉義縣" }, { path: "City/Tainan", name: "台南市" },
-      { path: "City/Kaohsiung", name: "高雄市" }, { path: "City/PingtungCounty", name: "屏東縣" },
-      { path: "City/YilanCounty", name: "宜蘭縣" }, { path: "City/HualienCounty", name: "花蓮縣" },
-      { path: "City/TaitungCounty", name: "台東縣" }, { path: "City/PenghuCounty", name: "澎湖縣" },
-      { path: "City/KinmenCounty", name: "金門縣" }, { path: "City/LienchiangCounty", name: "連江縣" },
-      { path: "Highway", name: "省道" }, { path: "Freeway", name: "國道" }
+      { path: "City/Taichung", name: "台中市" }, { path: "City/Tainan", name: "台南市" },
+      { path: "City/Kaohsiung", name: "高雄市" }, { path: "City/YilanCounty", name: "宜蘭縣" },
+      { path: "City/KinmenCounty", name: "金門縣" }, { path: "Highway", name: "省道" }, 
+      { path: "Freeway", name: "國道" }
     ];
 
     for (const target of targets) {
@@ -138,27 +121,31 @@ async function main() {
         
         if (!data) continue;
 
-        // 擴充抓取可能包裝的欄位 (包含 OData 的 .value)
         const eventsList = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
-        
-        // 🚨 抓鬼專用：印出第一筆拿到的真實資料結構！
-        if (eventsList.length > 0 && !hasLoggedSample) {
-            console.log("\n================ 🚨 抓鬼專用 🚨 ================");
-            console.log(`在 [${target.name}-${evType}] 找到資料！第一筆原始 JSON 長這樣：`);
-            console.log(JSON.stringify(eventsList[0], null, 2));
-            console.log("==============================================\n");
-            hasLoggedSample = true;
-        }
 
         for (const event of eventsList) {
-          // 加上防呆防禦網：涵蓋各種可能的屬性名稱
-          const summary = event.EventSummary || event.Description || event.EventDescription || "";
-          const eventId = event.EventID || event.RoadEventID || event.id;
-          const lat = event.PositionLat || event.EventPosition?.PositionLat || event.Latitude;
-          const lng = event.PositionLon || event.EventPosition?.PositionLon || event.Longitude;
+          const summary = event.EventTitle || event.EventSummary || event.Description || "";
+          const eventId = event.EventID || event.RoadEventID;
+          
+          let lat = null;
+          let lng = null;
+
+          // 💡 破解 TDX 的 POINT 座標格式！
+          if (event.Positions && event.Positions.includes("POINT")) {
+            const match = event.Positions.match(/POINT\(([^ ]+) ([^)]+)\)/);
+            if (match) {
+              lng = parseFloat(match[1]); // 第一個數字是經度
+              lat = parseFloat(match[2]); // 第二個數字是緯度
+            }
+          } else {
+            // 備用方案
+            lat = event.PositionLat || event.EventPosition?.PositionLat;
+            lng = event.PositionLon || event.EventPosition?.PositionLon;
+          }
           
           if (!eventId || !summary || !lat || !lng) continue;
           
+          // 初步排除明顯垃圾資訊
           if (summary.includes("宣導") || event.EventTypeName === "交通障礙" || event.EventTypeName === "交通管制") {
               continue; 
           }
@@ -175,14 +162,10 @@ async function main() {
     }
 
     const candidates = Array.from(candidatesMap.values());
-    console.log(`\n✅ 欄位過濾後，共抓到 ${candidates.length} 筆潛在事件。`);
+    console.log(`\n✅ 欄位與座標過濾後，共抓到 ${candidates.length} 筆潛在事件。`);
     
-    if (candidates.length === 0) {
-        console.log("⚠️ 潛在事件為 0！請檢查上方的『🚨 抓鬼專用 🚨』印出了什麼。");
-        return;
-    }
+    if (candidates.length === 0) return;
 
-    // --- 開始進行後續的 AI 篩選與 Redis 寫入 ---
     let itemsForAI = [];
     let newCacheList = [];
     let finalEvents = [];
@@ -197,8 +180,9 @@ async function main() {
       }
     }
 
-    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，將讓 AI 處理 ${itemsForAI.length} 筆新資料。`);
+    console.log(`🛡️ Diffing 完成！沿用快取 ${candidates.length - itemsForAI.length} 筆，AI 將處理 ${itemsForAI.length} 筆新資料。`);
 
+    // 分批交給 AI 處理
     for (let i = 0; i < itemsForAI.length; i += 20) {
       const batch = itemsForAI.slice(i, i + 20);
       const aiResults = await aiFilterEvents(batch);
@@ -227,7 +211,6 @@ async function main() {
       });
     }
 
-    // 將沒過期且還在發生的快取保留
     cacheMap.forEach(cached => {
       if (!newCacheList.find(n => n.id === cached.id)) {
         newCacheList.push(cached);
@@ -238,12 +221,11 @@ async function main() {
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
     await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
     
-    console.log(`💾 完工！共 ${newCacheList.length} 筆寫入快取，產生 ${finalEvents.length} 筆地圖新聞事件。`);
+    console.log(`💾 完工！共 ${newCacheList.length} 筆寫入快取，最終產生 ${finalEvents.length} 筆地圖新聞事件。`);
 
   } catch (error) {
     console.error("💥 執行發生錯誤:", error);
   }
 }
 
-// 啟動主程式
 main();
