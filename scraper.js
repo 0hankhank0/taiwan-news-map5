@@ -1,4 +1,4 @@
-const { Redis } = require("@upstash/redis");
+\const { Redis } = require("@upstash/redis");
 const OpenAI = require("openai");
 
 const kv = new Redis({
@@ -27,39 +27,44 @@ async function getTDXToken() {
 
 async function fetchTDX(url, token, desc) {
   console.log(`⏳ [${desc}] 抓取中...`);
-  await delay(3000); 
+  await delay(2000); // 延遲 2 秒避免被 TDX 阻擋
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   return res.ok ? res.json() : null;
 }
 
-// 🤖 AI 篩選核心函數 (新增 ttl_hours 判斷)
+// 🤖 AI 篩選核心函數 (針對新聞事件優化)
 async function aiFilterEvents(rawEvents) {
   if (rawEvents.length === 0) return [];
   
-  console.log(`🤖 正在讓 GPT-4o mini 處理 ${rawEvents.length} 筆新資料...`);
+  console.log(`🤖 正在讓 GPT-4o mini 分析 ${rawEvents.length} 筆突發事件的新聞價值...`);
   
   const prompt = `
-你是一位台灣交通路況專家。請分析以下交通跑馬燈(CMS)文字。
+你是一位台灣突發新聞編輯。請分析以下「路況事件」文字，判斷其新聞價值。
 任務：
-1. 判斷是否為「當下正在發生」的真實路況 (isReal: true/false)。
-   - ❌ 拒絕 (false)：政令宣導、交通安全宣導、歷史統計數據 (例如：「開車不喝酒」、「取締違規大客車」)。
-   - ✅ 保留 (true)：當下真實發生的突發事件 (例如：「前方車禍佔用內線」、「重大事故封閉」)。
-2. 精準分類 (category)：
-   - accident: 車禍、追撞、肇事、散落物、火燒車等「突發事故」
-   - traffic: 車多回堵、壅塞、車流量大等「純粹路況」
-   - construction: 施工、管制、封閉
-   - disaster: 坍方、落石、大雨、積水等天候災害
-   - activity: 演習、馬拉松、活動
-3. 預估事件存活時間 (ttl_hours)：
-   - 輕微事故/車多壅塞 (accident/traffic)：2 (小時)
-   - 嚴重事故/災情 (disaster/嚴重 accident)：6 (小時)
-   - 長期施工/活動管制 (construction/activity)：168 (7天)
-   - 無效宣導 (isReal=false)：720 (30天，避免短期內重複浪費資源判斷)
+1. 判斷是否為具有「地圖新聞價值」的事件 (isReal: true/false)。
+   - ✅ 保留 (true)：嚴重車禍、火警、倒塌、淹水、土石流、大型抗爭、化學品洩漏、全線封閉。
+   - ❌ 拒絕 (false)：單純施工公告、例行性交管、沒內容的測試、宣導標語、過期訊息。
+2. 重新潤飾標題 (title)：將口語或簡碼轉成易讀的新聞標題 (例如將 "國1南向10K車禍" 改為 "國道1號南向10K處發生車禍")。
+3. 精準分類 (category)：
+   - accident: 車禍、火燒車、散落物
+   - disaster: 淹水、土石流、天候災情
+   - construction: 重大施工封閉
+   - activity: 大型活動交管
+4. 預估事件存活時間 (ttl_hours)：
+   - 事故/災情 (accident/disaster)：4 (小時)
+   - 施工/活動 (construction/activity)：168 (7天)
+   - 無效事件 (isReal=false)：720 (30天，避免重複判斷)
 
 請回傳 JSON 格式，包含 events 陣列：
 {
   "events": [
-    {"id": "原始ID", "category": "accident|traffic|construction|disaster|activity", "isReal": true/false, "ttl_hours": 數字}
+    {
+      "id": "原始ID", 
+      "title": "潤飾後的新聞標題", 
+      "category": "accident|disaster|construction|activity", 
+      "isReal": true/false, 
+      "ttl_hours": 數字
+    }
   ]
 }
 
@@ -70,7 +75,7 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
-      messages: [{ role: "system", content: "你只會回傳 JSON 格式的台灣交通分析資料。" }, { role: "user", content: prompt }],
+      messages: [{ role: "system", content: "你只會回傳 JSON 格式的新聞事件分析資料。" }, { role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });
 
@@ -84,9 +89,8 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
 
 async function main() {
   try {
-    console.log("🚀 啟動全台路況同步 (快取省錢版)...");
+    console.log("🚀 啟動全台新聞事件同步 (RoadEvent 精準座標版)...");
     const token = await getTDXToken();
-    let candidates = [];
     
     // --- 1. 讀取並清理過期快取 ---
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -96,7 +100,6 @@ async function main() {
     if (rawCache) {
       const parsedCache = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
       parsedCache.forEach(item => {
-        // 只保留還沒過期的快取
         if (item.expiresAt > now) {
           cacheMap.set(item.id, item);
         }
@@ -104,6 +107,10 @@ async function main() {
     }
     console.log(`🗃️ 載入有效快取：${cacheMap.size} 筆`);
 
+    // --- 2. 抓取 TDX RoadEvent 新資料 ---
+    let candidatesMap = new Map(); // 用 Map 來去重
+    
+    // 包含所有的目標區域 (加入你特別交代的 City、Highway、Freeway)
     const targets = [
       { path: "City/Taipei", name: "台北市" }, { path: "City/NewTaipei", name: "新北市" },
       { path: "City/Taoyuan", name: "桃園市" }, { path: "City/Taichung", name: "台中市" },
@@ -111,36 +118,42 @@ async function main() {
       { path: "Highway", name: "省道" }, { path: "Freeway", name: "國道" }
     ];
 
-    // --- 2. 抓取 TDX 新資料 ---
     for (const target of targets) {
-      const basicData = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/CMS/${target.path}?$format=JSON`, token, `${target.name}-座標`);
-      const liveData = await fetchTDX(`https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/CMS/${target.path}?$format=JSON`, token, `${target.name}-文字`);
-
-      const basicList = basicData?.CMSs || basicData?.CMSLists || (Array.isArray(basicData) ? basicData : []);
-      const liveList = liveData?.CMSLives || liveData?.LiveCMSs || (Array.isArray(liveData) ? liveData : []);
-
-      if (basicList.length > 0 && liveList.length > 0) {
-        const locationMap = {};
-        basicList.forEach(cms => { locationMap[cms.CMSID] = { lat: cms.PositionLat, lng: cms.PositionLon }; });
-
-        for (const live of liveList) {
-          const rawMsg = (live.Messages && live.Messages[0]?.Text) || live.Message || "";
-          if (!rawMsg) continue;
+      // 💡 為了保證「不漏掉」，我們同時抓 Event 與 LiveEvent
+      const eventTypes = ["Event", "LiveEvent"];
+      
+      for (const evType of eventTypes) {
+        const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${target.path}?$format=JSON`;
+        const data = await fetchTDX(url, token, `${target.name}-${evType}`);
+        
+        const eventsList = data?.Events || data?.LiveEvents || (Array.isArray(data) ? data : []);
+        
+        for (const event of eventsList) {
+          const summary = event.EventSummary || event.Description || "";
+          const lat = event.PositionLat;
+          const lng = event.PositionLon;
+          const eventId = event.EventID;
           
-          const cleanMsg = rawMsg.replace(/\s+/g, "");
-          if (cleanMsg.match(/安全車距|保持距離|反光背心|故障標誌|繫妥|禮讓行人|路口慢看停|專線/)) continue;
-          if (cleanMsg.includes("約") && cleanMsg.includes("分")) continue; 
+          // 排除沒有座標或沒有內容的無效資料
+          if (!eventId || !summary || !lat || !lng) continue;
+          
+          // 粗略過濾：在送給 AI 之前，先把明顯沒有新聞價值的直接擋掉 (省錢)
+          if (summary.includes("宣導") || event.EventTypeName === "交通障礙" || event.EventTypeName === "交通管制") {
+              continue; 
+          }
 
-          candidates.push({
-            id: live.CMSID,
-            text: rawMsg,
-            lat: locationMap[live.CMSID]?.lat,
-            lng: locationMap[live.CMSID]?.lng,
+          candidatesMap.set(eventId, {
+            id: eventId,
+            text: `【${event.EventTypeName || '事件'}】${summary}`,
+            lat: lat,
+            lng: lng,
             city: target.name
           });
         }
       }
     }
+
+    const candidates = Array.from(candidatesMap.values());
 
     // --- 3. 進行 Diffing 比對 ---
     let itemsForAI = [];
@@ -150,19 +163,15 @@ async function main() {
     for (const item of candidates) {
       const cached = cacheMap.get(item.id);
       
-      // 如果快取存在，且「文字內容沒變」，直接沿用，不叫 AI！
       if (cached && cached.text === item.text) {
         newCacheList.push(cached); 
-        if (cached.isReal) {
-          finalEvents.push(cached); // 只有真實路況才放進要顯示的清單
-        }
+        if (cached.isReal) finalEvents.push(cached);
       } else {
-        // 沒見過的新資料，或是文字進度有更新的，放進 AI 處理區
         itemsForAI.push(item);
       }
     }
 
-    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，僅需處理 ${itemsForAI.length} 筆新資料。`);
+    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，僅需讓 AI 處理 ${itemsForAI.length} 筆新資料。`);
 
     // --- 4. 批次交給 AI 處理新資料 ---
     for (let i = 0; i < itemsForAI.length; i += 20) {
@@ -172,26 +181,23 @@ async function main() {
       batch.forEach(item => {
         const aiDecision = aiResults.find(r => r.id === item.id);
         if (aiDecision) {
-          const ttlMs = (aiDecision.ttl_hours || 2) * 60 * 60 * 1000;
+          const ttlMs = (aiDecision.ttl_hours || 4) * 60 * 60 * 1000;
           const processedItem = {
             id: item.id,
-            text: item.text,          // 保留原始文字用於下次 Diff 比對
-            title: item.text,
+            text: item.text,          
+            title: aiDecision.title || item.text, // 使用 AI 潤飾後的新聞標題
             content: item.text,
-            category: aiDecision.category || "traffic",
+            category: aiDecision.category || "accident",
             isReal: aiDecision.isReal,
-            source: "TDX CMS",
+            source: "TDX RoadEvent",
             lat: item.lat,
             lng: item.lng,
             city: item.city,
-            expiresAt: now + ttlMs    // 加上過期時間戳記
+            expiresAt: now + ttlMs    
           };
 
-          newCacheList.push(processedItem); // 存入完整快取（含 true/false）
-          
-          if (aiDecision.isReal) {
-            finalEvents.push(processedItem); // 存入前端顯示清單
-          }
+          newCacheList.push(processedItem);
+          if (aiDecision.isReal) finalEvents.push(processedItem); 
         }
       });
     }
@@ -200,7 +206,7 @@ async function main() {
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
     await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
     
-    console.log(`💾 完工！共 ${newCacheList.length} 筆寫入快取，產生 ${finalEvents.length} 筆真實路況供前端使用。`);
+    console.log(`💾 完工！共 ${newCacheList.length} 筆寫入快取，產生 ${finalEvents.length} 筆地圖新聞事件。`);
   } catch (error) {
     console.error("💥 錯誤:", error.message);
   }
