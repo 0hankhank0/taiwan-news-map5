@@ -128,3 +128,4 @@ async function main() {
 
   } catch (error) { console.error("💥 錯誤:", error); }
 }
+main();
