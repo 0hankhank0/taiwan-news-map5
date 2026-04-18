@@ -95,7 +95,7 @@ async function main() {
       { path: "City/Taipei", name: "台北市", types: ["Event", "LiveEvent"] },
       { path: "City/NewTaipei", name: "新北市", types: ["Event", "LiveEvent"] },
       { path: "City/Taichung", name: "台中市", types: ["Event", "LiveEvent"] },
-      { path: "City/Kaohsiung", name: "高雄市", types: ["Event", "LiveEvent"] },
+      { path: "City/Kaohsiung", name: "高雄市", types: ["LiveEvent"] },
       { path: "City/Tainan", name: "台南市", types: ["Event", "LiveEvent"] },
       { path: "City/Taoyuan", name: "桃園市", types: ["Event", "LiveEvent"] },
       { path: "City/Keelung", name: "基隆市", types: ["Event", "LiveEvent"] },
@@ -138,7 +138,7 @@ async function main() {
         });
       }
       console.log(`💤 ${target.name} 完畢，冷卻中...`);
-      await delay(10000);
+      await delay(20000);
     }
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
