@@ -1,4 +1,4 @@
-\const { Redis } = require("@upstash/redis");
+const { Redis } = require("@upstash/redis");
 const OpenAI = require("openai");
 
 const kv = new Redis({
