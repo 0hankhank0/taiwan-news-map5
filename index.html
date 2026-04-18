@@ -459,40 +459,61 @@
             reportModal.classList.remove("flex");
         }
 
-        async function submitReport() {
-            const title = selectedTitleForReport;
-            const errorType = document.getElementById("report-type").value;
-            const message = document.getElementById("report-message").value.trim();
-            const submitButton = document.getElementById("report-submit-btn");
+async function submitReport() {
+            // 1. 抓取使用者填寫的表單資料 
+            // (請確認這裡的 ID 和你 HTML 裡面寫的一致)
+            const titleInput = document.getElementById("report-title");
+            const typeInput = document.getElementById("report-type"); // 假設你有一個錯誤類型的下拉選單
+            const contentInput = document.getElementById("report-content");
+            
+            const title = titleInput ? titleInput.value.trim() : "未提供標題";
+            const errorType = typeInput ? typeInput.value : "未分類錯誤";
+            const message = contentInput ? contentInput.value.trim() : "";
 
-            submitButton.disabled = true;
-            submitButton.textContent = "送出中...";
+            if (!message) {
+                alert("請填寫補充說明內容！");
+                return;
+            }
+
+            // 改變按鈕狀態，避免重複點擊
+            const submitBtn = document.getElementById("report-submit-btn");
+            const originalBtnText = submitBtn.innerText;
+            submitBtn.innerText = "傳送中...";
+            submitBtn.disabled = true;
 
             try {
+                // 2. 呼叫你剛剛寫好的後端 API
                 const response = await fetch("/api/report", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({ title, errorType, message })
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        title: title,
+                        errorType: errorType,
+                        message: message
+                    })
                 });
 
-                const rawText = await response.text();
-                const result = tryParseJson(rawText, {});
-                if (!response.ok) {
-                    throw new Error(result.error || "回報失敗");
-                }
+                const result = await response.json();
 
-                alert("已收到你的回報，謝謝幫忙校正資料。");
-                closeReportModal();
+                if (response.ok && result.success) {
+                    alert("✅ 回報成功！感謝您的提供。");
+                    
+                    // 清空表單並關閉視窗
+                    if (titleInput) titleInput.value = "";
+                    if (contentInput) contentInput.value = "";
+                    closeReportModal(); 
+                } else {
+                    throw new Error(result.error || "伺服器錯誤");
+                }
             } catch (error) {
-                alert(error.message || "回報送出失敗，請稍後再試。");
+                console.error("回報失敗:", error);
+                alert("❌ 回報傳送失敗，請稍後再試。");
             } finally {
-                submitButton.disabled = false;
-                submitButton.textContent = "送出回報";
+                // 恢復按鈕狀態
+                submitBtn.innerText = originalBtnText;
+                submitBtn.disabled = false;
             }
         }
-
         function renderEvents() {
             const filteredEvents = getFilteredEvents();
             markers.clearLayers();
