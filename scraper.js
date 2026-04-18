@@ -27,31 +27,37 @@ async function getTDXToken() {
 
 async function fetchTDX(url, token, desc) {
   console.log(`⏳ [${desc}] 抓取中...`);
-  await delay(3000); // 減少延遲提高效率
+  await delay(3000); 
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   return res.ok ? res.json() : null;
 }
 
-// 🤖 AI 篩選核心函數
+// 🤖 AI 篩選核心函數 (已將事故與路況分開)
 async function aiFilterEvents(rawEvents) {
   if (rawEvents.length === 0) return [];
   
   console.log(`🤖 正在讓 GPT-4o mini 處理 ${rawEvents.length} 筆資料...`);
   
+  // 💡 強化版的 Prompt：教導 AI 把「車多/壅塞」跟「車禍/掉落物」分開
   const prompt = `
-你是一位台灣交通路況專家。請分析以下交通跑馬燈(CMS)文字，判斷是否為「真實、具即時性的交通事件」。
-- **必須過濾掉**：政令宣導(酒駕、安全帶、疲勞駕駛、反光背心、故障標誌、專線)、純問候、統計數據、旅行時間宣導。
-- **必須保留**：車禍、施工、故障車、散落物、封閉管制、交通活動(路跑/遶境)、天候災害(濃霧/大雨/落石)、嚴重回堵。
+你是一位台灣交通路況專家。請分析以下交通跑馬燈(CMS)文字。
+任務：
+1. 判斷是否為「當下正在發生」的真實路況 (isReal: true/false)。
+   - ❌ 拒絕 (false)：政令宣導、交通安全宣導、歷史統計數據 (例如：「3月交通事故死亡4人」、「開車不喝酒」、「取締違規大客車」)。即使包含「死亡」、「酒駕」、「事故」等字眼，只要是宣導或統計，一律為 false。
+   - ✅ 保留 (true)：當下真實發生的突發事件 (例如：「前方車禍佔用內線」、「酒駕肇事全線封閉」、「重大事故1人死亡」)。
+2. 精準分類 (category)：
+   - accident: 車禍、追撞、肇事、散落物、火燒車等「突發事故」
+   - traffic: 車多回堵、壅塞、車流量大、走走停停等「純粹的路況」
+   - construction: 施工、管制、禁行大貨車、封閉
+   - disaster: 坍方、落石、大雨、濃霧、積水等天候自然災害
+   - activity: 跨年、演習、馬拉松、遶境活動
 
-請將合格的事件依照以下 JSON 格式回傳，不要有任何解釋文字：
-[
-  {"id": "原始ID", "category": "traffic|construction|disaster|activity", "isReal": true/false}
-]
-分類說明：
-- traffic: 一般事故、車多回堵
-- construction: 施工、管制、禁行大貨車
-- disaster: 火燒車、坍方、大雨濃霧災害
-- activity: 活動、演習、馬拉松
+請回傳 JSON 格式，格式必須如下 (包含一個 events 陣列)：
+{
+  "events": [
+    {"id": "原始ID", "category": "accident|traffic|construction|disaster|activity", "isReal": true 或 false}
+  ]
+}
 
 待處理資料：
 ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
@@ -65,9 +71,7 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
     });
 
     const result = JSON.parse(response.choices[0].message.content);
-    // 假設 AI 回傳的是物件包陣列，視情況調整
-    const list = Array.isArray(result) ? result : result.events || result.data || Object.values(result)[0];
-    return list;
+    return result.events || [];
   } catch (err) {
     console.error("❌ AI 篩選發生錯誤:", err);
     return [];
@@ -103,8 +107,9 @@ async function main() {
           if (!rawMsg) continue;
           
           const cleanMsg = rawMsg.replace(/\s+/g, "");
-          // 基礎過濾：擋掉最明顯的垃圾，節省 AI Token
-          if (cleanMsg.match(/安全車距|保持距離|酒駕|反光背心|故障標誌|繫妥|宣導/)) continue;
+          
+          if (cleanMsg.match(/安全車距|保持距離|反光背心|故障標誌|繫妥|禮讓行人|路口慢看停|專線/)) continue;
+          if (cleanMsg.includes("約") && cleanMsg.includes("分")) continue; 
 
           candidates.push({
             id: live.CMSID,
@@ -117,7 +122,6 @@ async function main() {
       }
     }
 
-    // 將候選名單丟給 AI 裁決 (每 20 筆一批)
     let finalEvents = [];
     for (let i = 0; i < candidates.length; i += 20) {
       const batch = candidates.slice(i, i + 20);
@@ -130,6 +134,7 @@ async function main() {
             id: item.id,
             title: item.text,
             content: item.text,
+            // 💡 預設值改成 traffic，但 AI 會傳回 accident
             category: aiDecision.category || "traffic",
             source: "TDX CMS",
             lat: item.lat,
