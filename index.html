@@ -185,14 +185,16 @@
     <div class="fixed left-4 right-4 top-4 z-[1000] flex flex-col gap-2 md:hidden">
         <div class="flex items-center gap-2">
             <input id="event-search-mobile" type="text" placeholder="搜尋標題、內容、城市" class="flex-1 rounded-2xl bg-white/95 px-5 py-3 text-sm text-slate-900 shadow-xl outline-none focus:ring-2 focus:ring-blue-500" />
-            <a href="https://taiwan-map.bobaboba.me" target="_blank" rel="noreferrer" class="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-100 text-amber-950 shadow-xl">+</a>
+            <a href="https://taiwan-map.bobaboba.me" target="_blank" rel="noreferrer" class="flex h-[46px] items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-amber-800 bg-amber-100 px-4 text-sm font-black text-amber-950 shadow-xl transition active:scale-95">
+                <i class="fa-solid fa-heart text-red-500"></i> <span class="hidden sm:inline">支持專案</span><span class="sm:hidden">支持</span>
+            </a>
         </div>
         <div class="flex gap-2 overflow-x-auto">
             <select id="city-filter-mobile" class="rounded-2xl bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg outline-none">
                 <option value="all">全部城市</option>
             </select>
             <div class="flex rounded-2xl bg-white/95 p-1 shadow-lg">
-                <button id="btn-tw-mobile" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold">台灣</button>
+                <button id="btn-tw-mobile" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white">台灣</button>
                 <button id="btn-global-mobile" class="rounded-xl px-4 py-2 text-xs font-bold text-slate-600">全球</button>
             </div>
         </div>
@@ -459,12 +461,11 @@
             reportModal.classList.remove("flex");
         }
 
-async function submitReport() {
-            // 1. 抓取使用者填寫的表單資料 
-            // (請確認這裡的 ID 和你 HTML 裡面寫的一致)
+        async function submitReport() {
             const titleInput = document.getElementById("report-title");
-            const typeInput = document.getElementById("report-type"); // 假設你有一個錯誤類型的下拉選單
-            const contentInput = document.getElementById("report-content");
+            const typeInput = document.getElementById("report-type");
+            // ✅ 修正：把原本的 report-content 改成正確的 report-message
+            const contentInput = document.getElementById("report-message"); 
             
             const title = titleInput ? titleInput.value.trim() : "未提供標題";
             const errorType = typeInput ? typeInput.value : "未分類錯誤";
@@ -475,14 +476,12 @@ async function submitReport() {
                 return;
             }
 
-            // 改變按鈕狀態，避免重複點擊
             const submitBtn = document.getElementById("report-submit-btn");
             const originalBtnText = submitBtn.innerText;
             submitBtn.innerText = "傳送中...";
             submitBtn.disabled = true;
 
             try {
-                // 2. 呼叫你剛剛寫好的後端 API
                 const response = await fetch("/api/report", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -498,7 +497,6 @@ async function submitReport() {
                 if (response.ok && result.success) {
                     alert("✅ 回報成功！感謝您的提供。");
                     
-                    // 清空表單並關閉視窗
                     if (titleInput) titleInput.value = "";
                     if (contentInput) contentInput.value = "";
                     closeReportModal(); 
@@ -509,11 +507,11 @@ async function submitReport() {
                 console.error("回報失敗:", error);
                 alert("❌ 回報傳送失敗，請稍後再試。");
             } finally {
-                // 恢復按鈕狀態
                 submitBtn.innerText = originalBtnText;
                 submitBtn.disabled = false;
             }
         }
+
         function renderEvents() {
             const filteredEvents = getFilteredEvents();
             markers.clearLayers();
@@ -651,7 +649,9 @@ async function submitReport() {
             document.getElementById("btn-global").classList.toggle("bg-blue-600", !mode);
             document.getElementById("btn-global").classList.toggle("text-slate-300", mode);
             document.getElementById("btn-tw-mobile").classList.toggle("bg-blue-600", mode);
+            document.getElementById("btn-tw-mobile").classList.toggle("text-white", mode);
             document.getElementById("btn-global-mobile").classList.toggle("bg-blue-600", !mode);
+            document.getElementById("btn-global-mobile").classList.toggle("text-white", !mode);
             document.getElementById("btn-global-mobile").classList.toggle("text-slate-600", mode);
 
             if (mode) {
