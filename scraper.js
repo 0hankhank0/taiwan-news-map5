@@ -1,77 +1,6 @@
-const { Redis } = require("@upstash/redis");
-const OpenAI = require("openai");
-
-const kv = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-async function getTDXToken() {
-  console.log("🔑 正在向 TDX 申請 Token...");
-  const params = new URLSearchParams();
-  params.append("grant_type", "client_credentials");
-  params.append("client_id", process.env.TDX_CLIENT_ID);
-  params.append("client_secret", process.env.TDX_CLIENT_SECRET);
-  const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params,
-  });
-  const data = await res.json();
-  return data.access_token;
-}
-
-async function fetchTDX(url, token, desc, retries = 2) {
-  console.log(`⏳ [${desc}] 抓取中...`);
-  await delay(4000); // 基礎等待提高到 4 秒，安全第一
-  
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
-  
-  if (res.status === 429 && retries > 0) {
-    console.log(`⚠️ [${desc}] 觸發頻率限制，深呼吸 8 秒後重試...`);
-    await delay(8000);
-    return fetchTDX(url, token, desc, retries - 1);
-  }
-
-  if (!res.ok) {
-    console.error(`❌ [${desc}] 失敗 (狀態碼: ${res.status})`);
-    return null;
-  }
-  return res.json();
-}
-
-async function aiFilterEvents(rawEvents) {
-  if (rawEvents.length === 0) return [];
-  console.log(`🤖 AI 正在審核 ${rawEvents.length} 筆潛在新聞...`);
-  
-  const prompt = `
-你是一位台灣突發新聞編輯。請分析路況文字，判斷地圖新聞價值。
-1. isReal (true): 嚴重車禍、火警、倒塌、淹水、土石流、大型抗爭、化學品、全線封閉、影響超過2線道之事故。
-2. isReal (false): 單純施工、例行交管、宣導標語、過期訊息。
-3. title: 潤飾標題(如: "國1南向10K車禍")。
-4. category: accident / disaster / construction / activity
-請回傳 JSON: {"events": [{"id": "ID", "title": "標題", "category": "分類", "isReal": true/false, "ttl_hours": 4}]}
-資料：${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
-`;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "system", content: "你只回傳 JSON" }, { role: "user", content: prompt }],
-      response_format: { type: "json_object" },
-    });
-    return JSON.parse(response.choices[0].message.content).events || [];
-  } catch (err) { return []; }
-}
-
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞同步系統 (優先權重優化版)...");
+    console.log("🚀 啟動全台新聞同步系統 (終極隨機平衡版)...");
     const token = await getTDXToken();
     
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -82,25 +11,28 @@ async function main() {
     }
 
     let candidatesMap = new Map(); 
-    let cityStats = {}; // 統計用
+    let cityStats = {};
 
-    // 🏆 調整排序：國道與省道放在最前面，確保不會被 429 擋掉
-    const targets = [
-      { path: "Freeway", name: "國道" },
-      { path: "Highway", name: "省道" },
-      { path: "City/Taipei", name: "台北市" },
-      { path: "City/NewTaipei", name: "新北市" },
-      { path: "City/Taichung", name: "台中市" },
-      { path: "City/Kaohsiung", name: "高雄市" },
-      { path: "City/Tainan", name: "台南市" },
-      { path: "City/Taoyuan", name: "桃園市" },
-      { path: "City/Keelung", name: "基隆市" },
-      { path: "City/YilanCounty", name: "宜蘭縣" },
-      { path: "City/KinmenCounty", name: "金門縣" }
+    // 🏆 精簡並定義每個目標要抓的類型，避開 404
+    let targets = [
+      { path: "Freeway", name: "國道", types: ["LiveEvent"] },
+      { path: "Highway", name: "省道", types: ["LiveEvent"] },
+      { path: "City/Taipei", name: "台北市", types: ["Event", "LiveEvent"] },
+      { path: "City/NewTaipei", name: "新北市", types: ["Event", "LiveEvent"] },
+      { path: "City/Taichung", name: "台中市", types: ["Event", "LiveEvent"] },
+      { path: "City/Kaohsiung", name: "高雄市", types: ["Event", "LiveEvent"] },
+      { path: "City/Tainan", name: "台南市", types: ["Event", "LiveEvent"] },
+      { path: "City/Taoyuan", name: "桃園市", types: ["Event", "LiveEvent"] },
+      { path: "City/Keelung", name: "基隆市", types: ["Event", "LiveEvent"] },
+      { path: "City/YilanCounty", name: "宜蘭縣", types: ["Event", "LiveEvent"] }
     ];
 
+    // 🔀 關鍵：洗牌演算法，確保各縣市受領配額的機會均等
+    targets = targets.sort(() => Math.random() - 0.5);
+    console.log(`📡 本次抓取順序：${targets.map(t => t.name).join(' -> ')}`);
+
     for (const target of targets) {
-      for (const evType of ["Event", "LiveEvent"]) {
+      for (const evType of target.types) {
         const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${target.path}?$format=JSON`;
         const data = await fetchTDX(url, token, `${target.name}-${evType}`);
         if (!data) continue;
@@ -128,20 +60,24 @@ async function main() {
               text: `【${event.EventTypeName || '路況'}】${summary}`,
               lat, lng, city: target.name
             });
-            // 累加統計
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
           }
         });
       }
-      await delay(2000); // 每個縣市跑完多休息 2 秒，避免被封鎖
+      // 🛌 每個地區抓完強制休息 10 秒，徹底冷卻 API 計數器
+      console.log(`💤 ${target.name} 完畢，冷卻中...`);
+      await delay(10000); 
     }
 
-    console.log("\n--- 📊 抓取成果統計表 ---");
-    Object.entries(cityStats).forEach(([name, count]) => console.log(`${name}: ${count} 筆`));
+    console.log("\n--- 📊 本次成功抓取統計 ---");
+    targets.forEach(t => console.log(`${t.name}: ${cityStats[t.name] || 0} 筆`));
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {
+      console.log("⚠️ 沒抓到任何新資料，可能是全部被 429 了。");
+      return;
+    }
 
     let itemsForAI = [];
     let newCacheList = [];
@@ -157,12 +93,12 @@ async function main() {
       }
     }
 
-    console.log(`🛡️ Diffing: 沿用 ${candidates.length - itemsForAI.length} 筆，AI 處理 ${itemsForAI.length} 筆。`);
+    console.log(`🛡️ 篩選完成：沿用 ${candidates.length - itemsForAI.length} 筆，AI 審核 ${itemsForAI.length} 筆。`);
 
+    // AI 分批處理 (維持不變)
     for (let i = 0; i < itemsForAI.length; i += 20) {
       const batch = itemsForAI.slice(i, i + 20);
       const aiResults = await aiFilterEvents(batch);
-      
       batch.forEach(item => {
         const ai = aiResults.find(r => r.id === item.id);
         if (ai) {
@@ -179,7 +115,6 @@ async function main() {
       });
     }
 
-    // 補回沒在本次名單但在快取中未過期的資料
     cacheMap.forEach(cached => {
       if (!newCacheList.find(n => n.id === cached.id)) {
         newCacheList.push(cached);
@@ -189,9 +124,7 @@ async function main() {
 
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
     await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
-    console.log(`💾 完工！產出 ${finalEvents.length} 筆全台事件。`);
+    console.log(`💾 全部完工！產出 ${finalEvents.length} 筆全台地圖事件。`);
 
   } catch (error) { console.error("💥 錯誤:", error); }
 }
-
-main();
