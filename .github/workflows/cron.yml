@@ -21,12 +21,16 @@ jobs:
         # 💡 這裡幫你補上了 openai，這樣才不會報錯說找不到套件！
         run: npm install @upstash/redis openai
 
-      - name: Run Scraper
-        # 💡 這裡已經幫你整理得乾乾淨淨，沒有重複的 run 或 env
-        env:
-          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
-          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
-          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
-          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: node scraper.js
+      -name: Run Scraper
+  env:
+    KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+    KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+    TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
+    TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
+    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  run: |
+    echo "=== 檢查檔案 ==="
+    ls -la
+    echo "=== 跑腳本 ==="
+    node scraper.js 2>&1
+    echo "=== 結束，exit code: $? ==="
