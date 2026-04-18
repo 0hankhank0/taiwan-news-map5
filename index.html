@@ -234,39 +234,21 @@
 
         const markers = L.layerGroup().addTo(map);
 
-        const CATEGORY_CONFIG = {
+       const CATEGORY_CONFIG = {
             all: { text: "全部", icon: "fa-list", color: "#475569" },
-            traffic: { text: "交通", icon: "fa-car", color: "#ef4444" },
-            politics: { text: "政治", icon: "fa-landmark", color: "#6366f1" },
-            social: { text: "社會", icon: "fa-handshake", color: "#ec4899" },
-            life: { text: "生活", icon: "fa-heart", color: "#f59e0b" },
-            tech: { text: "科技", icon: "fa-microchip", color: "#14b8a6" },
-            finance: { text: "財經", icon: "fa-chart-line", color: "#22c55e" },
-            international: { text: "國際", icon: "fa-globe", color: "#8b5cf6" },
-            entertainment: { text: "娛樂", icon: "fa-film", color: "#db2777" },
-            construction: { text: "工程", icon: "fa-person-digging", color: "#f97316" },
-            disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#dc2626" },
-            police: { text: "警政", icon: "fa-shield-halved", color: "#2563eb" },
-            activity: { text: "活動", icon: "fa-users", color: "#10b981" },
-            fire: { text: "消防", icon: "fa-fire-extinguisher", color: "#b91c1c" },
+            traffic: { text: "路況與事故", icon: "fa-car-burst", color: "#ef4444" },
+            construction: { text: "施工管制", icon: "fa-person-digging", color: "#f97316" },
+            disaster: { text: "災害意外", icon: "fa-triangle-exclamation", color: "#dc2626" },
+            activity: { text: "活動", icon: "fa-users", color: "#10b981" }, // 🎪 加回活動分類
             other: { text: "其他", icon: "fa-circle-info", color: "#6b7280" }
         };
 
         const FIXED_CATEGORY_ORDER = [
             "all",
             "traffic",
-            "disaster",
-            "police",
-            "fire",
             "construction",
-            "activity",
-            "politics",
-            "social",
-            "life",
-            "tech",
-            "finance",
-            "international",
-            "entertainment",
+            "disaster",
+            "activity", // 🎪 加回活動排序
             "other"
         ];
 
@@ -277,27 +259,30 @@
             default: { text: "其他來源", shortText: "其他", color: "#475569", bg: "#e2e8f0", textColor: "#334155" }
         };
 
-        const CITY_OPTIONS = [
-            { value: "Taipei", label: "Taipei" },
-            { value: "New Taipei", label: "New Taipei" },
-            { value: "Taoyuan", label: "Taoyuan" },
-            { value: "Taichung", label: "Taichung" },
-            { value: "Tainan", label: "Tainan" },
-            { value: "Kaohsiung", label: "Kaohsiung" },
-            { value: "Keelung", label: "Keelung" },
-            { value: "Hsinchu", label: "Hsinchu" },
-            { value: "Miaoli", label: "Miaoli" },
-            { value: "Changhua", label: "Changhua" },
-            { value: "Nantou", label: "Nantou" },
-            { value: "Yunlin", label: "Yunlin" },
-            { value: "Chiayi", label: "Chiayi" },
-            { value: "Pingtung", label: "Pingtung" },
-            { value: "Yilan", label: "Yilan" },
-            { value: "Hualien", label: "Hualien" },
-            { value: "Taitung", label: "Taitung" },
-            { value: "Penghu", label: "Penghu" },
-            { value: "Kinmen", label: "Kinmen" },
-            { value: "Lienchiang", label: "Lienchiang" }
+       const CITY_OPTIONS = [
+            { value: "基隆", label: "基隆市" },
+            { value: "台北", label: "台北市" },
+            { value: "新北", label: "新北市" },
+            { value: "桃園", label: "桃園市" },
+            { value: "新竹", label: "新竹縣市" },
+            { value: "苗栗", label: "苗栗縣" },
+            { value: "台中", label: "台中市" },
+            { value: "彰化", label: "彰化縣" },
+            { value: "南投", label: "南投縣" },
+            { value: "雲林", label: "雲林縣" },
+            { value: "嘉義", label: "嘉義縣市" },
+            { value: "台南", label: "台南市" },
+            { value: "高雄", label: "高雄市" },
+            { value: "屏東", label: "屏東縣" },
+            { value: "宜蘭", label: "宜蘭縣" },
+            { value: "花蓮", label: "花蓮縣" },
+            { value: "台東", label: "台東縣" },
+            { value: "澎湖", label: "澎湖縣" },
+            { value: "金門", label: "金門縣" },
+            { value: "連江", label: "連江縣" },
+            // 🚗 額外加碼：讓你的「國道」跟「省道」也可以單獨篩選！
+            { value: "國道", label: "國道 (高速公路)" },
+            { value: "省道", label: "省道" }
         ];
 
         const taiwanView = {
