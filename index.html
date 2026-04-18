@@ -236,21 +236,25 @@
 
         const markers = L.layerGroup().addTo(map);
 
-       const CATEGORY_CONFIG = {
+        // ✅ 把「路況」跟「意外」分開了！
+        const CATEGORY_CONFIG = {
             all: { text: "全部", icon: "fa-list", color: "#475569" },
-            traffic: { text: "路況與事故", icon: "fa-car-burst", color: "#ef4444" },
+            traffic: { text: "即時路況", icon: "fa-road", color: "#3b82f6" }, // 路況 (藍色)
+            accident: { text: "交通事故", icon: "fa-car-burst", color: "#ef4444" }, // 事故意外 (紅色)
             construction: { text: "施工管制", icon: "fa-person-digging", color: "#f97316" },
             disaster: { text: "災害意外", icon: "fa-triangle-exclamation", color: "#dc2626" },
-            activity: { text: "活動", icon: "fa-users", color: "#10b981" }, // 🎪 加回活動分類
+            activity: { text: "活動", icon: "fa-users", color: "#10b981" },
             other: { text: "其他", icon: "fa-circle-info", color: "#6b7280" }
         };
 
+        // ✅ 確保兩者都在篩選列表中
         const FIXED_CATEGORY_ORDER = [
             "all",
             "traffic",
+            "accident",
             "construction",
             "disaster",
-            "activity", // 🎪 加回活動排序
+            "activity",
             "other"
         ];
 
@@ -261,7 +265,7 @@
             default: { text: "其他來源", shortText: "其他", color: "#475569", bg: "#e2e8f0", textColor: "#334155" }
         };
 
-       const CITY_OPTIONS = [
+        const CITY_OPTIONS = [
             { value: "基隆", label: "基隆市" },
             { value: "台北", label: "台北市" },
             { value: "新北", label: "新北市" },
@@ -282,7 +286,6 @@
             { value: "澎湖", label: "澎湖縣" },
             { value: "金門", label: "金門縣" },
             { value: "連江", label: "連江縣" },
-            // 🚗 額外加碼：讓你的「國道」跟「省道」也可以單獨篩選！
             { value: "國道", label: "國道 (高速公路)" },
             { value: "省道", label: "省道" }
         ];
@@ -435,7 +438,8 @@
                 return 14;
             }
 
-            if (eventItem.category === "traffic" || eventItem.category === "disaster" || eventItem.category === "fire") {
+            // ✅ 將 accident 也加入需要放大的判斷中
+            if (eventItem.category === "traffic" || eventItem.category === "accident" || eventItem.category === "disaster" || eventItem.category === "fire") {
                 return 13;
             }
 
@@ -464,7 +468,6 @@
         async function submitReport() {
             const titleInput = document.getElementById("report-title");
             const typeInput = document.getElementById("report-type");
-            // ✅ 修正：把原本的 report-content 改成正確的 report-message
             const contentInput = document.getElementById("report-message"); 
             
             const title = titleInput ? titleInput.value.trim() : "未提供標題";
