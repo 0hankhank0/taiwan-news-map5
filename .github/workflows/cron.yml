@@ -1,10 +1,8 @@
 name: Taiwan Traffic Scraper
-
 on:
   schedule:
     - cron: '*/20 * * * *'
   workflow_dispatch:
-
 jobs:
   scrape:
     runs-on: ubuntu-latest
@@ -18,19 +16,18 @@ jobs:
           node-version: 18
 
       - name: Install dependencies
-        # 💡 這裡幫你補上了 openai，這樣才不會報錯說找不到套件！
         run: npm install @upstash/redis openai
 
-      -name: Run Scraper
-  env:
-    KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
-    KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
-    TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
-    TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
-    OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-  run: |
-    echo "=== 檢查檔案 ==="
-    ls -la
-    echo "=== 跑腳本 ==="
-    node scraper.js 2>&1
-    echo "=== 結束，exit code: $? ==="
+      - name: Run Scraper
+        env:
+          KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
+          KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
+          TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
+          TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          echo "=== 檢查檔案 ==="
+          ls -la
+          echo "=== 跑腳本 ==="
+          node scraper.js 2>&1
+          echo "=== 結束，exit code: $? ==="
