@@ -46,17 +46,51 @@ async function fetchTDX(url, token, desc) {
 }
 
 async function aiFilterEvents(rawEvents) {
-  // ... (AI 邏輯與之前完全相同，為節省版面此處省略，請保留你原本的 aiFilterEvents 函數) ...
   if (rawEvents.length === 0) return [];
   console.log(`🤖 正在讓 GPT-4o mini 分析 ${rawEvents.length} 筆突發事件...`);
-  const prompt = `你是一位台灣突發新聞編輯。請分析以下「路況事件」... (同前一版)`;
+  
+  const prompt = `
+你是一位台灣突發新聞編輯。請分析以下「路況事件」文字，判斷其新聞價值。
+任務：
+1. 判斷是否為具有「地圖新聞價值」的事件 (isReal: true/false)。
+   - ✅ 保留 (true)：嚴重車禍、火警、倒塌、淹水、土石流、大型抗爭、化學品洩漏、全線封閉。
+   - ❌ 拒絕 (false)：單純施工公告、例行性交管、沒內容的測試、宣導標語、過期訊息。
+2. 重新潤飾標題 (title)：將口語或簡碼轉成易讀的新聞標題 (例如將 "國1南向10K車禍" 改為 "國道1號南向10K處發生車禍")。
+3. 精準分類 (category)：
+   - accident: 車禍、火燒車、散落物
+   - disaster: 淹水、土石流、天候災情
+   - construction: 重大施工封閉
+   - activity: 大型活動交管
+4. 預估事件存活時間 (ttl_hours)：
+   - 事故/災情 (accident/disaster)：4 (小時)
+   - 施工/活動 (construction/activity)：168 (7天)
+   - 無效事件 (isReal=false)：720 (30天)
+
+請回傳 JSON 格式，包含 events 陣列：
+{
+  "events": [
+    {
+      "id": "原始ID", 
+      "title": "潤飾後的新聞標題", 
+      "category": "accident|disaster|construction|activity", 
+      "isReal": true/false, 
+      "ttl_hours": 數字
+    }
+  ]
+}
+
+待處理資料：
+${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
+`;
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [{ role: "system", content: "你只會回傳 JSON" }, { role: "user", content: prompt }],
       response_format: { type: "json_object" },
     });
-    return JSON.parse(response.choices[0].message.content).events || [];
+    const result = JSON.parse(response.choices[0].message.content);
+    return result.events || [];
   } catch (err) {
     console.error("❌ AI 錯誤:", err);
     return [];
@@ -75,6 +109,7 @@ async function main() {
       const parsedCache = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
       parsedCache.forEach(item => { if (item.expiresAt > now) cacheMap.set(item.id, item); });
     }
+    console.log(`🗃️ 載入有效快取：${cacheMap.size} 筆`);
 
     let candidatesMap = new Map(); 
     let hasLoggedSample = false; // 抓鬼標記
@@ -147,5 +182,68 @@ async function main() {
         return;
     }
 
-    // --- (Diffing 比對與 AI 處理同上，此處省略) ---
-    // 你可以先把你的原始碼貼上，只要確保有上面的 try-catch 跟抓鬼 log 即可！
+    // --- 開始進行後續的 AI 篩選與 Redis 寫入 ---
+    let itemsForAI = [];
+    let newCacheList = [];
+    let finalEvents = [];
+
+    for (const item of candidates) {
+      const cached = cacheMap.get(item.id);
+      if (cached && cached.text === item.text) {
+        newCacheList.push(cached); 
+        if (cached.isReal) finalEvents.push(cached);
+      } else {
+        itemsForAI.push(item);
+      }
+    }
+
+    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，將讓 AI 處理 ${itemsForAI.length} 筆新資料。`);
+
+    for (let i = 0; i < itemsForAI.length; i += 20) {
+      const batch = itemsForAI.slice(i, i + 20);
+      const aiResults = await aiFilterEvents(batch);
+      
+      batch.forEach(item => {
+        const aiDecision = aiResults.find(r => r.id === item.id);
+        if (aiDecision) {
+          const ttlMs = (aiDecision.ttl_hours || 4) * 60 * 60 * 1000;
+          const processedItem = {
+            id: item.id,
+            text: item.text,          
+            title: aiDecision.title || item.text, 
+            content: item.text,
+            category: aiDecision.category || "accident",
+            isReal: aiDecision.isReal,
+            source: "TDX RoadEvent",
+            lat: item.lat,
+            lng: item.lng,
+            city: item.city,
+            expiresAt: now + ttlMs    
+          };
+
+          newCacheList.push(processedItem);
+          if (aiDecision.isReal) finalEvents.push(processedItem); 
+        }
+      });
+    }
+
+    // 將沒過期且還在發生的快取保留
+    cacheMap.forEach(cached => {
+      if (!newCacheList.find(n => n.id === cached.id)) {
+        newCacheList.push(cached);
+        if (cached.isReal) finalEvents.push(cached);
+      }
+    });
+
+    await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
+    await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
+    
+    console.log(`💾 完工！共 ${newCacheList.length} 筆寫入快取，產生 ${finalEvents.length} 筆地圖新聞事件。`);
+
+  } catch (error) {
+    console.error("💥 執行發生錯誤:", error);
+  }
+}
+
+// 啟動主程式
+main();
