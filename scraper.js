@@ -27,12 +27,11 @@ async function getTDXToken() {
 
 async function fetchTDX(url, token, desc) {
   console.log(`⏳ [${desc}] 抓取中...`);
-  await delay(2000); // 延遲 2 秒避免被 TDX 阻擋
+  await delay(1500); // 稍微調快一點，因為現在要抓的縣市變多了
   const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   return res.ok ? res.json() : null;
 }
 
-// 🤖 AI 篩選核心函數 (針對新聞事件優化)
 async function aiFilterEvents(rawEvents) {
   if (rawEvents.length === 0) return [];
   
@@ -53,7 +52,7 @@ async function aiFilterEvents(rawEvents) {
 4. 預估事件存活時間 (ttl_hours)：
    - 事故/災情 (accident/disaster)：4 (小時)
    - 施工/活動 (construction/activity)：168 (7天)
-   - 無效事件 (isReal=false)：720 (30天，避免重複判斷)
+   - 無效事件 (isReal=false)：720 (30天)
 
 請回傳 JSON 格式，包含 events 陣列：
 {
@@ -89,10 +88,9 @@ ${JSON.stringify(rawEvents.map(e => ({ id: e.id, text: e.text })))}
 
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞事件同步 (RoadEvent 精準座標版)...");
+    console.log("🚀 啟動全台新聞事件同步 (全台 22 縣市 + 座標修復版)...");
     const token = await getTDXToken();
     
-    // --- 1. 讀取並清理過期快取 ---
     let rawCache = await kv.get("taiwan_traffic_cache");
     let cacheMap = new Map();
     const now = Date.now();
@@ -100,26 +98,30 @@ async function main() {
     if (rawCache) {
       const parsedCache = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
       parsedCache.forEach(item => {
-        if (item.expiresAt > now) {
-          cacheMap.set(item.id, item);
-        }
+        if (item.expiresAt > now) cacheMap.set(item.id, item);
       });
     }
     console.log(`🗃️ 載入有效快取：${cacheMap.size} 筆`);
 
-    // --- 2. 抓取 TDX RoadEvent 新資料 ---
-    let candidatesMap = new Map(); // 用 Map 來去重
+    let candidatesMap = new Map(); 
     
-    // 包含所有的目標區域 (加入你特別交代的 City、Highway、Freeway)
+    // 🌍 補齊全台 22 縣市 + 省道國道
     const targets = [
-      { path: "City/Taipei", name: "台北市" }, { path: "City/NewTaipei", name: "新北市" },
-      { path: "City/Taoyuan", name: "桃園市" }, { path: "City/Taichung", name: "台中市" },
-      { path: "City/Tainan", name: "台南市" }, { path: "City/Kaohsiung", name: "高雄市" },
+      { path: "City/Keelung", name: "基隆市" }, { path: "City/Taipei", name: "台北市" },
+      { path: "City/NewTaipei", name: "新北市" }, { path: "City/Taoyuan", name: "桃園市" },
+      { path: "City/Hsinchu", name: "新竹市" }, { path: "City/HsinchuCounty", name: "新竹縣" },
+      { path: "City/MiaoliCounty", name: "苗栗縣" }, { path: "City/Taichung", name: "台中市" },
+      { path: "City/ChanghuaCounty", name: "彰化縣" }, { path: "City/NantouCounty", name: "南投縣" },
+      { path: "City/YunlinCounty", name: "雲林縣" }, { path: "City/Chiayi", name: "嘉義市" },
+      { path: "City/ChiayiCounty", name: "嘉義縣" }, { path: "City/Tainan", name: "台南市" },
+      { path: "City/Kaohsiung", name: "高雄市" }, { path: "City/PingtungCounty", name: "屏東縣" },
+      { path: "City/YilanCounty", name: "宜蘭縣" }, { path: "City/HualienCounty", name: "花蓮縣" },
+      { path: "City/TaitungCounty", name: "台東縣" }, { path: "City/PenghuCounty", name: "澎湖縣" },
+      { path: "City/KinmenCounty", name: "金門縣" }, { path: "City/LienchiangCounty", name: "連江縣" },
       { path: "Highway", name: "省道" }, { path: "Freeway", name: "國道" }
     ];
 
     for (const target of targets) {
-      // 💡 為了保證「不漏掉」，我們同時抓 Event 與 LiveEvent
       const eventTypes = ["Event", "LiveEvent"];
       
       for (const evType of eventTypes) {
@@ -130,14 +132,15 @@ async function main() {
         
         for (const event of eventsList) {
           const summary = event.EventSummary || event.Description || "";
-          const lat = event.PositionLat;
-          const lng = event.PositionLon;
           const eventId = event.EventID;
           
-          // 排除沒有座標或沒有內容的無效資料
+          // 💡 關鍵修復：TDX 的座標通常包在 EventPosition 裡面
+          const lat = event.PositionLat || event.EventPosition?.PositionLat;
+          const lng = event.PositionLon || event.EventPosition?.PositionLon;
+          
           if (!eventId || !summary || !lat || !lng) continue;
           
-          // 粗略過濾：在送給 AI 之前，先把明顯沒有新聞價值的直接擋掉 (省錢)
+          // 排除無用資訊
           if (summary.includes("宣導") || event.EventTypeName === "交通障礙" || event.EventTypeName === "交通管制") {
               continue; 
           }
@@ -155,7 +158,6 @@ async function main() {
 
     const candidates = Array.from(candidatesMap.values());
 
-    // --- 3. 進行 Diffing 比對 ---
     let itemsForAI = [];
     let newCacheList = [];
     let finalEvents = [];
@@ -171,9 +173,8 @@ async function main() {
       }
     }
 
-    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，僅需讓 AI 處理 ${itemsForAI.length} 筆新資料。`);
+    console.log(`🛡️ Diffing 完成！有 ${candidates.length - itemsForAI.length} 筆沿用快取，將讓 AI 處理 ${itemsForAI.length} 筆新資料。`);
 
-    // --- 4. 批次交給 AI 處理新資料 ---
     for (let i = 0; i < itemsForAI.length; i += 20) {
       const batch = itemsForAI.slice(i, i + 20);
       const aiResults = await aiFilterEvents(batch);
@@ -185,7 +186,7 @@ async function main() {
           const processedItem = {
             id: item.id,
             text: item.text,          
-            title: aiDecision.title || item.text, // 使用 AI 潤飾後的新聞標題
+            title: aiDecision.title || item.text, 
             content: item.text,
             category: aiDecision.category || "accident",
             isReal: aiDecision.isReal,
@@ -202,7 +203,14 @@ async function main() {
       });
     }
 
-    // --- 5. 寫回 Redis ---
+    // 將沒過期且還在發生的快取保留，避免遇到短暫 API 異常時資料全毀
+    cacheMap.forEach(cached => {
+      if (!newCacheList.find(n => n.id === cached.id)) {
+        newCacheList.push(cached);
+        if (cached.isReal) finalEvents.push(cached);
+      }
+    });
+
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
     await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
     
