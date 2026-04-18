@@ -10,24 +10,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4  # ⬅️ 升級到 v4
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4  # ⬅️ 升級到 v4
+        uses: actions/setup-node@v4
         with:
           node-version: 18
 
       - name: Install dependencies
-        run: npm install @upstash/redis
+        # 💡 這裡幫你補上了 openai，這樣才不會報錯說找不到套件！
+        run: npm install @upstash/redis openai
 
       - name: Run Scraper
-        env:
-         - name: Run scraper
-        run: node scraper.js
+        # 💡 這裡已經幫你整理得乾乾淨淨，沒有重複的 run 或 env
         env:
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
           KV_REST_API_TOKEN: ${{ secrets.KV_REST_API_TOKEN }}
           TDX_CLIENT_ID: ${{ secrets.TDX_CLIENT_ID }}
           TDX_CLIENT_SECRET: ${{ secrets.TDX_CLIENT_SECRET }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}  # 👈 就是補上這一行！
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node scraper.js
