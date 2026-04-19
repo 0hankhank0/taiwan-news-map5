@@ -377,8 +377,6 @@ async function fetchPBS(token) {
   return results;
 }
 
-  return results;
-}
 
 // ==========================================
 // 外掛 API：台中市（改走 TDX，廢棄舊地方 API）
