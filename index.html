@@ -515,11 +515,20 @@
             }
         }
 
-        function renderEvents() {
-            const filteredEvents = getFilteredEvents();
-            markers.clearLayers();
+       function renderEvents() {
+            // 原本是 const，請改成 let，因為我們要對它重新排序
+            let filteredEvents = getFilteredEvents();
 
+            // 💡 新增這段：強制將新聞來源排在最上方
+            filteredEvents.sort((a, b) => {
+                const aIsNews = (a.source === "news" || a.source === "RSS") ? 1 : 0;
+                const bIsNews = (b.source === "news" || b.source === "RSS") ? 1 : 0;
+                return bIsNews - aIsNews; // 新聞優先 (值為1的排在前面)
+            });
+
+            markers.clearLayers();
             eventList.innerHTML = "";
+            // ... (底下維持原樣)
 
             if (!filteredEvents.length) {
                 eventList.innerHTML = `
