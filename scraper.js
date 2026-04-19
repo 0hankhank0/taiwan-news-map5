@@ -163,8 +163,16 @@ async function geocode(locationText) {
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "taiwan-news-map/1.0 (contact@example.com)" }
+      headers: { 
+        "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)"
+      }
     });
+    // 先確認是否為 JSON
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      console.error(`❌ Nominatim 回傳非 JSON [${locationText}]: ${res.status}`);
+      return null;
+    }
     const data = await res.json();
     if (data && data.length > 0) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
