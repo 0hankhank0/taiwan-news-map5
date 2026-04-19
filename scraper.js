@@ -263,68 +263,84 @@ async function fetchNews() {
 }
 
 // ==========================================
-// 外掛 API：補強縣市（高雄、桃園、新竹縣市、嘉義、屏東等）
+// 外掛 API：v2 Road/Traffic/Live 路段即時壅塞
 // ==========================================
-// PBS 官網無法從此環境存取，直接用 TDX 補強目前缺席的縣市
-// TDX 縣市代碼參考 Swagger：Kaohsiung, Taoyuan, HsinchuCounty, Hsinchu, Chiayi, ChiayiCounty
+// 這是 TDX 新版路況 API，提供各縣市路段即時車速與壅塞等級
+// 支援：基隆、宜蘭、新北、桃園、台中、台北、台南、彰化、新竹、雲林、高雄
+// 只取 Level 3(壅塞) / Level 4(嚴重壅塞) 的路段，避免資料量爆炸
 async function fetchPBS(token) {
-  console.log("⏳ [補強縣市] 開始抓取未涵蓋縣市路況...");
+  console.log("⏳ [Live路況] 開始抓取各縣市路段即時壅塞...");
   let results = [];
 
-  // 📌 修復：使用 TDX Swagger 確認的正確縣市代碼
-  const supplementTargets = [
-    { path: "City/Kaohsiung", name: "高雄市" },
-    { path: "City/Taoyuan", name: "桃園市" },
-    { path: "City/Hsinchu", name: "新竹市" },
-    { path: "City/HsinchuCounty", name: "新竹縣" },
-    { path: "City/Chiayi", name: "嘉義市" },
-    { path: "City/ChiayiCounty", name: "嘉義縣" },
-    { path: "City/PingtungCounty", name: "屏東縣" },
-    { path: "City/ChanghuaCounty", name: "彰化縣" },
-    { path: "City/NantouCounty", name: "南投縣" },
-    { path: "City/MiaoliCounty", name: "苗栗縣" },
+  // 已確認在 TDX Live API 有資料的縣市（從 Swagger 服務清單確認）
+  // 桃園和高雄同時保留 RoadEvent 補強（有即時事故資料）
+  const liveTargets = [
+    { city: "Taoyuan",       name: "桃園市" },
+    { city: "Kaohsiung",     name: "高雄市" },
+    { city: "ChanghuaCounty", name: "彰化縣" },
+    { city: "Hsinchu",       name: "新竹市" },
+    { city: "YunlinCounty",  name: "雲林縣" },
   ];
+  // 注意：台北、新北、台中、台南、基隆、宜蘭已在 tdxTargets 用 RoadEvent 抓事件
+  // Live API 抓的是壅塞路段，兩者互補
 
-  for (const t of supplementTargets) {
-    for (const evType of ["Event", "LiveEvent"]) {
-      const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${t.path}?$format=JSON`;
-      const data = await fetchTDX(url, token, `補強-${t.name}-${evType}`);
-      if (!data) continue;
+  for (const t of liveTargets) {
+    const url = `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/City/${t.city}?$format=JSON`;
+    const data = await fetchTDX(url, token, `Live-${t.name}`);
+    if (!data) { await delay(3000); continue; }
 
-      const list = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
-      console.log(`📦 [補強-${t.name}] ${evType}: ${list.length} 筆`);
+    const sections = Array.isArray(data) ? data :
+      (data?.LiveTrafficData || data?.RoadSections || data?.Sections ||
+       data?.LiveTraffics || data?.value || []);
 
-      list.forEach(event => {
-        const summary = event.EventTitle || event.EventSummary || event.Description || "";
-        const eventId = event.EventID || event.RoadEventID;
-        const endTime = event.EndTime || event.EventEndTime;
-        if (endTime && new Date(endTime).getTime() < Date.now()) return;
+    console.log(`📦 [Live-${t.name}] 原始路段數: ${sections.length}`);
 
-        let lat, lng;
-        if (event.Positions?.includes("POINT")) {
-          const m = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
-          if (m) { lng = parseFloat(m[1]); lat = parseFloat(m[2]); }
-        } else {
-          lat = event.PositionLat || event.EventPosition?.PositionLat;
-          lng = event.PositionLon || event.EventPosition?.PositionLon;
+    let added = 0;
+    sections.forEach(sec => {
+      // LiveLevel: 0=順暢 1=稍壅 2=壅塞 3=嚴重壅塞 4=資料異常
+      // 只取 2(壅塞) 和 3(嚴重壅塞)
+      const level = sec.LiveLevel ?? sec.CongestionLevel ?? sec.TrafficLevel ?? -1;
+      if (level < 2 || level > 3) return;
+
+      // 座標：優先用路段中點，其次用起點
+      let lat = sec.StartLat || sec.PositionLat || sec.Lat ||
+                sec.StartPosition?.PositionLat || sec.GeometryCenter?.PositionLat;
+      let lng = sec.StartLon || sec.PositionLon || sec.Lon ||
+                sec.StartPosition?.PositionLon || sec.GeometryCenter?.PositionLon;
+
+      // WKT 格式備援
+      const wkt = sec.Geometry || sec.RoadGeometry || "";
+      if (!lat && wkt.includes("LINESTRING")) {
+        const m = wkt.match(/LINESTRING[^(]*\(([^,]+)/);
+        if (m) {
+          const parts = m[1].trim().split(/\s+/);
+          if (parts.length >= 2) { lng = parseFloat(parts[0]); lat = parseFloat(parts[1]); }
         }
+      }
 
-        if (eventId && summary && lat && lng) {
-          if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
-          const startTime = event.StartTime || event.EventStartTime || "";
-          const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || "未定"})` : "";
-          results.push({
-            id: `SUP_${eventId}`,
-            text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
-            lat, lng, city: t.name,
-          });
-        }
+      if (!lat || !lng) return;
+
+      const roadName = sec.RoadName || sec.SectionName || sec.RoadID || "路段";
+      const levelText = level === 2 ? "壅塞" : "嚴重壅塞";
+      const speed = sec.LiveSpeed ?? sec.Speed ?? "";
+      const speedText = speed !== "" ? `(${speed}km/h)` : "";
+      const id = sec.SectionID || sec.RoadID || sec.ID || Math.random().toString(36).substring(7);
+
+      results.push({
+        id: `LIVE_${t.city}_${id}`,
+        text: `【${t.name}路況】${roadName} ${levelText}${speedText}`,
+        lat, lng, city: t.name,
       });
-      await delay(8000);
-    }
+      added++;
+    });
+
+    console.log(`✅ [Live-${t.name}] 壅塞路段: ${added} 筆`);
+    await delay(5000);
   }
 
-  console.log(`✅ [補強縣市] 成功整理 ${results.length} 筆路況！`);
+  // 桃園/高雄事件已移入 tdxTargets 主流程，此處不重複抓
+
+  console.log(`✅ [Live路況+事故] 成功整理 ${results.length} 筆！`);
   return results;
 }
 
@@ -361,16 +377,19 @@ async function main() {
 
     // 📌 修復 1：加入 City/Taichung（取代舊地方 API）
     // 📌 修復 2：台南加入 debug log（確認資料是否真的為空）
+    // ✅ 完整覆蓋 TDX 有支援即時事件的所有城市（來源：TDX 基礎服務清單截圖）
     let tdxTargets = [
-      { path: "Freeway", name: "國道", types: ["LiveEvent"] },
-      { path: "Highway", name: "省道", types: ["LiveEvent"] },
-      { path: "City/Taipei", name: "台北市", types: ["Event", "LiveEvent"] },
-      { path: "City/NewTaipei", name: "新北市", types: ["Event", "LiveEvent"] },
-      { path: "City/Tainan", name: "台南市", types: ["Event", "LiveEvent"] },
-      { path: "City/Keelung", name: "基隆市", types: ["Event", "LiveEvent"] },
-      { path: "City/YilanCounty", name: "宜蘭縣", types: ["Event", "LiveEvent"] },
-      // ✅ 新增：台中改走 TDX
-      { path: "City/Taichung", name: "台中市", types: ["Event", "LiveEvent"] },
+      { path: "Freeway",           name: "國道",   types: ["LiveEvent"] },
+      { path: "Highway",           name: "省道",   types: ["LiveEvent"] },
+      { path: "City/Taipei",       name: "台北市", types: ["Event", "LiveEvent"] },
+      { path: "City/NewTaipei",    name: "新北市", types: ["Event", "LiveEvent"] },
+      { path: "City/Taichung",     name: "台中市", types: ["Event", "LiveEvent"] },
+      { path: "City/Tainan",       name: "台南市", types: ["Event", "LiveEvent"] },
+      { path: "City/Keelung",      name: "基隆市", types: ["Event", "LiveEvent"] },
+      { path: "City/YilanCounty",  name: "宜蘭縣", types: ["Event", "LiveEvent"] },
+      { path: "City/Kaohsiung",    name: "高雄市", types: ["Event", "LiveEvent"] }, // ✅ 新增
+      { path: "City/KinmenCounty", name: "金門縣", types: ["Event", "LiveEvent"] }, // ✅ 新增
+      { path: "City/Taoyuan",      name: "桃園市", types: ["Event", "LiveEvent"] }, // ✅ 新增（從補強移入主流程）
     ];
 
     tdxTargets = tdxTargets.sort(() => Math.random() - 0.5);
@@ -450,7 +469,7 @@ async function main() {
     });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "高雄市", "桃園市", "新竹市", "新竹縣", "嘉義市", "嘉義縣", "屏東縣", "彰化縣", "南投縣", "苗栗縣"];
+    const allCities = [...tdxTargets.map(t => t.name), "彰化縣", "新竹市", "雲林縣"];
     allCities.forEach(name => { if (cityStats[name]) console.log(`${name}: ${cityStats[name]} 筆`); });
     console.log(`合計: ${Array.from(candidatesMap.values()).length} 筆候選`);
     console.log("---------------------------\n");
