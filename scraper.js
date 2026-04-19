@@ -263,117 +263,68 @@ async function fetchNews() {
 }
 
 // ==========================================
-// 外掛 API：警廣 (改走警廣官網 open data)
+// 外掛 API：補強縣市（高雄、桃園、新竹縣市、嘉義、屏東等）
 // ==========================================
-// 📌 TDX PBS 已全面下架，改直接呼叫警廣官網開放資料
-// 警廣官網提供 JSON 格式的即時路況通報，涵蓋全台非都會區道路
+// PBS 官網無法從此環境存取，直接用 TDX 補強目前缺席的縣市
+// TDX 縣市代碼參考 Swagger：Kaohsiung, Taoyuan, HsinchuCounty, Hsinchu, Chiayi, ChiayiCounty
 async function fetchPBS(token) {
-  console.log("⏳ [全台防線-警廣] 開始抓取警廣即時路況...");
+  console.log("⏳ [補強縣市] 開始抓取未涵蓋縣市路況...");
   let results = [];
 
-  // 警廣官網開放資料端點（不需要 token，但需要 User-Agent）
-  const pbsUrls = [
-    "https://www.pbs.gov.tw/cht/index.php?code=list&ids=163",   // 即時路況
-    "https://www.pbs.gov.tw/cht/index.php?code=list&ids=164",   // 事故通報
+  // 📌 修復：使用 TDX Swagger 確認的正確縣市代碼
+  const supplementTargets = [
+    { path: "City/Kaohsiung", name: "高雄市" },
+    { path: "City/Taoyuan", name: "桃園市" },
+    { path: "City/Hsinchu", name: "新竹市" },
+    { path: "City/HsinchuCounty", name: "新竹縣" },
+    { path: "City/Chiayi", name: "嘉義市" },
+    { path: "City/ChiayiCounty", name: "嘉義縣" },
+    { path: "City/PingtungCounty", name: "屏東縣" },
+    { path: "City/ChanghuaCounty", name: "彰化縣" },
+    { path: "City/NantouCounty", name: "南投縣" },
+    { path: "City/MiaoliCounty", name: "苗栗縣" },
   ];
 
-  for (const url of pbsUrls) {
-    console.log(`🔍 [警廣] 嘗試: ${url}`);
-    try {
-      const res = await fetch(url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "application/json, text/html, */*",
+  for (const t of supplementTargets) {
+    for (const evType of ["Event", "LiveEvent"]) {
+      const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${t.path}?$format=JSON`;
+      const data = await fetchTDX(url, token, `補強-${t.name}-${evType}`);
+      if (!data) continue;
+
+      const list = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
+      console.log(`📦 [補強-${t.name}] ${evType}: ${list.length} 筆`);
+
+      list.forEach(event => {
+        const summary = event.EventTitle || event.EventSummary || event.Description || "";
+        const eventId = event.EventID || event.RoadEventID;
+        const endTime = event.EndTime || event.EventEndTime;
+        if (endTime && new Date(endTime).getTime() < Date.now()) return;
+
+        let lat, lng;
+        if (event.Positions?.includes("POINT")) {
+          const m = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
+          if (m) { lng = parseFloat(m[1]); lat = parseFloat(m[2]); }
+        } else {
+          lat = event.PositionLat || event.EventPosition?.PositionLat;
+          lng = event.PositionLon || event.EventPosition?.PositionLon;
         }
-      });
-      if (!res.ok) {
-        console.log(`❌ [警廣] ${url} 失敗: ${res.status}`);
-        continue;
-      }
-      const contentType = res.headers.get("content-type") || "";
-      let records = [];
 
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-        records = Array.isArray(data) ? data : (data?.data || data?.records || data?.items || []);
-      } else {
-        // HTML 頁面：嘗試抓取內嵌 JSON
-        const text = await res.text();
-        const jsonMatch = text.match(/var\s+(?:data|records|items)\s*=\s*(\[.*?\])/s) ||
-                         text.match(/JSON\.parse\(['"](.+?)['"]\)/s);
-        if (jsonMatch) {
-          try { records = JSON.parse(jsonMatch[1]); } catch(e) {}
-        }
-        if (records.length === 0) {
-          console.log(`⚠️ [警廣] ${url} 回傳 HTML 無法解析 JSON，筆數: 0`);
-          continue;
-        }
-      }
-
-      console.log(`📦 [警廣] ${url} 取得 ${records.length} 筆`);
-
-      records.forEach(item => {
-        const lat = parseFloat(item.lat || item.latitude || item.PositionLat || item.y || 0);
-        const lng = parseFloat(item.lng || item.lon || item.longitude || item.PositionLon || item.x || 0);
-        const text2 = item.content || item.description || item.desc || item.msg || item.title || "";
-        const city = item.city || item.area || item.region || "警廣路況";
-        const id = item.id || item.uid || item.sn || Math.random().toString(36).substring(7);
-
-        if (lat > 21 && lat < 26 && lng > 119 && lng < 123 && text2) {
-          if (text2.includes("宣導") || text2.includes("交通安全")) return;
+        if (eventId && summary && lat && lng) {
+          if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
+          const startTime = event.StartTime || event.EventStartTime || "";
+          const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || "未定"})` : "";
           results.push({
-            id: `PBS_${id}`,
-            text: `【警廣通報】${text2}`,
-            lat, lng, city,
+            id: `SUP_${eventId}`,
+            text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
+            lat, lng, city: t.name,
           });
         }
       });
-    } catch(e) {
-      console.error(`❌ [警廣] ${url} 例外:`, e.message);
-    }
-    await delay(1000);
-  }
-
-  // 如果官網也失敗，用 TDX v2/Road/Traffic/Live 全台各縣市補強
-  if (results.length === 0) {
-    console.log("⚠️ [警廣] 官網無資料，改用 TDX Live 路況補強南部縣市...");
-    const supplementTargets = [
-      { path: "City/Kaohsiung", name: "高雄市" },
-      { path: "City/Taoyuan", name: "桃園市" },
-      { path: "City/Hsinchu", name: "新竹市" },
-      { path: "City/Chiayi", name: "嘉義市" },
-    ];
-    for (const t of supplementTargets) {
-      for (const evType of ["Event", "LiveEvent"]) {
-        const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${t.path}?$format=JSON`;
-        const data = await fetchTDX(url, token, `補強-${t.name}-${evType}`);
-        if (!data) continue;
-        const list = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
-        list.forEach(event => {
-          const summary = event.EventTitle || event.EventSummary || event.Description || "";
-          const eventId = event.EventID || event.RoadEventID;
-          const endTime = event.EndTime || event.EventEndTime;
-          if (endTime && new Date(endTime).getTime() < Date.now()) return;
-
-          let lat2, lng2;
-          if (event.Positions?.includes("POINT")) {
-            const m = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
-            if (m) { lng2 = parseFloat(m[1]); lat2 = parseFloat(m[2]); }
-          } else {
-            lat2 = event.PositionLat || event.EventPosition?.PositionLat;
-            lng2 = event.PositionLon || event.EventPosition?.PositionLon;
-          }
-          if (eventId && summary && lat2 && lng2) {
-            if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
-            results.push({ id: `SUP_${eventId}`, text: `【${t.name}路況】${summary}`, lat: lat2, lng: lng2, city: t.name });
-          }
-        });
-        await delay(5000);
-      }
+      await delay(8000);
     }
   }
 
-  console.log(`✅ [警廣/補強] 成功整理 ${results.length} 筆全台路況！`);
+  console.log(`✅ [補強縣市] 成功整理 ${results.length} 筆路況！`);
   return results;
 }
 
@@ -499,8 +450,9 @@ async function main() {
     });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "警廣"];
-    allCities.forEach(name => console.log(`${name}: ${cityStats[name] || 0} 筆`));
+    const allCities = [...tdxTargets.map(t => t.name), "高雄市", "桃園市", "新竹市", "新竹縣", "嘉義市", "嘉義縣", "屏東縣", "彰化縣", "南投縣", "苗栗縣"];
+    allCities.forEach(name => { if (cityStats[name]) console.log(`${name}: ${cityStats[name]} 筆`); });
+    console.log(`合計: ${Array.from(candidatesMap.values()).length} 筆候選`);
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
