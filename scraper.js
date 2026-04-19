@@ -244,10 +244,11 @@ async function main() {
       ...(await fetchKaohsiung())
     ];
 
-    localData.forEach(item => {
-      candidatesMap.set(item.id, item);
-      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
-    });
+ const localData = await fetchTaichung();
+localData.forEach(item => {
+  candidatesMap.set(item.id, item);
+  cityStats[item.city] = (cityStats[item.city] || 0) + 1;
+});
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
     const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市", "桃園市", "高雄市"];
