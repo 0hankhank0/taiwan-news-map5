@@ -130,67 +130,41 @@ async function fetchTaichung() {
     const res = await fetch("https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27", fetchOptions);
     const records = await res.json();
     
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
     records.forEach(item => {
       const lat = item.Lat || item.緯度 || item.Y;
       const lng = item.Lng || item.經度 || item.X;
       const text = item.Description || item.施工說明 || item.案件說明 || item.地點;
       const id = item.ID || item.案件編號 || item.序號 || Math.random().toString(36).substring(7);
-      const dateInfo = extractDateInfo(item); // 自動抓取日期欄位
+      const dateInfo = extractDateInfo(item);
+
+      // 嘗試找結束日期，如果已過期就跳過
+      const endDateStr = item.迄日 || item.完工日 || item.結束日期 || item.EndDate;
+      if (endDateStr) {
+        const endDate = new Date(endDateStr).getTime();
+        if (!isNaN(endDate) && endDate < Date.now()) return; // 已過期，跳過
+      }
+
+      // 嘗試找開始日期，只保留近 30 天
+      const startDateStr = item.起日 || item.開工日 || item.開始日期 || item.StartDate;
+      if (startDateStr) {
+        const startDate = new Date(startDateStr).getTime();
+        if (!isNaN(startDate) && startDate < thirtyDaysAgo) return; // 太舊，跳過
+      }
 
       if (lat && lng && text) {
-        results.push({ id: `TC_${id}`, text: `【台中施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "台中市" });
+        results.push({ 
+          id: `TC_${id}`, 
+          text: `【台中施工】${text} (時間資訊: ${dateInfo})`, 
+          lat: parseFloat(lat), 
+          lng: parseFloat(lng), 
+          city: "台中市" 
+        });
       }
     });
     console.log(`✅ [台中] 成功轉換 ${results.length} 筆資料！`);
   } catch (e) { console.error("❌ 台中 API 錯誤:", e.message); }
-  return results;
-}
-
-async function fetchTaoyuan() {
-  console.log("⏳ [桃園市-地方API] 抓取中...");
-  let results = [];
-  try {
-    // ⚠️ 已經替換為正確的 JSON 網址
-    const res = await fetch("https://opendata.tycg.gov.tw/api/3/action/datastore_search?resource_id=56aba135-d55a-4d87-b35b-048e477abb17&limit=1000", fetchOptions);
-    const data = await res.json();
-    const records = data.result?.records || [];
-    
-    records.forEach(item => {
-      const lat = item.WGS84_Y || item.Lat || item.緯度;
-      const lng = item.WGS84_X || item.Lng || item.經度;
-      const text = item.工程名稱 || item.施工內容 || item.宣導內容 || item.地點;
-      const id = item.案件編號 || item._id || Math.random().toString(36).substring(7);
-      const dateInfo = extractDateInfo(item);
-
-      if (lat && lng && text) {
-        results.push({ id: `TY_${id}`, text: `【桃園施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "桃園市" });
-      }
-    });
-    console.log(`✅ [桃園] 成功轉換 ${results.length} 筆資料！`);
-  } catch (e) { console.error("❌ 桃園 API 錯誤:", e.message); }
-  return results;
-}
-
-async function fetchKaohsiung() {
-  console.log("⏳ [高雄市-地方API] 抓取中...");
-  let results = [];
-  try {
-    const res = await fetch("https://pipegis.kcg.gov.tw/openDataService.aspx", fetchOptions);
-    const records = await res.json();
-    
-    records.forEach(item => {
-      const lat = item.Y || item.緯度 || item.wgs84_y;
-      const lng = item.X || item.經度 || item.wgs84_x;
-      const text = item.工程名稱 || item.施工內容 || item.案件說明;
-      const id = item.案件編號 || item.pii_id || Math.random().toString(36).substring(7);
-      const dateInfo = extractDateInfo(item);
-
-      if (lat && lng && text) {
-        results.push({ id: `KH_${id}`, text: `【高雄施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "高雄市" });
-      }
-    });
-    console.log(`✅ [高雄] 成功轉換 ${results.length} 筆資料！`);
-  } catch (e) { console.error("❌ 高雄 API 錯誤:", e.message); }
   return results;
 }
 
