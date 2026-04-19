@@ -166,11 +166,10 @@
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         }).addTo(map);
 
-        // 🌟 關鍵升級：將層級替換為 MarkerClusterGroup！這會幫你把密集點縮起來
         const markers = L.markerClusterGroup({
-            disableClusteringAtZoom: 16, // 放夠大時就散開
-            spiderfyOnMaxZoom: true,     // 重疊的點會像蜘蛛網散開
-            maxClusterRadius: 50         // 叢集收納半徑，預設80，設50看起來會細緻一點
+            disableClusteringAtZoom: 16,
+            spiderfyOnMaxZoom: true,     
+            maxClusterRadius: 50         
         }).addTo(map);
 
         const CATEGORY_CONFIG = {
@@ -211,6 +210,10 @@
         let searchKeyword = "";
         let isTaiwanMode = true;
         let selectedTitleForReport = "";
+        
+        // 🌟 新增：用於儲存與繪製 GeoJSON 邊界圖層
+        let twGeoJSON = null;               
+        let currentBoundaryLayer = null;    
 
         const statusText = document.getElementById("status-text");
         const eventList = document.getElementById("event-list");
@@ -218,6 +221,41 @@
         const reportModal = document.getElementById("report-modal");
         const betaModal = document.getElementById("beta-modal");
         const newsSidebar = document.getElementById("news-sidebar");
+
+        // 🌟 新增：非同步載入台灣縣市邊界資料
+        async function loadTwGeoJSON() {
+            try {
+                const res = await fetch("https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json");
+                twGeoJSON = await res.json();
+            } catch (error) {
+                console.error("載入縣市邊界失敗:", error);
+            }
+        }
+
+        // 🌟 新增：在不改變視角的情況下畫出縣市邊界
+        function drawCityBoundary(selectedCity) {
+            if (currentBoundaryLayer) {
+                map.removeLayer(currentBoundaryLayer);
+                currentBoundaryLayer = null;
+            }
+
+            if (!selectedCity || selectedCity === "all" || selectedCity === "全部" || !twGeoJSON) return;
+
+            currentBoundaryLayer = L.geoJSON(twGeoJSON, {
+                filter: function (feature) {
+                    const featureName = (feature.properties.COUNTYNAME || feature.properties.name || "").replace(/臺/g, "台");
+                    const targetCity = selectedCity.replace(/臺/g, "台");
+                    return featureName.includes(targetCity) || targetCity.includes(featureName);
+                },
+                style: {
+                    color: "#ef4444",     // 紅色邊框
+                    weight: 3,            // 粗細
+                    opacity: 0.8,         
+                    fillColor: "#ef4444", 
+                    fillOpacity: 0.08     // 極低透明度，不擋住標記
+                }
+            }).addTo(map);
+        }
 
         function currentCityFilter() { return document.getElementById("city-filter")?.value || "all"; }
 
@@ -347,7 +385,6 @@
         function renderEvents() {
             let filteredEvents = getFilteredEvents();
 
-            // 強制將新聞來源排在最上方
             filteredEvents.sort((a, b) => {
                 const aIsNews = (a.source === "news" || a.source === "RSS") ? 1 : 0;
                 const bIsNews = (b.source === "news" || b.source === "RSS") ? 1 : 0;
@@ -376,7 +413,6 @@
                     })
                 });
                 
-                // 將每個標記加入到標記叢集(Cluster)中
                 markers.addLayer(marker);
 
                 const popupHtml = `
@@ -420,7 +456,6 @@
                     const target = event.target;
                     if (target instanceof HTMLElement && (target.tagName === "A" || target.tagName === "BUTTON")) return;
                     
-                    // 如果這個 Marker 剛好被包在叢集裡面，這行能確保打開它
                     markers.zoomToShowLayer(marker, () => {
                         flyToEvent(eventItem);
                         marker.openPopup();
@@ -487,9 +522,11 @@
             renderEvents();
         }
 
+        // 🌟 關鍵修改：選擇縣市時呼叫 drawCityBoundary()，但不使用 map.flyTo() 強制跳轉
         function syncCityFilter(value) {
             document.getElementById("city-filter").value = value;
             document.getElementById("city-filter-mobile").value = value;
+            drawCityBoundary(value); 
             renderEvents();
         }
 
@@ -524,14 +561,15 @@
         document.getElementById("beta-close-btn").addEventListener("click", closeBetaModal);
         
         reportModal.addEventListener("click", (event) => { if (event.target === reportModal) closeReportModal(); });
-        
-        // 🌟 修復原本結尾斷掉的事件綁定
         betaModal.addEventListener("click", (event) => { if (event.target === betaModal) closeBetaModal(); });
 
         document.addEventListener("DOMContentLoaded", () => {
             populateCityFilters();
             checkBetaModal();
             syncNewsAndRender();
+            
+            // 🌟 新增：頁面載入時就在背景先取得邊界資料
+            loadTwGeoJSON();
         });
     </script>
 </body>
