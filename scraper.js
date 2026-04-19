@@ -103,19 +103,27 @@ async function fetchPBS() {
   console.log("⏳ [全台-警廣 API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata", fetchOptions);
-    const rawData = await res.json();
-    const records = Array.isArray(rawData) ? rawData : (rawData.result || rawData.data || []);
+    const res = await fetch(
+      "https://od.moi.gov.tw/api/v1/rest/datastore/A01010000C-001114-001?format=json&limit=1000",
+      fetchOptions
+    );
+    const data = await res.json();
+    const records = data.result?.records || [];
 
     records.forEach(item => {
-      const lat = item.y1 || item.lat || item.緯度;
-      const lng = item.x1 || item.lng || item.經度;
-      const text = item.srcdetail || item.comment || item.說明 || item.RoadName;
-      const id = item.UID || item.id || item.發布編號 || Math.random().toString(36).substring(7);
-      
+      const lat = item.y1;
+      const lng = item.x1;
+      const text = item.comment || item.srcdetail || item.road;
+      const id = item.UID || Math.random().toString(36).substring(7);
+
       if (lat && lng && text) {
-        // 警廣通常都是即時的，不用特別附帶日期
-        results.push({ id: `PBS_${id}`, text: `【警廣路況】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "警廣通報" });
+        results.push({
+          id: `PBS_${id}`,
+          text: `【警廣路況】${text}`,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          city: "警廣通報"
+        });
       }
     });
     console.log(`✅ [警廣] 成功轉換 ${results.length} 筆資料！`);
