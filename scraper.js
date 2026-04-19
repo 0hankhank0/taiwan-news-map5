@@ -186,14 +186,11 @@ async function geocode(locationText) {
 // 抓 RSS 新聞並處理
 async function fetchNews() {
   console.log("⏳ [新聞] 開始抓取 RSS...");
-const sources = [
-  { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
-  { url: "https://news.ltn.com.tw/rss/local.xml", name: "自由地方" },
-  { url: "https://rsshub.app/setn/0", name: "三立即時" },
-  { url: "https://rsshub.app/cna/news/aall", name: "中央社" },
-  { url: "https://rsshub.app/udn/news/cate/6638", name: "聯合社會" },
-  { url: "https://rsshub.app/ttv/news/society", name: "台視社會" },
-];
+  const sources = [
+    { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
+    { url: "https://news.ltn.com.tw/rss/local.xml", name: "自由地方" },
+  ];
+
   let allArticles = [];
   for (const source of sources) {
     try {
@@ -232,10 +229,24 @@ const sources = [
   let newsEvents = [];
   for (const article of relevantArticles) {
     const ai = article.aiResult;
-    if (!ai.location) { console.log(`⚠️ 無地名跳過: ${article.title}`); continue; }
 
-    const coords = await geocode(ai.location);
-    if (!coords) { console.log(`⚠️ 無法定位跳過: ${ai.location}`); continue; }
+    if (!ai.location) {
+      console.log(`⚠️ 無地名跳過: ${article.title}`);
+      continue;
+    }
+
+    // 先試精確地名，失敗再試備用地名
+    let coords = await geocode(ai.location);
+    if (!coords && ai.locationFallback) {
+      console.log(`🔄 備用定位: ${ai.locationFallback}`);
+      await delay(1200);
+      coords = await geocode(ai.locationFallback);
+    }
+
+    if (!coords) {
+      console.log(`⚠️ 無法定位跳過: ${ai.location}`);
+      continue;
+    }
 
     newsEvents.push({
       id: article.id,
@@ -246,7 +257,7 @@ const sources = [
       url: article.link,
       lat: coords.lat,
       lng: coords.lng,
-      city: ai.location,
+      city: ai.locationFallback || ai.location,
       isReal: true,
       expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
     });
