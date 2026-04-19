@@ -270,11 +270,13 @@ async function fetchPBS(token) {
   console.log("⏳ [全台防線-警廣] 開始抓取警廣即時路況...");
   let results = [];
 
-  // 📌 修復：依序試三個可能的端點，找到有資料的就用
+  // 📌 修復：依序試五個可能的端點（v2/Road/Traffic 架構為主）
   const candidateUrls = [
     "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Incident/PBS?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Traffic/PBS/Incident?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Incident?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/PBS?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/LiveTraffic/PBS?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Traffic/PBS/Record?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Record?$format=JSON",
   ];
 
   let data = null;
@@ -377,9 +379,21 @@ async function main() {
 
         const eventsList = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
 
-        // 📌 修復 2：台南 debug - 印出原始筆數，確認是空還是被過濾掉
+        // 📌 修復 2：台南 debug - 印出原始筆數 + 座標欄位結構
         if (target.name === "台南市") {
           console.log(`🔍 [台南 debug] ${evType} 原始資料筆數: ${eventsList.length}`);
+          if (eventsList.length > 0) {
+            const s = eventsList[0];
+            console.log(`🔍 [台南 debug] 第一筆欄位:`, JSON.stringify({
+              EventID: s.EventID || s.RoadEventID,
+              summary: (s.EventTitle || s.EventSummary || s.Description || "").slice(0, 40),
+              PositionLat: s.PositionLat,
+              PositionLon: s.PositionLon,
+              EventPosition: s.EventPosition,
+              Positions: typeof s.Positions === "string" ? s.Positions.slice(0, 80) : s.Positions,
+              EndTime: s.EndTime || s.EventEndTime,
+            }));
+          }
         }
 
         eventsList.forEach(event => {
