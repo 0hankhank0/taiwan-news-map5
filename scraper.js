@@ -18,7 +18,6 @@ const fetchOptions = {
 
 const todayStr = new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" });
 
-// 民國年轉西元年 (YYYMMDD -> timestamp)
 function parseTWDate(str) {
   if (!str || str.length < 7) return null;
   const year = parseInt(str.substring(0, 3)) + 1911;
@@ -94,38 +93,164 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
 }
 
 // ==========================================
-// 外掛 API
+// 新聞抓取與處理
 // ==========================================
 
-async function fetchPBS() {
-  console.log("⏳ [全台-警廣 API] 抓取中...");
-  let results = [];
+// 解析 RSS XML，回傳文章列表
+function parseRSS(xml) {
+  const items = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const get = (tag) => {
+      const m = block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+      return m ? (m[1] || m[2] || "").trim() : "";
+    };
+    const title = get("title");
+    const link = get("link");
+    const description = get("description").replace(/<[^>]+>/g, "").trim();
+    const pubDate = get("pubDate");
+    if (title && link) {
+      items.push({ title, link, description, pubDate });
+    }
+  }
+  return items;
+}
+
+// 用 AI 篩選新聞：判斷是否為車禍/火災/活動，並抽取地點
+async function aiFilterNews(articles) {
+  if (articles.length === 0) return [];
+  const prompt = `你是台灣新聞事件分析器。今天日期是【${todayStr}】。
+以下是新聞標題與摘要列表，請判斷每則是否屬於以下三類之一：
+1. 車禍／交通事故
+2. 火災／災害
+3. 活動／展覽／演唱會／節慶
+
+不符合以上三類的新聞（如政治、國際、財經、體育）請過濾掉。
+
+對每則符合的新聞，請回傳：
+- id: 原始 id
+- isRelevant: true
+- title: 簡短中文標題（20字內）
+- category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
+- location: 從標題或摘要中抽取最具體的台灣地名（例如"台北市信義區"、"高雄市三民區"、"台中市"），若無地名則填 null
+- ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
+
+不符合的新聞請回傳 { id, isRelevant: false }。
+只回傳 JSON 陣列，不要其他文字。
+
+新聞列表：
+${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 100) })))}`;
+
   try {
-    const res = await fetch(
-      "https://od.moi.gov.tw/api/v1/rest/datastore/A01010000C-001114-001?format=json&limit=1000",
-      fetchOptions
-    );
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0,
+    });
+    const text = res.choices[0].message.content.replace(/```json|```/g, "").trim();
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("❌ 新聞 AI 篩選失敗:", err.message);
+    return [];
+  }
+}
+
+// 用 Nominatim 把地名轉成座標
+async function geocode(locationText) {
+  if (!locationText) return null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "taiwan-news-map/1.0 (contact@example.com)" }
+    });
     const data = await res.json();
-    const records = data.result?.records || [];
-    records.forEach(item => {
-      const lat = item.y1;
-      const lng = item.x1;
-      const text = item.comment || item.srcdetail || item.road;
-      const id = item.UID || Math.random().toString(36).substring(7);
-      if (lat && lng && text) {
-        results.push({
-          id: `PBS_${id}`,
-          text: `【警廣路況】${text}`,
-          lat: parseFloat(lat),
-          lng: parseFloat(lng),
-          city: "警廣通報"
-        });
+    if (data && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch (e) {
+    console.error(`❌ Geocode 失敗 [${locationText}]:`, e.message);
+  }
+  return null;
+}
+
+// 抓 RSS 新聞並處理
+async function fetchNews() {
+  console.log("⏳ [新聞] 開始抓取 RSS...");
+  const sources = [
+    { url: "https://www.ettoday.net/news/rss/127.xml", name: "ETtoday社會" },
+    { url: "https://udn.com/rssfeed/news/2/6638", name: "聯合社會" },
+    { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
+  ];
+
+  let allArticles = [];
+  for (const source of sources) {
+    try {
+      const res = await fetch(source.url, fetchOptions);
+      const xml = await res.text();
+      const items = parseRSS(xml);
+      items.forEach((item, i) => {
+        allArticles.push({ ...item, id: `NEWS_${source.name}_${i}`, source: source.name });
+      });
+      console.log(`✅ [${source.name}] 抓到 ${items.length} 則`);
+    } catch (e) {
+      console.error(`❌ [${source.name}] RSS 失敗:`, e.message);
+    }
+    await delay(1000);
+  }
+
+  if (allArticles.length === 0) return [];
+
+  // AI 篩選，每批 15 則
+  let relevantArticles = [];
+  for (let i = 0; i < allArticles.length; i += 15) {
+    const batch = allArticles.slice(i, i + 15);
+    const aiResults = await aiFilterNews(batch);
+    batch.forEach(article => {
+      const ai = aiResults.find(r => r.id === article.id);
+      if (ai && ai.isRelevant) {
+        relevantArticles.push({ ...article, aiResult: ai });
       }
     });
-    console.log(`✅ [警廣] 成功轉換 ${results.length} 筆資料！`);
-  } catch (e) { console.error("❌ 警廣 API 錯誤:", e.message); }
-  return results;
+    await delay(1000);
+  }
+
+  console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
+
+  // Geocoding，每次等 1.2 秒（Nominatim 限制）
+  let newsEvents = [];
+  for (const article of relevantArticles) {
+    const ai = article.aiResult;
+    if (!ai.location) { console.log(`⚠️ 無地名跳過: ${article.title}`); continue; }
+
+    const coords = await geocode(ai.location);
+    if (!coords) { console.log(`⚠️ 無法定位跳過: ${ai.location}`); continue; }
+
+    newsEvents.push({
+      id: article.id,
+      title: ai.title || article.title,
+      content: article.description?.slice(0, 120) || "",
+      category: ai.category || "other",
+      source: "news",
+      url: article.link,
+      lat: coords.lat,
+      lng: coords.lng,
+      city: ai.location,
+      isReal: true,
+      expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
+    });
+
+    await delay(1200);
+  }
+
+  console.log(`📍 [新聞] 成功定位 ${newsEvents.length} 則，寫入地圖`);
+  return newsEvents;
 }
+
+// ==========================================
+// 外掛 API
+// ==========================================
 
 async function fetchTaichung() {
   console.log("⏳ [台中市-地方API] 抓取中...");
@@ -174,7 +299,7 @@ async function fetchTaichung() {
 
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞同步系統 (防禦過期資料升級版)...");
+    console.log("🚀 啟動全台新聞同步系統 (新聞整合版)...");
     const token = await getTDXToken();
 
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -236,27 +361,19 @@ async function main() {
       await delay(20000);
     }
 
-    console.log("\n📡 [外掛 API] 開始抓取警廣與地方資料...");
-    const localData = [
-      ...(await fetchPBS()),
-      ...(await fetchTaichung()),
-    ];
-
+    // 台中地方 API
+    const localData = await fetchTaichung();
     localData.forEach(item => {
       candidatesMap.set(item.id, item);
       cityStats[item.city] = (cityStats[item.city] || 0) + 1;
     });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市"];
+    const allCities = [...tdxTargets.map(t => t.name), "台中市"];
     allCities.forEach(name => console.log(`${name}: ${cityStats[name] || 0} 筆`));
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
-    if (candidates.length === 0) {
-      console.log("⚠️ 沒抓到任何新資料。");
-      return;
-    }
 
     let itemsForAI = [];
     let newCacheList = [];
@@ -285,7 +402,7 @@ async function main() {
           title: ai.title || item.text,
           category: ai.category || "accident",
           isReal: ai.isReal,
-         expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
+          expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
         };
         newCacheList.push(processedItem);
         if (ai.isReal) finalEvents.push(processedItem);
@@ -301,9 +418,30 @@ async function main() {
       }
     });
 
+    // 抓新聞並合併
+    console.log("\n📰 [新聞] 開始處理新聞來源...");
+    const newsEvents = await fetchNews();
+
+    // 新聞用獨立快取避免跟交通快取混在一起
+    let rawNewsCache = await kv.get("taiwan_news_cache");
+    let newsCacheMap = new Map();
+    if (rawNewsCache) {
+      const parsed = typeof rawNewsCache === "string" ? JSON.parse(rawNewsCache) : rawNewsCache;
+      parsed.forEach(item => { if (item.expiresAt > Date.now()) newsCacheMap.set(item.id, item); });
+    }
+
+    // 更新新聞快取
+    newsEvents.forEach(item => newsCacheMap.set(item.id, item));
+    const validNewsEvents = Array.from(newsCacheMap.values()).filter(n => n.expiresAt > Date.now());
+
+    await kv.set("taiwan_news_cache", JSON.stringify(validNewsEvents));
+
+    // 合併交通 + 新聞
+    const allFinalEvents = [...finalEvents, ...validNewsEvents];
+
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
-    await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
-    console.log(`💾 全部完工！產出 ${finalEvents.length} 筆最新且未過期的全台地圖事件。`);
+    await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
+    console.log(`💾 全部完工！交通 ${finalEvents.length} 筆 + 新聞 ${validNewsEvents.length} 筆 = 共 ${allFinalEvents.length} 筆`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
