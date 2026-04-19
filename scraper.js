@@ -186,11 +186,13 @@ async function geocode(locationText) {
 // 抓 RSS 新聞並處理
 async function fetchNews() {
   console.log("⏳ [新聞] 開始抓取 RSS...");
-  const sources = [
-    { url: "https://www.ettoday.net/news/rss/127.xml", name: "ETtoday社會" },
-    { url: "https://udn.com/rssfeed/news/2/6638", name: "聯合社會" },
-    { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
-  ];
+const sources = [
+  { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
+  { url: "https://news.ltn.com.tw/rss/local.xml", name: "自由地方" },
+  { url: "https://news.pts.org.tw/xml/dwrss.xml", name: "公視" },
+  { url: "https://www.cna.com.tw/rss/aall.aspx", name: "中央社" },
+  { url: "https://feeds.feedburner.com/rssnewssetn", name: "三立新聞" },
+];
 
   let allArticles = [];
   for (const source of sources) {
