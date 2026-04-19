@@ -63,6 +63,7 @@ async function fetchTDX(url, token, label, retries = 3) {
 
 async function aiFilterEvents(items) {
   if (items.length === 0) return [];
+ // 💡 升級版 Prompt：統一標籤名稱，並教導 AI 處理空白摘要
   const prompt = `你是台灣交通事件篩選器。今天日期是【${todayStr}】。
 請分析以下事件，判斷是否為「目前正在發生」且「真實影響用路人」的事件。
 特別注意：如果事件提供的時間資訊(如迄日、完工日、結束日期)早於今天，代表已過期，請務必將 isReal 設為 false！
@@ -70,8 +71,8 @@ async function aiFilterEvents(items) {
 請回傳 JSON 陣列，每個物件包含：
 - id: 原始 id
 - isReal: boolean（是否為真實且未過期的事件）
-- title: 簡短中文標題（20字內）
-- category: "accident"（事故）| "construction"（施工）| "congestion"（壅塞）| "other"
+- title: 簡短中文標題（20字內。若政府未提供摘要，請根據標題或事件類型自行生成通順的句子，例如「國道發生壅塞事件」）
+- category: "traffic"（壅塞/即時路況）| "accident"（車禍/交通事故）| "construction"（施工管制）| "disaster"（災害意外）| "other"
 - ttl_hours: 預計持續小時數（1-24）
 
 只回傳 JSON，不要其他文字。
