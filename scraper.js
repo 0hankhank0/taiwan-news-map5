@@ -270,13 +270,12 @@ async function fetchPBS(token) {
   console.log("⏳ [全台防線-警廣] 開始抓取警廣即時路況...");
   let results = [];
 
-  // 📌 修復：依序試五個可能的端點（v2/Road/Traffic 架構為主）
+  // 📌 修復：PBS 已全面 404 被 TDX 下架。改用 v2/Road/Traffic 新架構的全台事故資料補強
+  // 這些端點涵蓋全台各道路等級的即時路況事件，效果等同舊版警廣
   const candidateUrls = [
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Incident/PBS?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event/PBS?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/LiveTraffic/PBS?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v2/Traffic/PBS/Record?$format=JSON",
-    "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Record?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Incident?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Event?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/LiveTraffic?$format=JSON",
   ];
 
   let data = null;
@@ -296,20 +295,28 @@ async function fetchPBS(token) {
   }
 
   try {
-    const records = Array.isArray(data) ? data : (data?.PBSRecords || data?.Incidents || data?.Events || []);
-    console.log(`📦 [警廣] 原始資料筆數: ${records.length}`);
+    const records = Array.isArray(data) ? data : (data?.Incidents || data?.Events || data?.LiveTraffics || data?.PBSRecords || []);
+    console.log(`📦 [全台路況] 原始資料筆數: ${records.length}`);
 
     records.forEach(item => {
-      const lat = item.PositionLat || item.EventPosition?.PositionLat;
-      const lng = item.PositionLon || item.EventPosition?.PositionLon;
-      const text = item.Description || item.EventSummary || item.RoadName || "";
-      const city = item.CityName || "警廣路況";
+      // 新版 API 座標可能在 Positions (WKT) 或 PositionLat/Lon
+      let lat = item.PositionLat || item.EventPosition?.PositionLat;
+      let lng = item.PositionLon || item.EventPosition?.PositionLon;
+
+      if (!lat && item.Positions?.includes("POINT")) {
+        const match = item.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
+        if (match) { lng = parseFloat(match[1]); lat = parseFloat(match[2]); }
+      }
+
+      const text = item.EventTitle || item.EventSummary || item.Description || item.RoadName || "";
+      const city = item.CityName || item.City || "全台路況";
+      const id = item.IncidentID || item.EventID || item.RoadEventID || item.UID || Math.random().toString(36).substring(7);
 
       if (lat && lng && text) {
         if (text.includes("宣導") || text.includes("交通安全")) return;
         results.push({
-          id: `PBS_${item.UID || item.IncidentID || Math.random().toString(36).substring(7)}`,
-          text: `【警廣通報】${text}`,
+          id: `PBS_${id}`,
+          text: `【全台路況】${text}`,
           lat,
           lng,
           city,
@@ -409,7 +416,8 @@ async function main() {
           let lat, lng;
 
           if (event.Positions?.includes("POINT")) {
-            const match = event.Positions.match(/POINT\(([^ ]+) ([^)]+)\)/);
+            // 📌 修復：POINT 後面可能有空格，例如 "POINT (x y)" 或 "POINT(x y)"
+            const match = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
             if (match) { lng = parseFloat(match[1]); lat = parseFloat(match[2]); }
           } else {
             lat = event.PositionLat || event.EventPosition?.PositionLat;
