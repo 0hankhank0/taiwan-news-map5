@@ -285,7 +285,7 @@ async function main() {
           title: ai.title || item.text,
           category: ai.category || "accident",
           isReal: ai.isReal,
-          expiresAt: Date.now() + (ai.ttl_hours || 4) * 60 * 60 * 1000,
+         expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
         };
         newCacheList.push(processedItem);
         if (ai.isReal) finalEvents.push(processedItem);
