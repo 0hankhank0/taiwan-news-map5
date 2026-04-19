@@ -189,11 +189,11 @@ async function fetchNews() {
 const sources = [
   { url: "https://news.ltn.com.tw/rss/society.xml", name: "自由社會" },
   { url: "https://news.ltn.com.tw/rss/local.xml", name: "自由地方" },
-  { url: "https://news.pts.org.tw/xml/dwrss.xml", name: "公視" },
-  { url: "https://www.cna.com.tw/rss/aall.aspx", name: "中央社" },
-  { url: "https://feeds.feedburner.com/rssnewssetn", name: "三立新聞" },
+  { url: "https://rsshub.app/setn/0", name: "三立即時" },
+  { url: "https://rsshub.app/cna/news/aall", name: "中央社" },
+  { url: "https://rsshub.app/udn/news/cate/6638", name: "聯合社會" },
+  { url: "https://rsshub.app/ttv/news/society", name: "台視社會" },
 ];
-
   let allArticles = [];
   for (const source of sources) {
     try {
