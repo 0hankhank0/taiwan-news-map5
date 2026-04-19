@@ -1,4 +1,5 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // 忽略政府網站過期的 SSL 憑證
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // ⚠️ 破解政府網站過期的 SSL 憑證 (必須放在第一行)
+
 const { Redis } = require("@upstash/redis");
 const OpenAI = require("openai");
 
@@ -10,6 +11,14 @@ const kv = new Redis({
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
+
+// 偽裝成一般瀏覽器，避免被政府防火牆阻擋
+const fetchOptions = {
+  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+};
+
+// 獲取當前台灣時間，交給 AI 判斷是否過期
+const todayStr = new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" });
 
 async function getTDXToken() {
   const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
@@ -42,22 +51,25 @@ async function fetchTDX(url, token, label, retries = 3) {
     }
     return await res.json();
   }
-  console.log(`❌ ${label} 重試 ${retries} 次後放棄`);
   return null;
 }
 
 async function aiFilterEvents(items) {
   if (items.length === 0) return [];
-  const prompt = `你是台灣交通事件篩選器。以下是交通事件列表，請判斷每筆是否為真實影響用路人的事件。
+  
+  // 💡 神級 Prompt：賦予 AI 時間觀念，自動過濾歷史資料
+  const prompt = `你是台灣交通事件篩選器。今天日期是【${todayStr}】。
+請分析以下事件，判斷是否為「目前正在發生」且「真實影響用路人」的事件。
+特別注意：如果事件提供的時間資訊(如迄日、完工日、結束日期)早於今天，代表已過期，請務必將 isReal 設為 false！
+
 請回傳 JSON 陣列，每個物件包含：
 - id: 原始 id
-- isReal: boolean（是否為真實影響交通的事件）
+- isReal: boolean（是否為真實且未過期的事件）
 - title: 簡短中文標題（20字內）
 - category: "accident"（事故）| "construction"（施工）| "congestion"（壅塞）| "other"
 - ttl_hours: 預計持續小時數（1-24）
 
 只回傳 JSON，不要其他文字。
-
 事件列表：
 ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
 
@@ -75,20 +87,18 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
   }
 }
 
+// 💡 提取日期資訊的輔助函數
+function extractDateInfo(item) {
+  return Object.entries(item)
+    .filter(([k]) => k.includes("日") || k.includes("時間") || k.includes("Date"))
+    .map(([k, v]) => `${k}:${v}`)
+    .join(", ");
+}
+
 // ==========================================
 // 🌟 地方與全國外掛 API (Adapter) 區塊
 // ==========================================
 
-// ==========================================
-// 🌟 地方與全國外掛 API (Adapter) 區塊 (防阻擋升級版)
-// ==========================================
-
-// 偽裝成一般瀏覽器，避免被政府防火牆阻擋
-const fetchOptions = {
-  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
-};
-
-// 1. 警廣 (全台即時路況)
 async function fetchPBS() {
   console.log("⏳ [全台-警廣 API] 抓取中...");
   let results = [];
@@ -104,6 +114,7 @@ async function fetchPBS() {
       const id = item.UID || item.id || item.發布編號 || Math.random().toString(36).substring(7);
       
       if (lat && lng && text) {
+        // 警廣通常都是即時的，不用特別附帶日期
         results.push({ id: `PBS_${id}`, text: `【警廣路況】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "警廣通報" });
       }
     });
@@ -112,7 +123,6 @@ async function fetchPBS() {
   return results;
 }
 
-// 2. 台中市 (道路施工)
 async function fetchTaichung() {
   console.log("⏳ [台中市-地方API] 抓取中...");
   let results = [];
@@ -125,9 +135,10 @@ async function fetchTaichung() {
       const lng = item.Lng || item.經度 || item.X;
       const text = item.Description || item.施工說明 || item.案件說明 || item.地點;
       const id = item.ID || item.案件編號 || item.序號 || Math.random().toString(36).substring(7);
+      const dateInfo = extractDateInfo(item); // 自動抓取日期欄位
 
       if (lat && lng && text) {
-        results.push({ id: `TC_${id}`, text: `【台中施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "台中市" });
+        results.push({ id: `TC_${id}`, text: `【台中施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "台中市" });
       }
     });
     console.log(`✅ [台中] 成功轉換 ${results.length} 筆資料！`);
@@ -135,12 +146,11 @@ async function fetchTaichung() {
   return results;
 }
 
-// 3. 桃園市 (替換為正確的 CKAN JSON API 網址)
 async function fetchTaoyuan() {
   console.log("⏳ [桃園市-地方API] 抓取中...");
   let results = [];
   try {
-    // 改用桃園開放資料庫的 JSON API 節點，不再下載 CSV
+    // ⚠️ 已經替換為正確的 JSON 網址
     const res = await fetch("https://opendata.tycg.gov.tw/api/3/action/datastore_search?resource_id=56aba135-d55a-4d87-b35b-048e477abb17&limit=1000", fetchOptions);
     const data = await res.json();
     const records = data.result?.records || [];
@@ -150,9 +160,10 @@ async function fetchTaoyuan() {
       const lng = item.WGS84_X || item.Lng || item.經度;
       const text = item.工程名稱 || item.施工內容 || item.宣導內容 || item.地點;
       const id = item.案件編號 || item._id || Math.random().toString(36).substring(7);
+      const dateInfo = extractDateInfo(item);
 
       if (lat && lng && text) {
-        results.push({ id: `TY_${id}`, text: `【桃園施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "桃園市" });
+        results.push({ id: `TY_${id}`, text: `【桃園施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "桃園市" });
       }
     });
     console.log(`✅ [桃園] 成功轉換 ${results.length} 筆資料！`);
@@ -160,7 +171,6 @@ async function fetchTaoyuan() {
   return results;
 }
 
-// 4. 高雄市 (管線挖掘)
 async function fetchKaohsiung() {
   console.log("⏳ [高雄市-地方API] 抓取中...");
   let results = [];
@@ -173,9 +183,10 @@ async function fetchKaohsiung() {
       const lng = item.X || item.經度 || item.wgs84_x;
       const text = item.工程名稱 || item.施工內容 || item.案件說明;
       const id = item.案件編號 || item.pii_id || Math.random().toString(36).substring(7);
+      const dateInfo = extractDateInfo(item);
 
       if (lat && lng && text) {
-        results.push({ id: `KH_${id}`, text: `【高雄施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "高雄市" });
+        results.push({ id: `KH_${id}`, text: `【高雄施工】${text} (時間資訊: ${dateInfo})`, lat: parseFloat(lat), lng: parseFloat(lng), city: "高雄市" });
       }
     });
     console.log(`✅ [高雄] 成功轉換 ${results.length} 筆資料！`);
@@ -189,7 +200,7 @@ async function fetchKaohsiung() {
 
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞同步系統 (終極雙軌外掛版)...");
+    console.log("🚀 啟動全台新聞同步系統 (防禦過期資料升級版)...");
     const token = await getTDXToken();
 
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -202,7 +213,6 @@ async function main() {
     let candidatesMap = new Map();
     let cityStats = {};
 
-    // 🏆 1. 執行 TDX 陣營 (移除中南三都，專心抓雙北/台南/國省道)
     let tdxTargets = [
       { path: "Freeway", name: "國道", types: ["LiveEvent"] },
       { path: "Highway", name: "省道", types: ["LiveEvent"] },
@@ -252,7 +262,6 @@ async function main() {
       await delay(20000);
     }
 
-    // 🏆 2. 執行獨立 API 陣營 (警廣 + 地方政府)
     console.log("\n📡 [外掛 API] 開始抓取警廣與地方資料...");
     const localData = [
       ...(await fetchPBS()),
@@ -272,10 +281,7 @@ async function main() {
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
-    if (candidates.length === 0) {
-      console.log("⚠️ 沒抓到任何新資料，可能是全部被 429 了。");
-      return;
-    }
+    if (candidates.length === 0) return;
 
     let itemsForAI = [];
     let newCacheList = [];
@@ -298,10 +304,8 @@ async function main() {
       const aiResults = await aiFilterEvents(batch);
       batch.forEach(item => {
         const ai = aiResults.find(r => r.id === item.id);
-        if (!ai) {
-          console.log(`⚠️ AI 沒有回傳 ${item.id} 的結果，跳過`);
-          return;
-        }
+        if (!ai) return;
+        
         const processedItem = {
           ...item,
           title: ai.title || item.text,
@@ -325,7 +329,7 @@ async function main() {
 
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
     await kv.set("taiwan_traffic_events", JSON.stringify(finalEvents));
-    console.log(`💾 全部完工！產出 ${finalEvents.length} 筆全台地圖事件。`);
+    console.log(`💾 全部完工！產出 ${finalEvents.length} 筆最新且未過期的全台地圖事件。`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
