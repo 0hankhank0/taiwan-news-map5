@@ -245,6 +245,8 @@ async function main() {
     }
 
     console.log("\n📡 [外掛 API] 開始抓取警廣與地方資料...");
+    
+    // 👇 確保整個 main() 裡面，只有這裡出現過 const localData
     const localData = [
       ...(await fetchPBS()),
       ...(await fetchTaichung()),
@@ -252,11 +254,10 @@ async function main() {
       ...(await fetchKaohsiung())
     ];
 
- const localData = await fetchTaichung();
-localData.forEach(item => {
-  candidatesMap.set(item.id, item);
-  cityStats[item.city] = (cityStats[item.city] || 0) + 1;
-});
+    localData.forEach(item => {
+      candidatesMap.set(item.id, item);
+      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
+    });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
     const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市", "桃園市", "高雄市"];
