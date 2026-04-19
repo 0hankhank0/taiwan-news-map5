@@ -134,7 +134,7 @@ async function aiFilterNews(articles) {
 - isRelevant: true
 - title: 簡短中文標題（20字內）
 - category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
-- location: 從標題或摘要中抽取最具體的台灣地名（例如"台北市信義區"、"高雄市三民區"、"台中市"），若無地名則填 null
+- location: 從標題或摘要中抽取最具體的台灣地名，包含路名、交流道、橋梁、地標等（例如"國道3號關廟段"、"台北市信義區"、"淡水河堤"），若完全無地名則填 null
 - ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
 
 不符合的新聞請回傳 { id, isRelevant: false }。
