@@ -355,9 +355,18 @@ async function main() {
 
         const eventsList = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
 
-        eventsList.forEach(event => {
+eventsList.forEach(event => {
           const summary = event.EventTitle || event.EventSummary || event.Description || "";
           const eventId = event.EventID || event.RoadEventID;
+
+          // 💡 1. 攔截明確過期的 TDX 資料 (有些政府忘記下架，但欄位有寫 EndTime)
+          const endTime = event.EndTime || event.EventEndTime;
+          if (endTime) {
+              const endTs = new Date(endTime).getTime();
+              // 如果結束時間小於「現在」，代表絕對過期了，直接踢掉不浪費 AI 額度！
+              if (endTs && endTs < Date.now()) return;
+          }
+
           let lat, lng;
 
           if (event.Positions?.includes("POINT")) {
@@ -370,9 +379,14 @@ async function main() {
 
           if (eventId && summary && lat && lng) {
             if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
+            
+            // 💡 2. 就算沒明確被程式踢掉，我們也把時間塞進文字讓 AI 幫忙雙重審核
+            const startTime = event.StartTime || event.EventStartTime || "";
+            const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
+
             candidatesMap.set(eventId, {
               id: eventId,
-              text: `【${event.EventTypeName || "路況"}】${summary}`,
+              text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`, // 加上時間資訊
               lat, lng, city: target.name,
             });
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
