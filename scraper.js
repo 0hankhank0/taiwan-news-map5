@@ -1,4 +1,4 @@
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // ⚠️ 破解政府網站過期的 SSL 憑證 (必須放在第一行)
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const { Redis } = require("@upstash/redis");
 const OpenAI = require("openai");
@@ -12,12 +12,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
-// 偽裝成一般瀏覽器，避免被政府防火牆阻擋
 const fetchOptions = {
   headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
 };
 
-// 獲取當前台灣時間，交給 AI 判斷是否過期
 const todayStr = new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" });
 
 async function getTDXToken() {
@@ -56,8 +54,6 @@ async function fetchTDX(url, token, label, retries = 3) {
 
 async function aiFilterEvents(items) {
   if (items.length === 0) return [];
-  
-  // 💡 神級 Prompt：賦予 AI 時間觀念，自動過濾歷史資料
   const prompt = `你是台灣交通事件篩選器。今天日期是【${todayStr}】。
 請分析以下事件，判斷是否為「目前正在發生」且「真實影響用路人」的事件。
 特別注意：如果事件提供的時間資訊(如迄日、完工日、結束日期)早於今天，代表已過期，請務必將 isReal 設為 false！
@@ -87,7 +83,6 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
   }
 }
 
-// 💡 提取日期資訊的輔助函數
 function extractDateInfo(item) {
   return Object.entries(item)
     .filter(([k]) => k.includes("日") || k.includes("時間") || k.includes("Date"))
@@ -96,7 +91,7 @@ function extractDateInfo(item) {
 }
 
 // ==========================================
-// 🌟 地方與全國外掛 API (Adapter) 區塊
+// 🌟 外掛 API
 // ==========================================
 
 async function fetchPBS() {
@@ -135,9 +130,11 @@ async function fetchTaichung() {
   console.log("⏳ [台中市-地方API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27", fetchOptions);
+    const res = await fetch(
+      "https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27",
+      fetchOptions
+    );
     const records = await res.json();
-    
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
 
     records.forEach(item => {
@@ -147,27 +144,25 @@ async function fetchTaichung() {
       const id = item.ID || item.案件編號 || item.序號 || Math.random().toString(36).substring(7);
       const dateInfo = extractDateInfo(item);
 
-      // 嘗試找結束日期，如果已過期就跳過
       const endDateStr = item.迄日 || item.完工日 || item.結束日期 || item.EndDate;
       if (endDateStr) {
         const endDate = new Date(endDateStr).getTime();
-        if (!isNaN(endDate) && endDate < Date.now()) return; // 已過期，跳過
+        if (!isNaN(endDate) && endDate < Date.now()) return;
       }
 
-      // 嘗試找開始日期，只保留近 30 天
       const startDateStr = item.起日 || item.開工日 || item.開始日期 || item.StartDate;
       if (startDateStr) {
         const startDate = new Date(startDateStr).getTime();
-        if (!isNaN(startDate) && startDate < thirtyDaysAgo) return; // 太舊，跳過
+        if (!isNaN(startDate) && startDate < thirtyDaysAgo) return;
       }
 
       if (lat && lng && text) {
-        results.push({ 
-          id: `TC_${id}`, 
-          text: `【台中施工】${text} (時間資訊: ${dateInfo})`, 
-          lat: parseFloat(lat), 
-          lng: parseFloat(lng), 
-          city: "台中市" 
+        results.push({
+          id: `TC_${id}`,
+          text: `【台中施工】${text} (時間資訊: ${dateInfo})`,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          city: "台中市"
         });
       }
     });
@@ -177,7 +172,7 @@ async function fetchTaichung() {
 }
 
 // ==========================================
-// 🚀 主程式區塊
+// 🚀 主程式
 // ==========================================
 
 async function main() {
@@ -245,13 +240,9 @@ async function main() {
     }
 
     console.log("\n📡 [外掛 API] 開始抓取警廣與地方資料...");
-    
-    // 👇 確保整個 main() 裡面，只有這裡出現過 const localData
     const localData = [
       ...(await fetchPBS()),
       ...(await fetchTaichung()),
-      ...(await fetchTaoyuan()),
-      ...(await fetchKaohsiung())
     ];
 
     localData.forEach(item => {
@@ -260,12 +251,15 @@ async function main() {
     });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市", "桃園市", "高雄市"];
+    const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市"];
     allCities.forEach(name => console.log(`${name}: ${cityStats[name] || 0} 筆`));
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
-    if (candidates.length === 0) return;
+    if (candidates.length === 0) {
+      console.log("⚠️ 沒抓到任何新資料。");
+      return;
+    }
 
     let itemsForAI = [];
     let newCacheList = [];
@@ -289,7 +283,6 @@ async function main() {
       batch.forEach(item => {
         const ai = aiResults.find(r => r.id === item.id);
         if (!ai) return;
-        
         const processedItem = {
           ...item,
           title: ai.title || item.text,
@@ -304,7 +297,7 @@ async function main() {
 
     cacheMap.forEach(cached => {
       if (!newCacheList.find(n => n.id === cached.id)) {
-        if (cached.expiresAt > Date.now()) {  
+        if (cached.expiresAt > Date.now()) {
           newCacheList.push(cached);
           if (cached.isReal) finalEvents.push(cached);
         }
