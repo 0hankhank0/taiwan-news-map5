@@ -135,8 +135,7 @@ async function fetchTaichung() {
       fetchOptions
     );
     const records = await res.json();
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-
+if (records.length > 0) console.log("台中欄位範例:", JSON.stringify(records[0]));
     records.forEach(item => {
       const lat = item.Lat || item.緯度 || item.Y;
       const lng = item.Lng || item.經度 || item.X;
