@@ -187,28 +187,34 @@ async function geocode(locationText) {
 async function fetchNews() {
   console.log("⏳ [新聞] 開始抓取 RSS...");
   const sources = [
-    // ── 原有來源 ──
-    { url: "https://news.ltn.com.tw/rss/society.xml",   name: "自由社會" },
-    { url: "https://news.ltn.com.tw/rss/local.xml",     name: "自由地方" },
+    // ── 自由時報（穩定可用）──
+    { url: "https://news.ltn.com.tw/rss/society.xml",            name: "自由社會" },
+    { url: "https://news.ltn.com.tw/rss/local.xml",              name: "自由地方" },
 
-    // ── 新增：TVBS 社會 ──
-    { url: "https://news.tvbs.com.tw/rss/news/society",  name: "TVBS社會" },
+    // ── 中央社 feedburner（官方 RSS，穩定）──
+    { url: "https://feeds.feedburner.com/rsscna/social",          name: "中央社社會" },
+    { url: "https://feeds.feedburner.com/rsscna/local",           name: "中央社地方" },
 
-    // ── 新增：ETtoday 社會、地方 ──
-    { url: "https://feeds.feedburner.com/ettoday/ETtodaySociety", name: "ETtoday社會" },
-    { url: "https://feeds.feedburner.com/ettoday/ETtodayRegional", name: "ETtoday地方" },
+    // ── TVBS（社會頻道正確路徑）──
+    { url: "https://news.tvbs.com.tw/rss/society.xml",            name: "TVBS社會" },
 
-    // ── 新增：三立新聞 社會 ──
-    { url: "https://www.setn.com/rss.aspx?tid=12",       name: "三立社會" },
+    // ── ETtoday（正確 RSS 路徑）──
+    { url: "https://www.ettoday.net/news/rss/170.xml",            name: "ETtoday社會" },
 
-    // ── 新增：中時社會 ──
-    { url: "https://www.chinatimes.com/rss/society.xml", name: "中時社會" },
+    // ── 三立新聞（社會分類 tid=12）──
+    { url: "https://www.setn.com/rss.aspx?tid=12",                name: "三立社會" },
 
-    // ── 新增：聯合新聞網 社會 ──
-    { url: "https://udn.com/rssfeed/news/2/0?crsdomain=udn.com", name: "聯合社會" },
+    // ── 民視新聞 ──
+    { url: "https://www.ftvnews.com.tw/rss/news",                 name: "民視社會" },
 
-    // ── 新增：NOWnews 社會 ──
-    { url: "https://www.nownews.com/cat/7/feed",          name: "NOWnews社會" },
+    // ── 公視新聞 ──
+    { url: "https://news.pts.org.tw/xml/news_rss.xml",            name: "公視新聞" },
+
+    // ── NOWnews 社會 ──
+    { url: "https://www.nownews.com/cat/7/feed",                  name: "NOWnews社會" },
+
+    // ── 聯合報社會 ──
+    { url: "https://udn.com/rssfeed/news/2/6638?crsdomain=udn.com", name: "聯合社會" },
   ];
 
   let allArticles = [];
