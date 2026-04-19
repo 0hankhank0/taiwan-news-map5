@@ -275,7 +275,45 @@ async function fetchNews() {
 // 外掛 API
 // ==========================================
 
-async function fetchTaichung() {
+// ==========================================
+// 外掛 API：警廣 (救援非都會區與全台路況)
+// ==========================================
+async function fetchPBS(token) {
+  console.log("⏳ [全台防線-警廣] 開始抓取警廣即時路況...");
+  let results = [];
+  try {
+    // 警廣是全台最完整的非都會區路況來源
+    const url = "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Record?$format=JSON";
+    const data = await fetchTDX(url, token, "警廣");
+    
+    // TDX 的格式有時候是陣列，有時候包在屬性裡
+    const records = Array.isArray(data) ? data : (data?.PBSRecords || data?.Events || []);
+    
+    records.forEach(item => {
+      const lat = item.PositionLat || item.EventPosition?.PositionLat;
+      const lng = item.PositionLon || item.EventPosition?.PositionLon;
+      const text = item.Description || item.EventSummary || item.RoadName || "";
+      const city = item.CityName || "警廣路況";
+
+      if (lat && lng && text) {
+        // 簡單過濾掉沒用的政令宣導
+        if (text.includes("宣導") || text.includes("交通安全")) return;
+        
+        results.push({
+          id: `PBS_${item.UID || item.IncidentID || Math.random().toString(36).substring(7)}`,
+          text: `【警廣通報】${text}`,
+          lat, 
+          lng, 
+          city: city
+        });
+      }
+    });
+    console.log(`✅ [警廣] 成功抓取 ${results.length} 筆全台路況！`);
+  } catch (e) {
+    console.error("❌ 警廣 API 錯誤:", e.message);
+  }
+  return results;
+}
   console.log("⏳ [台中市-地方API] 抓取中...");
   let results = [];
   try {
