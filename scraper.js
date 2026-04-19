@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0"; // 忽略政府網站過期的 SSL 憑證
 const { Redis } = require("@upstash/redis");
 const OpenAI = require("openai");
 
@@ -78,12 +79,21 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
 // 🌟 地方與全國外掛 API (Adapter) 區塊
 // ==========================================
 
-// 1. 警廣 (全台即時路況 - 神級資料)
+// ==========================================
+// 🌟 地方與全國外掛 API (Adapter) 區塊 (防阻擋升級版)
+// ==========================================
+
+// 偽裝成一般瀏覽器，避免被政府防火牆阻擋
+const fetchOptions = {
+  headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+};
+
+// 1. 警廣 (全台即時路況)
 async function fetchPBS() {
   console.log("⏳ [全台-警廣 API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata");
+    const res = await fetch("https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata", fetchOptions);
     const rawData = await res.json();
     const records = Array.isArray(rawData) ? rawData : (rawData.result || rawData.data || []);
 
@@ -94,13 +104,7 @@ async function fetchPBS() {
       const id = item.UID || item.id || item.發布編號 || Math.random().toString(36).substring(7);
       
       if (lat && lng && text) {
-        results.push({
-          id: `PBS_${id}`,
-          text: `【警廣路況】${text}`,
-          lat: parseFloat(lat),
-          lng: parseFloat(lng),
-          city: "警廣通報"
-        });
+        results.push({ id: `PBS_${id}`, text: `【警廣路況】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "警廣通報" });
       }
     });
     console.log(`✅ [警廣] 成功轉換 ${results.length} 筆資料！`);
@@ -113,7 +117,7 @@ async function fetchTaichung() {
   console.log("⏳ [台中市-地方API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27");
+    const res = await fetch("https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27", fetchOptions);
     const records = await res.json();
     
     records.forEach(item => {
@@ -131,19 +135,21 @@ async function fetchTaichung() {
   return results;
 }
 
-// 3. 桃園市 (管線施工/路況)
+// 3. 桃園市 (替換為正確的 CKAN JSON API 網址)
 async function fetchTaoyuan() {
   console.log("⏳ [桃園市-地方API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://opendata.tycg.gov.tw/api/dataset/72b446d7-8ea4-44dd-8b5b-025afa311376/resource/56aba135-d55a-4d87-b35b-048e477abb17/download");
-    const records = await res.json();
+    // 改用桃園開放資料庫的 JSON API 節點，不再下載 CSV
+    const res = await fetch("https://opendata.tycg.gov.tw/api/3/action/datastore_search?resource_id=56aba135-d55a-4d87-b35b-048e477abb17&limit=1000", fetchOptions);
+    const data = await res.json();
+    const records = data.result?.records || [];
     
     records.forEach(item => {
       const lat = item.WGS84_Y || item.Lat || item.緯度;
       const lng = item.WGS84_X || item.Lng || item.經度;
       const text = item.工程名稱 || item.施工內容 || item.宣導內容 || item.地點;
-      const id = item.案件編號 || item.工程編號 || Math.random().toString(36).substring(7);
+      const id = item.案件編號 || item._id || Math.random().toString(36).substring(7);
 
       if (lat && lng && text) {
         results.push({ id: `TY_${id}`, text: `【桃園施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "桃園市" });
@@ -159,7 +165,7 @@ async function fetchKaohsiung() {
   console.log("⏳ [高雄市-地方API] 抓取中...");
   let results = [];
   try {
-    const res = await fetch("https://pipegis.kcg.gov.tw/openDataService.aspx");
+    const res = await fetch("https://pipegis.kcg.gov.tw/openDataService.aspx", fetchOptions);
     const records = await res.json();
     
     records.forEach(item => {
