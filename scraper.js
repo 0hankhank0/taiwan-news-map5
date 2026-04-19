@@ -74,9 +74,116 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
   }
 }
 
+// ==========================================
+// 🌟 地方與全國外掛 API (Adapter) 區塊
+// ==========================================
+
+// 1. 警廣 (全台即時路況 - 神級資料)
+async function fetchPBS() {
+  console.log("⏳ [全台-警廣 API] 抓取中...");
+  let results = [];
+  try {
+    const res = await fetch("https://rtr.pbs.gov.tw/NMP103_PbsWS/resources/roadData/opendata");
+    const rawData = await res.json();
+    const records = Array.isArray(rawData) ? rawData : (rawData.result || rawData.data || []);
+
+    records.forEach(item => {
+      const lat = item.y1 || item.lat || item.緯度;
+      const lng = item.x1 || item.lng || item.經度;
+      const text = item.srcdetail || item.comment || item.說明 || item.RoadName;
+      const id = item.UID || item.id || item.發布編號 || Math.random().toString(36).substring(7);
+      
+      if (lat && lng && text) {
+        results.push({
+          id: `PBS_${id}`,
+          text: `【警廣路況】${text}`,
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          city: "警廣通報"
+        });
+      }
+    });
+    console.log(`✅ [警廣] 成功轉換 ${results.length} 筆資料！`);
+  } catch (e) { console.error("❌ 警廣 API 錯誤:", e.message); }
+  return results;
+}
+
+// 2. 台中市 (道路施工)
+async function fetchTaichung() {
+  console.log("⏳ [台中市-地方API] 抓取中...");
+  let results = [];
+  try {
+    const res = await fetch("https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27");
+    const records = await res.json();
+    
+    records.forEach(item => {
+      const lat = item.Lat || item.緯度 || item.Y;
+      const lng = item.Lng || item.經度 || item.X;
+      const text = item.Description || item.施工說明 || item.案件說明 || item.地點;
+      const id = item.ID || item.案件編號 || item.序號 || Math.random().toString(36).substring(7);
+
+      if (lat && lng && text) {
+        results.push({ id: `TC_${id}`, text: `【台中施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "台中市" });
+      }
+    });
+    console.log(`✅ [台中] 成功轉換 ${results.length} 筆資料！`);
+  } catch (e) { console.error("❌ 台中 API 錯誤:", e.message); }
+  return results;
+}
+
+// 3. 桃園市 (管線施工/路況)
+async function fetchTaoyuan() {
+  console.log("⏳ [桃園市-地方API] 抓取中...");
+  let results = [];
+  try {
+    const res = await fetch("https://opendata.tycg.gov.tw/api/dataset/72b446d7-8ea4-44dd-8b5b-025afa311376/resource/56aba135-d55a-4d87-b35b-048e477abb17/download");
+    const records = await res.json();
+    
+    records.forEach(item => {
+      const lat = item.WGS84_Y || item.Lat || item.緯度;
+      const lng = item.WGS84_X || item.Lng || item.經度;
+      const text = item.工程名稱 || item.施工內容 || item.宣導內容 || item.地點;
+      const id = item.案件編號 || item.工程編號 || Math.random().toString(36).substring(7);
+
+      if (lat && lng && text) {
+        results.push({ id: `TY_${id}`, text: `【桃園施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "桃園市" });
+      }
+    });
+    console.log(`✅ [桃園] 成功轉換 ${results.length} 筆資料！`);
+  } catch (e) { console.error("❌ 桃園 API 錯誤:", e.message); }
+  return results;
+}
+
+// 4. 高雄市 (管線挖掘)
+async function fetchKaohsiung() {
+  console.log("⏳ [高雄市-地方API] 抓取中...");
+  let results = [];
+  try {
+    const res = await fetch("https://pipegis.kcg.gov.tw/openDataService.aspx");
+    const records = await res.json();
+    
+    records.forEach(item => {
+      const lat = item.Y || item.緯度 || item.wgs84_y;
+      const lng = item.X || item.經度 || item.wgs84_x;
+      const text = item.工程名稱 || item.施工內容 || item.案件說明;
+      const id = item.案件編號 || item.pii_id || Math.random().toString(36).substring(7);
+
+      if (lat && lng && text) {
+        results.push({ id: `KH_${id}`, text: `【高雄施工】${text}`, lat: parseFloat(lat), lng: parseFloat(lng), city: "高雄市" });
+      }
+    });
+    console.log(`✅ [高雄] 成功轉換 ${results.length} 筆資料！`);
+  } catch (e) { console.error("❌ 高雄 API 錯誤:", e.message); }
+  return results;
+}
+
+// ==========================================
+// 🚀 主程式區塊
+// ==========================================
+
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞同步系統 (終極隨機平衡版)...");
+    console.log("🚀 啟動全台新聞同步系統 (終極雙軌外掛版)...");
     const token = await getTDXToken();
 
     let rawCache = await kv.get("taiwan_traffic_cache");
@@ -89,23 +196,21 @@ async function main() {
     let candidatesMap = new Map();
     let cityStats = {};
 
-    let targets = [
+    // 🏆 1. 執行 TDX 陣營 (移除中南三都，專心抓雙北/台南/國省道)
+    let tdxTargets = [
       { path: "Freeway", name: "國道", types: ["LiveEvent"] },
       { path: "Highway", name: "省道", types: ["LiveEvent"] },
       { path: "City/Taipei", name: "台北市", types: ["Event", "LiveEvent"] },
       { path: "City/NewTaipei", name: "新北市", types: ["Event", "LiveEvent"] },
-      { path: "City/Taichung", name: "台中市", types: ["Event", "LiveEvent"] },
-      { path: "City/Kaohsiung", name: "高雄市", types: ["LiveEvent"] },
       { path: "City/Tainan", name: "台南市", types: ["Event", "LiveEvent"] },
-      { path: "City/Taoyuan", name: "桃園市", types: ["Event", "LiveEvent"] },
       { path: "City/Keelung", name: "基隆市", types: ["Event", "LiveEvent"] },
       { path: "City/YilanCounty", name: "宜蘭縣", types: ["Event", "LiveEvent"] },
     ];
 
-    targets = targets.sort(() => Math.random() - 0.5);
-    console.log(`📡 本次抓取順序：${targets.map(t => t.name).join(" -> ")}`);
+    tdxTargets = tdxTargets.sort(() => Math.random() - 0.5);
+    console.log(`📡 [中央 TDX] 本次抓取順序：${tdxTargets.map(t => t.name).join(" -> ")}`);
 
-    for (const target of targets) {
+    for (const target of tdxTargets) {
       for (const evType of target.types) {
         const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${target.path}?$format=JSON`;
         const data = await fetchTDX(url, token, `${target.name}-${evType}`);
@@ -141,8 +246,23 @@ async function main() {
       await delay(20000);
     }
 
+    // 🏆 2. 執行獨立 API 陣營 (警廣 + 地方政府)
+    console.log("\n📡 [外掛 API] 開始抓取警廣與地方資料...");
+    const localData = [
+      ...(await fetchPBS()),
+      ...(await fetchTaichung()),
+      ...(await fetchTaoyuan()),
+      ...(await fetchKaohsiung())
+    ];
+
+    localData.forEach(item => {
+      candidatesMap.set(item.id, item);
+      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
+    });
+
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    targets.forEach(t => console.log(`${t.name}: ${cityStats[t.name] || 0} 筆`));
+    const allCities = [...tdxTargets.map(t => t.name), "警廣通報", "台中市", "桃園市", "高雄市"];
+    allCities.forEach(name => console.log(`${name}: ${cityStats[name] || 0} 筆`));
     console.log("---------------------------\n");
 
     const candidates = Array.from(candidatesMap.values());
@@ -190,7 +310,7 @@ async function main() {
 
     cacheMap.forEach(cached => {
       if (!newCacheList.find(n => n.id === cached.id)) {
-        if (cached.expiresAt > Date.now()) {  // 補上過期檢查
+        if (cached.expiresAt > Date.now()) {  
           newCacheList.push(cached);
           if (cached.isReal) finalEvents.push(cached);
         }
