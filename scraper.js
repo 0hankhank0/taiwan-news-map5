@@ -63,7 +63,6 @@ async function fetchTDX(url, token, label, retries = 3) {
 
 async function aiFilterEvents(items) {
   if (items.length === 0) return [];
- // 💡 升級版 Prompt：統一標籤名稱，並教導 AI 處理空白摘要
   const prompt = `你是台灣交通事件篩選器。今天日期是【${todayStr}】。
 請分析以下事件，判斷是否為「目前正在發生」且「真實影響用路人」的事件。
 特別注意：如果事件提供的時間資訊(如迄日、完工日、結束日期)早於今天，代表已過期，請務必將 isReal 設為 false！
@@ -97,7 +96,6 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
 // 新聞抓取與處理
 // ==========================================
 
-// 解析 RSS XML，回傳文章列表
 function parseRSS(xml) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
@@ -119,7 +117,6 @@ function parseRSS(xml) {
   return items;
 }
 
-// 用 AI 篩選新聞：判斷是否為車禍/火災/活動，並抽取地點
 async function aiFilterNews(articles) {
   if (articles.length === 0) return [];
   const prompt = `你是台灣新聞事件分析器。今天日期是【${todayStr}】。
@@ -159,7 +156,6 @@ ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.descript
   }
 }
 
-// 用 Nominatim 把地名轉成座標
 async function geocode(locationText) {
   if (!locationText) return null;
   try {
@@ -169,7 +165,6 @@ async function geocode(locationText) {
         "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)"
       }
     });
-    // 先確認是否為 JSON
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       console.error(`❌ Nominatim 回傳非 JSON [${locationText}]: ${res.status}`);
@@ -185,7 +180,6 @@ async function geocode(locationText) {
   return null;
 }
 
-// 抓 RSS 新聞並處理
 async function fetchNews() {
   console.log("⏳ [新聞] 開始抓取 RSS...");
   const sources = [
@@ -211,7 +205,6 @@ async function fetchNews() {
 
   if (allArticles.length === 0) return [];
 
-  // AI 篩選，每批 15 則
   let relevantArticles = [];
   for (let i = 0; i < allArticles.length; i += 15) {
     const batch = allArticles.slice(i, i + 15);
@@ -227,7 +220,6 @@ async function fetchNews() {
 
   console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
 
-  // Geocoding，每次等 1.2 秒（Nominatim 限制）
   let newsEvents = [];
   for (const article of relevantArticles) {
     const ai = article.aiResult;
@@ -237,7 +229,6 @@ async function fetchNews() {
       continue;
     }
 
-    // 先試精確地名，失敗再試備用地名
     let coords = await geocode(ai.location);
     if (!coords && ai.locationFallback) {
       console.log(`🔄 備用定位: ${ai.locationFallback}`);
@@ -272,26 +263,40 @@ async function fetchNews() {
 }
 
 // ==========================================
-// 外掛 API
+// 外掛 API：警廣
 // ==========================================
-
-// ==========================================
-// 外掛 API：警廣 (救援非都會區與全台路況)
-// ==========================================
-// ==========================================
-// 外掛 API：警廣 (救援非都會區與全台路況)
-// ==========================================
+// 修復：PBS API 已從 v1 升版到 v2，且路徑結構調整
 async function fetchPBS(token) {
   console.log("⏳ [全台防線-警廣] 開始抓取警廣即時路況...");
   let results = [];
+
+  // 📌 修復：依序試三個可能的端點，找到有資料的就用
+  const candidateUrls = [
+    "https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Incident/PBS?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v2/Traffic/PBS/Incident?$format=JSON",
+    "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Incident?$format=JSON",
+  ];
+
+  let data = null;
+  for (const url of candidateUrls) {
+    console.log(`🔍 [警廣] 嘗試端點: ${url}`);
+    data = await fetchTDX(url, token, "警廣");
+    if (data) {
+      console.log(`✅ [警廣] 端點有效: ${url}`);
+      break;
+    }
+    await delay(2000);
+  }
+
+  if (!data) {
+    console.log("❌ [警廣] 所有端點均失敗，跳過警廣資料");
+    return [];
+  }
+
   try {
-    // 警廣是全台最完整的非都會區路況來源
-    const url = "https://tdx.transportdata.tw/api/basic/v1/Traffic/PBS/Record?$format=JSON";
-    const data = await fetchTDX(url, token, "警廣");
-    
-    // TDX 的格式有時候是陣列，有時候包在屬性裡
-    const records = Array.isArray(data) ? data : (data?.PBSRecords || data?.Events || []);
-    
+    const records = Array.isArray(data) ? data : (data?.PBSRecords || data?.Incidents || data?.Events || []);
+    console.log(`📦 [警廣] 原始資料筆數: ${records.length}`);
+
     records.forEach(item => {
       const lat = item.PositionLat || item.EventPosition?.PositionLat;
       const lng = item.PositionLon || item.EventPosition?.PositionLon;
@@ -299,67 +304,33 @@ async function fetchPBS(token) {
       const city = item.CityName || "警廣路況";
 
       if (lat && lng && text) {
-        // 簡單過濾掉沒用的政令宣導
         if (text.includes("宣導") || text.includes("交通安全")) return;
-        
         results.push({
           id: `PBS_${item.UID || item.IncidentID || Math.random().toString(36).substring(7)}`,
           text: `【警廣通報】${text}`,
-          lat, 
-          lng, 
-          city: city
+          lat,
+          lng,
+          city,
         });
       }
     });
-    console.log(`✅ [警廣] 成功抓取 ${results.length} 筆全台路況！`);
+    console.log(`✅ [警廣] 成功整理 ${results.length} 筆全台路況！`);
   } catch (e) {
-    console.error("❌ 警廣 API 錯誤:", e.message);
+    console.error("❌ 警廣資料解析錯誤:", e.message);
   }
+
   return results;
 }
 
 // ==========================================
-// 外掛 API：台中市 (因為台中的 TDX 常常沒有施工資料)
+// 外掛 API：台中市（改走 TDX，廢棄舊地方 API）
 // ==========================================
+// 修復：台中地方 API 資料已全數過期，改走 TDX City/Taichung
+// 保留舊函式但不再主動呼叫，改由 tdxTargets 統一處理
 async function fetchTaichung() {
-  console.log("⏳ [台中市-地方API] 抓取中...");
-  let results = [];
-  try {
-    const res = await fetch(
-      "https://newdatacenter.taichung.gov.tw/api/v1/no-auth/resource.download?rid=d5adb71a-00bb-4573-b67e-ffdccfc7cd27",
-      fetchOptions
-    );
-    const records = await res.json();
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    let skippedExpired = 0;
-    let skippedOld = 0;
-
-    records.forEach(item => {
-      const lat = parseFloat(item.緯度);
-      const lng = parseFloat(item.經度);
-      const text = item.工程名稱 || item.地點;
-      const id = item.申請書編號 || item.許可證編號 || Math.random().toString(36).substring(7);
-
-      if (!lat || !lng || !text) return;
-
-      const endDate = parseTWDate(item.核准迄日期);
-      if (endDate && endDate < Date.now()) { skippedExpired++; return; }
-
-      const startDate = parseTWDate(item.核准起日期);
-      if (startDate && startDate < thirtyDaysAgo) { skippedOld++; return; }
-
-      results.push({
-        id: `TC_${id}`,
-        text: `【台中施工】${text}｜地點:${item.地點}｜${item.區域名稱}｜起:${item.核准起日期} 迄:${item.核准迄日期}`,
-        lat,
-        lng,
-        city: "台中市"
-      });
-    });
-
-    console.log(`✅ [台中] 成功轉換 ${results.length} 筆（過期跳過 ${skippedExpired} 筆，太舊跳過 ${skippedOld} 筆）`);
-  } catch (e) { console.error("❌ 台中 API 錯誤:", e.message); }
-  return results;
+  console.log("⏳ [台中市-地方API] 抓取中... (已停用，改走 TDX)");
+  console.log("ℹ️  台中市改由 TDX City/Taichung 統一抓取，此函式已退役");
+  return [];
 }
 
 // ==========================================
@@ -381,6 +352,8 @@ async function main() {
     let candidatesMap = new Map();
     let cityStats = {};
 
+    // 📌 修復 1：加入 City/Taichung（取代舊地方 API）
+    // 📌 修復 2：台南加入 debug log（確認資料是否真的為空）
     let tdxTargets = [
       { path: "Freeway", name: "國道", types: ["LiveEvent"] },
       { path: "Highway", name: "省道", types: ["LiveEvent"] },
@@ -389,6 +362,8 @@ async function main() {
       { path: "City/Tainan", name: "台南市", types: ["Event", "LiveEvent"] },
       { path: "City/Keelung", name: "基隆市", types: ["Event", "LiveEvent"] },
       { path: "City/YilanCounty", name: "宜蘭縣", types: ["Event", "LiveEvent"] },
+      // ✅ 新增：台中改走 TDX
+      { path: "City/Taichung", name: "台中市", types: ["Event", "LiveEvent"] },
     ];
 
     tdxTargets = tdxTargets.sort(() => Math.random() - 0.5);
@@ -402,16 +377,19 @@ async function main() {
 
         const eventsList = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
 
-eventsList.forEach(event => {
+        // 📌 修復 2：台南 debug - 印出原始筆數，確認是空還是被過濾掉
+        if (target.name === "台南市") {
+          console.log(`🔍 [台南 debug] ${evType} 原始資料筆數: ${eventsList.length}`);
+        }
+
+        eventsList.forEach(event => {
           const summary = event.EventTitle || event.EventSummary || event.Description || "";
           const eventId = event.EventID || event.RoadEventID;
 
-          // 💡 1. 攔截明確過期的 TDX 資料 (有些政府忘記下架，但欄位有寫 EndTime)
           const endTime = event.EndTime || event.EventEndTime;
           if (endTime) {
-              const endTs = new Date(endTime).getTime();
-              // 如果結束時間小於「現在」，代表絕對過期了，直接踢掉不浪費 AI 額度！
-              if (endTs && endTs < Date.now()) return;
+            const endTs = new Date(endTime).getTime();
+            if (endTs && endTs < Date.now()) return;
           }
 
           let lat, lng;
@@ -426,14 +404,13 @@ eventsList.forEach(event => {
 
           if (eventId && summary && lat && lng) {
             if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
-            
-            // 💡 2. 就算沒明確被程式踢掉，我們也把時間塞進文字讓 AI 幫忙雙重審核
+
             const startTime = event.StartTime || event.EventStartTime || "";
             const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
 
             candidatesMap.set(eventId, {
               id: eventId,
-              text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`, // 加上時間資訊
+              text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
               lat, lng, city: target.name,
             });
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
@@ -444,27 +421,16 @@ eventsList.forEach(event => {
       await delay(20000);
     }
 
-    // 台中地方 API
-    // 🚨 啟動警廣全台路況 (救援非都會區)
-    console.log("⏳ 準備啟動警廣抓取...");
+    // ✅ 警廣：使用修復後的多端點嘗試邏輯
+    console.log("\n⏳ 準備啟動警廣抓取...");
     const pbsData = await fetchPBS(token);
     pbsData.forEach(item => {
-      // 把警廣抓到的資料存進地圖的候選名單中
       candidatesMap.set(item.id, item);
-      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
-    });
-
-    // 👇 這是你原本就有的台中 API 呼叫，放在一起排排站就好
-    // const localData = await fetchTaichung();
-    // localData.forEach(item => { ... });
-    const localData = await fetchTaichung();
-    localData.forEach(item => {
-      candidatesMap.set(item.id, item);
-      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
+      cityStats["警廣"] = (cityStats["警廣"] || 0) + 1;
     });
 
     console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "台中市"];
+    const allCities = [...tdxTargets.map(t => t.name), "警廣"];
     allCities.forEach(name => console.log(`${name}: ${cityStats[name] || 0} 筆`));
     console.log("---------------------------\n");
 
@@ -513,11 +479,9 @@ eventsList.forEach(event => {
       }
     });
 
-    // 抓新聞並合併
     console.log("\n📰 [新聞] 開始處理新聞來源...");
     const newsEvents = await fetchNews();
 
-    // 新聞用獨立快取避免跟交通快取混在一起
     let rawNewsCache = await kv.get("taiwan_news_cache");
     let newsCacheMap = new Map();
     if (rawNewsCache) {
@@ -525,13 +489,11 @@ eventsList.forEach(event => {
       parsed.forEach(item => { if (item.expiresAt > Date.now()) newsCacheMap.set(item.id, item); });
     }
 
-    // 更新新聞快取
     newsEvents.forEach(item => newsCacheMap.set(item.id, item));
     const validNewsEvents = Array.from(newsCacheMap.values()).filter(n => n.expiresAt > Date.now());
 
     await kv.set("taiwan_news_cache", JSON.stringify(validNewsEvents));
 
-    // 合併交通 + 新聞
     const allFinalEvents = [...finalEvents, ...validNewsEvents];
 
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
