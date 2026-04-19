@@ -275,11 +275,11 @@ async function fetchPBS(token) {
   // 已確認在 TDX Live API 有資料的縣市（從 Swagger 服務清單確認）
   // 桃園和高雄同時保留 RoadEvent 補強（有即時事故資料）
   const liveTargets = [
-    { city: "Taoyuan",       name: "桃園市" },
-    { city: "Kaohsiung",     name: "高雄市" },
+    { city: "Taoyuan",        name: "桃園市" },
+    // 高雄 Live 400，暫時跳過等 debug
     { city: "ChanghuaCounty", name: "彰化縣" },
-    { city: "Hsinchu",       name: "新竹市" },
-    { city: "YunlinCounty",  name: "雲林縣" },
+    { city: "Hsinchu",        name: "新竹市" },
+    { city: "YunlinCounty",   name: "雲林縣" },
   ];
   // 注意：台北、新北、台中、台南、基隆、宜蘭已在 tdxTargets 用 RoadEvent 抓事件
   // Live API 抓的是壅塞路段，兩者互補
@@ -295,11 +295,26 @@ async function fetchPBS(token) {
 
     console.log(`📦 [Live-${t.name}] 原始路段數: ${sections.length}`);
 
+    // Debug: 印出第一筆的欄位，確認 level 欄位名稱
+    if (sections.length > 0) {
+      const s0 = sections[0];
+      console.log(`🔍 [Live-${t.name}] 第一筆欄位:`, JSON.stringify({
+        SectionID: s0.SectionID || s0.RoadID,
+        LiveLevel: s0.LiveLevel,
+        CongestionLevel: s0.CongestionLevel,
+        TrafficLevel: s0.TrafficLevel,
+        Level: s0.Level,
+        Status: s0.Status,
+        LiveSpeed: s0.LiveSpeed || s0.Speed,
+        keys: Object.keys(s0).slice(0, 12),
+      }));
+    }
+
     let added = 0;
     sections.forEach(sec => {
       // LiveLevel: 0=順暢 1=稍壅 2=壅塞 3=嚴重壅塞 4=資料異常
       // 只取 2(壅塞) 和 3(嚴重壅塞)
-      const level = sec.LiveLevel ?? sec.CongestionLevel ?? sec.TrafficLevel ?? -1;
+      const level = sec.LiveLevel ?? sec.CongestionLevel ?? sec.TrafficLevel ?? sec.Level ?? -1;
       if (level < 2 || level > 3) return;
 
       // 座標：優先用路段中點，其次用起點
