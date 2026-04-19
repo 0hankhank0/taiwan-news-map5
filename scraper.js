@@ -445,6 +445,18 @@ eventsList.forEach(event => {
     }
 
     // 台中地方 API
+    // 🚨 啟動警廣全台路況 (救援非都會區)
+    console.log("⏳ 準備啟動警廣抓取...");
+    const pbsData = await fetchPBS(token);
+    pbsData.forEach(item => {
+      // 把警廣抓到的資料存進地圖的候選名單中
+      candidatesMap.set(item.id, item);
+      cityStats[item.city] = (cityStats[item.city] || 0) + 1;
+    });
+
+    // 👇 這是你原本就有的台中 API 呼叫，放在一起排排站就好
+    // const localData = await fetchTaichung();
+    // localData.forEach(item => { ... });
     const localData = await fetchTaichung();
     localData.forEach(item => {
       candidatesMap.set(item.id, item);
