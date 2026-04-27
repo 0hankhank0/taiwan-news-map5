@@ -154,6 +154,15 @@
             </div>
 
             <div id="event-list" class="news-list flex-1 overflow-y-auto bg-white md:bg-slate-900"></div>
+            
+            <div class="hidden border-t border-slate-800 p-4 md:block text-center">
+                <a href="https://taiwan-map.bobaboba.me" target="_blank" rel="noreferrer" class="block mb-2 rounded-2xl border border-amber-800 bg-amber-100 px-4 py-3 text-sm font-black text-amber-950 transition hover:-translate-y-0.5 hover:bg-amber-200">支持專案</a>
+                <div class="text-xs text-slate-500 mt-2">
+                    聯絡作者：gsdsdfssdf@gmail.com <br>
+                    (與綠界註冊信箱相同)
+                </div>
+            </div>
+            
         </aside>
 
         <section id="map" class="flex-1"></section>
@@ -211,7 +220,6 @@
         let isTaiwanMode = true;
         let selectedTitleForReport = "";
         
-        // 🌟 新增：用於儲存與繪製 GeoJSON 邊界圖層
         let twGeoJSON = null;               
         let currentBoundaryLayer = null;    
 
@@ -222,7 +230,6 @@
         const betaModal = document.getElementById("beta-modal");
         const newsSidebar = document.getElementById("news-sidebar");
 
-        // 🌟 新增：非同步載入台灣縣市邊界資料
         async function loadTwGeoJSON() {
             try {
                 const res = await fetch("https://raw.githubusercontent.com/g0v/twgeojson/master/json/twCounty2010.geo.json");
@@ -232,7 +239,6 @@
             }
         }
 
-        // 🌟 新增：在不改變視角的情況下畫出縣市邊界
         function drawCityBoundary(selectedCity) {
             if (currentBoundaryLayer) {
                 map.removeLayer(currentBoundaryLayer);
@@ -522,21 +528,18 @@
             renderEvents();
         }
 
-        // 🌟 關鍵修改：選擇縣市時呼叫 drawCityBoundary()，但不使用 map.flyTo() 強制跳轉
         function syncCityFilter(value) {
             document.getElementById("city-filter").value = value;
             document.getElementById("city-filter-mobile").value = value;
             
-            // 1. 維持你原本的畫邊界與重繪事件邏輯
+            // 1. 維持畫邊界與重繪事件邏輯
             drawCityBoundary(value); 
             renderEvents();
 
-            // 2. 📍 新增：自動跳轉 (FlyTo) 邏輯
+            // 2. 自動跳轉 (FlyTo) 邏輯
             if (value === "all") {
-                // 回到全台灣視角 (座標: 台灣中心, 縮放級別: 7)
                 map.flyTo([23.6978, 120.9605], 7, { duration: 1.5 });
             } else {
-                // 全台縣市中心座標字典
                 const cityCenters = {
                     "台北市": [25.032969, 121.565418],
                     "新北市": [25.011235, 121.465745],
@@ -560,11 +563,10 @@
                     "澎湖縣": [23.571088, 119.579165],
                     "金門縣": [24.449118, 118.375628],
                     "連江縣": [26.150493, 119.936081],
-                    "國道": [24.147735, 120.673648], // 預設跳到中部
+                    "國道": [24.147735, 120.673648], 
                     "省道": [23.6978, 120.9605]
                 };
 
-                // 如果字典裡有這個縣市，就飛過去！(縮放級別: 11)
                 if (cityCenters[value]) {
                     map.flyTo(cityCenters[value], 11, { duration: 1.5 });
                 }
@@ -608,7 +610,7 @@
             checkBetaModal();
             syncNewsAndRender();
             
-            // 🌟 新增：頁面載入時就在背景先取得邊界資料
+            // 🌟 頁面載入時就在背景先取得邊界資料
             loadTwGeoJSON();
         });
     </script>
