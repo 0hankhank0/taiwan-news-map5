@@ -48,7 +48,7 @@ module.exports = async function (req, res) {
       MerchantTradeDate: tradeDate,
       TotalAmount: amount.toString(),
       TradeDesc: '支持台灣新聞事件地圖專案',
-      ItemName: itemName || '專案贊助',
+      ItemName: itemName || '地圖維護與伺服器營運贊助',
       ReturnURL: `https://${host}/api/payment-callback`,
       OrderResultURL: `https://${host}/`, 
       ChoosePayment: 'ALL',
