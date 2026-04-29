@@ -13,6 +13,7 @@
     "axios": "^1.13.6",
     "cors": "^2.8.5",
     "dotenv": "^17.3.1",
+    "ecpay_aio_nodejs": "^1.0.1",
     "express": "^5.1.0",
     "openai": "^6.34.0",
     "rss-parser": "^3.13.0",
