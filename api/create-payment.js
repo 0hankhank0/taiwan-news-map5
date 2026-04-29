@@ -17,18 +17,21 @@ module.exports = async function (req, res) {
     const { amount, itemName } = req.body;
     if (!amount) throw new Error('沒有收到贊助金額');
 
-    // 1. 初始化綠界 SDK
+    // 🌟 修正重點：把三把鑰匙包裝進 MercProfile 物件中
     const options = {
       OperationMode: 'Production', // 你的帳號已經審核過，用正式環境
-      MerchantID: ECPAY_MERCHANT_ID,
-      HashKey: ECPAY_HASH_KEY,
-      HashIV: ECPAY_HASH_IV,
+      MercProfile: {
+        MerchantID: ECPAY_MERCHANT_ID,
+        HashKey: ECPAY_HASH_KEY,
+        HashIV: ECPAY_HASH_IV,
+      },
+      IgnorePayment: [], // 不隱藏任何付款方式
       IsProjectContractor: false,
     };
 
     const create = new ecpay_aio_nodejs(options);
 
-    // 2. 產生精準的 YYYY/MM/DD HH:mm:ss 台北時間 (防 Vercel 時區錯亂)
+    // 產生精準的 YYYY/MM/DD HH:mm:ss 台北時間 (防 Vercel 時區錯亂)
     const d = new Date();
     const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
     const twTime = new Date(utc + (3600000 * 8)); // 轉台灣時間 UTC+8
@@ -36,7 +39,7 @@ module.exports = async function (req, res) {
     const pad = (n) => (n < 10 ? '0' + n : n);
     const tradeDate = `${twTime.getFullYear()}/${pad(twTime.getMonth() + 1)}/${pad(twTime.getDate())} ${pad(twTime.getHours())}:${pad(twTime.getMinutes())}:${pad(twTime.getSeconds())}`;
 
-    // 3. 設定訂單參數
+    // 設定訂單參數
     const MerchantTradeNo = 'MAP' + Date.now(); 
     const host = req.headers.host || 'taiwan-map.bobaboba.me';
     
@@ -52,12 +55,12 @@ module.exports = async function (req, res) {
       EncryptType: '1',
     };
 
-    // 4. 產生自動提交的 HTML 表單
+    // 產生自動提交的 HTML 表單
     const html = create.payment_client.aio_check_out_all(base_param);
     res.status(200).send(html);
 
   } catch (error) {
-    // 💡 發生錯誤時，把真實原因印在 Vercel 後台，並傳回給前端
+    // 發生錯誤時，把真實原因印在 Vercel 後台，並傳回給前端
     console.error("❌ 金流產生失敗詳細原因:", error.message);
     res.status(500).json({ error: error.message });
   }
