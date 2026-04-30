@@ -1,20 +1,27 @@
 name: Taiwan Traffic Scraper
+
 on:
   schedule:
-   - cron: '0 * * * *'
-  workflow_dispatch:
+    - cron: '0 * * * *'   # 每小時整點執行
+  workflow_dispatch:       # 允許手動觸發
+
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    timeout-minutes: 30    # 最多跑 30 分鐘，避免卡死
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
+
       - name: Install dependencies
-        run: npm install @upstash/redis openai
+        run: npm ci            # 用 package-lock.json 裝齊所有套件
+
       - name: Run Scraper
         env:
           KV_REST_API_URL: ${{ secrets.KV_REST_API_URL }}
@@ -27,4 +34,4 @@ jobs:
           ls -la
           echo "=== 跑腳本 ==="
           node scraper.js 2>&1
-          echo "=== 結束，exit code: $? ==="這個嗎
+          echo "=== 結束，exit code: $? ==="
