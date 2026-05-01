@@ -1,15 +1,12 @@
 name: Taiwan Traffic Scraper
-
 on:
   schedule:
     - cron: '0 * * * *'   # 每小時整點執行
   workflow_dispatch:       # 允許手動觸發
-
 jobs:
   scrape:
     runs-on: ubuntu-latest
     timeout-minutes: 30    # 最多跑 30 分鐘，避免卡死
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,7 +17,7 @@ jobs:
           node-version: 18
 
       - name: Install dependencies
-        run: npm ci            # 用 package-lock.json 裝齊所有套件
+        run: npm install --no-audit --no-fund
 
       - name: Run Scraper
         env:
