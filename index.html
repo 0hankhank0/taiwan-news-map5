@@ -3,19 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    
-    <title>台灣新聞事件地圖 | 即時路況與災情分析</title>
-    <meta name="description" content="全台最即時的交通事故、施工與突發災情地圖。結合政府 TDX 交通 API 與 AI 新聞分析，出門前幫你避開塞車與危險路段。">
-    <meta name="keywords" content="台灣地圖, 交通事故, 即時路況, TDX, 災情即時, 塞車地圖, AI 地圖">
-
-    <meta property="og:title" content="台灣新聞事件地圖 📍 出門前看一下！">
-    <meta property="og:description" content="結合 AI 與政府開放資料，全台交通事故、施工、突發災情一目了然。">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://taiwan-news-map.vercel.app/">
-    <meta property="og:image" content="https://taiwan-news-map.vercel.app/og-image.jpg">
-    
+    <title>台灣新聞事件地圖</title>
     <script src="https://cdn.tailwindcss.com"></script>
-
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css" />
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
 
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <style>
