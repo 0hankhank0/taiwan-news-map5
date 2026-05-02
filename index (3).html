@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    <title>台灣新聞事件地圖 | 即時路況與災情分析</title>
+    <meta name="description" content="全台最即時的交通事故、施工與突發災情地圖。結合政府 TDX 交通 API 與 AI 新聞分析，出門前幫你避開塞車與危險路段。">
+    <meta name="keywords" content="台灣地圖, 交通事故, 即時路況, TDX, 災情即時, 塞車地圖, AI 地圖">
+    <meta name="google-site-verification" content="TSf_qxT0E0bM68SRH_aWAkwa9GXlPoPwX73l-9VKbJM" />
+
+    <meta property="og:title" content="台灣新聞事件地圖 📍 出門前看一下！">
+    <meta property="og:description" content="結合 AI 與政府開放資料，全台交通事故、施工、突發災情一目了然。">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://taiwan-news-map.vercel.app/">
+    <meta property="og:image" content="https://taiwan-news-map.vercel.app/og-image.jpg">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Leaflet -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
+    <!-- Leaflet MarkerCluster -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <style>
+        :root { color-scheme: light; }
+        body { font-family: "Noto Sans TC", "Microsoft JhengHei", sans-serif; }
+        #map { height: 100vh; width: 100%; }
+        @media (min-width: 768px) { #map { height: calc(100vh - 64px); } }
+        
+        .custom-popup .leaflet-popup-content-wrapper {
+            background: rgba(255, 255, 255, 0.97); color: #111827; border-radius: 18px; box-shadow: 0 20px 40px rgba(15, 23, 42, 0.18);
+        }
+        .custom-popup .leaflet-popup-content { margin: 14px 16px; line-height: 1.55; }
+        .custom-popup .leaflet-popup-tip { background: rgba(255, 255, 255, 0.97); }
+        .custom-marker {
+            display: flex; align-items: center; justify-content: center; width: 34px; height: 34px;
+            border-radius: 999px; color: #fff; border: 2px solid rgba(255, 255, 255, 0.95);
+            box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28); transition: transform 0.2s ease;
+        }
+        .custom-marker:hover { transform: scale(1.08); }
+        .news-sidebar { display: flex; flex-direction: column; }
+        .news-list::-webkit-scrollbar { width: 6px; }
+        .news-list::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.65); border-radius: 999px; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap;
+        }
+        .filter-btn { opacity: 0.78; transition: all 0.2s ease; }
+        .filter-btn:hover, .filter-btn.active { opacity: 1; transform: translateY(-1px); box-shadow: 0 8px 16px rgba(15, 23, 42, 0.12); }
+        .drawer-collapsed { transform: translateY(calc(72vh - 112px)); }
+        
+        /* 🌟 MarkerCluster 客製化顏色微調 */
+        .marker-cluster-small { background-color: rgba(59, 130, 246, 0.6); }
+        .marker-cluster-small div { background-color: rgba(37, 99, 235, 0.8); color: white; }
+        .marker-cluster-medium { background-color: rgba(245, 158, 11, 0.6); }
+        .marker-cluster-medium div { background-color: rgba(217, 119, 6, 0.8); color: white; }
+        .marker-cluster-large { background-color: rgba(239, 68, 68, 0.6); }
+        .marker-cluster-large div { background-color: rgba(220, 38, 38, 0.8); color: white; }
+
+        @media (max-width: 767px) {
+            .news-sidebar {
+                position: fixed; left: 0; right: 0; bottom: 0; height: 72vh; border-radius: 24px 24px 0 0;
+                z-index: 9999; background: #ffffff; color: #111827; box-shadow: 0 -16px 40px rgba(15, 23, 42, 0.16); transition: transform 0.28s ease;
+            }
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-white overflow-hidden">
+    <div id="report-modal" class="hidden fixed inset-0 z-[10001] bg-black/60 backdrop-blur-sm items-center justify-center p-4">
+        <div class="w-full max-w-md rounded-3xl bg-white p-6 text-slate-900 shadow-2xl">
+            <div class="flex items-center gap-2 text-red-600 mb-4">
+                <i class="fa-solid fa-triangle-exclamation"></i><h2 class="text-lg font-bold">回報事件資料</h2>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">事件標題</label>
+                    <input id="report-title" type="text" readonly class="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm outline-none" />
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">回報類型</label>
+                    <select id="report-type" class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                        <option value="資料錯誤">資料錯誤</option>
+                        <option value="位置錯誤">位置錯誤</option>
+                        <option value="重複事件">重複事件</option>
+                        <option value="其他">其他</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-slate-500 mb-1">補充說明</label>
+                    <textarea id="report-message" class="h-24 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500" placeholder="例如：地址有誤、不是同一件事..."></textarea>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button id="report-cancel-btn" class="flex-1 rounded-xl bg-slate-100 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">取消</button>
+                    <button id="report-submit-btn" class="flex-1 rounded-xl bg-red-600 py-2 text-sm font-semibold text-white hover:bg-red-700">送出回報</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="beta-modal" class="hidden fixed inset-0 z-[10000] bg-black/60 backdrop-blur-sm items-center justify-center p-4">
+        <div class="w-full max-w-lg rounded-[28px] bg-white p-8 text-center text-slate-900 shadow-2xl">
+            <div class="mb-3 text-4xl">Beta</div>
+            <h2 class="mb-3 text-2xl font-bold">台灣新聞事件地圖</h2>
+            <p class="text-sm leading-7 text-slate-600">
+                這個版本會把新聞與交通事件整理成地圖上的事件點，方便快速查看哪裡正在發生事。<br>
+                目前仍是測試版，如果你發現資料有誤，可以直接用內建回報功能通知我。
+            </p>
+            <button id="beta-close-btn" class="mt-6 rounded-2xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700">開始使用</button>
+        </div>
+    </div>
+
+    <header class="hidden h-16 items-center justify-between border-b border-slate-800 bg-slate-900 px-6 md:flex">
+        <div class="flex items-center gap-4">
+            <h1 class="text-xl font-bold tracking-wide">台灣新聞事件地圖</h1>
+            <select id="city-filter" class="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm outline-none focus:border-blue-500">
+                <option value="all">全部城市</option>
+            </select>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="flex rounded-2xl border border-slate-700 bg-slate-950 p-1 text-sm">
+                <button id="btn-tw" class="rounded-xl bg-blue-600 px-4 py-2 font-semibold">台灣模式</button>
+                <button id="btn-global" class="rounded-xl px-4 py-2 font-semibold text-slate-300">全球視角</button>
+            </div>
+            
+            <div class="mr-4 text-right">
+                <div class="text-[10px] text-slate-500">審核聯絡用</div>
+                <div class="text-xs text-slate-400">gsdsdfssdf@gmail.com</div>
+            </div>
+            
+            <button onclick="handleDonate(100, this)" class="rounded-full border border-amber-800 bg-amber-100 px-5 py-2 text-sm font-black text-amber-950 transition hover:-translate-y-0.5 hover:bg-amber-200">
+                ⛽ 幫地圖加油
+            </button>
+        </div>
+        <div id="status-text" class="text-sm text-slate-400">準備載入事件資料...</div>
+    </header>
+
+    <div class="fixed left-4 right-4 top-4 z-[1000] flex flex-col gap-2 md:hidden">
+        <div class="flex items-center gap-2">
+            <input id="event-search-mobile" type="text" placeholder="搜尋標題、內容、城市" class="flex-1 rounded-2xl bg-white/95 px-5 py-3 text-sm text-slate-900 shadow-xl outline-none focus:ring-2 focus:ring-blue-500" />
+            <button onclick="handleDonate(100, this)" class="flex h-[46px] items-center justify-center gap-1.5 whitespace-nowrap rounded-2xl border border-amber-800 bg-amber-100 px-4 text-sm font-black text-amber-950 shadow-xl transition active:scale-95">
+                ⛽ <span class="hidden sm:inline">幫地圖加油</span><span class="sm:hidden">加油</span>
+            </button>
+        </div>
+        <div class="flex gap-2 overflow-x-auto">
+            <select id="city-filter-mobile" class="rounded-2xl bg-white/95 px-4 py-2 text-sm font-semibold text-slate-900 shadow-lg outline-none">
+                <option value="all">全部城市</option>
+            </select>
+            <div class="flex rounded-2xl bg-white/95 p-1 shadow-lg">
+                <button id="btn-tw-mobile" class="rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white">台灣</button>
+                <button id="btn-global-mobile" class="rounded-xl px-4 py-2 text-xs font-bold text-slate-600">全球</button>
+            </div>
+        </div>
+    </div>
+
+    <main class="flex h-screen flex-col overflow-hidden md:flex-row">
+        <aside id="news-sidebar" class="news-sidebar drawer-collapsed border-r border-slate-200 md:relative md:h-[calc(100vh-64px)] md:w-[360px] md:max-w-[38vw] md:translate-y-0 md:border-r-slate-800 md:bg-slate-900">
+            <div id="drawer-handle" class="cursor-pointer py-3 md:hidden">
+                <div class="mx-auto h-1.5 w-12 rounded-full bg-slate-300"></div>
+            </div>
+
+            <div class="border-b border-slate-200 px-4 py-3 md:border-slate-800">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-sm font-bold text-slate-800 md:text-slate-100">事件清單</h2>
+                    <span id="mobile-count" class="rounded-full bg-blue-100 px-2 py-1 text-[11px] font-bold text-blue-700 md:hidden">0 筆</span>
+                </div>
+                <div class="hidden md:block">
+                    <input id="event-search" type="text" placeholder="搜尋標題、內容、城市" class="w-full rounded-2xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm text-slate-100 outline-none focus:border-blue-500" />
+                </div>
+                <div id="category-filters" class="mt-3 flex flex-wrap gap-2"></div>
+            </div>
+
+            <div id="event-list" class="news-list flex-1 overflow-y-auto bg-white md:bg-slate-900"></div>
+            
+            <div class="hidden border-t border-slate-800 p-4 md:block text-center">
+                <button onclick="handleDonate(100, this)" class="w-full mb-2 rounded-2xl border border-amber-800 bg-amber-100 px-4 py-3 text-sm font-black text-amber-950 transition hover:-translate-y-0.5 hover:bg-amber-200">
+                    ⛽ 幫地圖加油 (NT$ 100)
+                </button>
+                <div class="text-xs text-slate-500 mt-2">
+                    聯絡作者：gsdsdfssdf@gmail.com <br>
+                    (與綠界註冊信箱相同)
+                </div>
+            </div>
+            
+        </aside>
+
+        <section id="map" class="flex-1"></section>
+    </main>
+
+    <script>
+        const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
+        L.control.zoom({ position: "bottomright" }).addTo(map);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        const markers = L.markerClusterGroup({
+            disableClusteringAtZoom: 15,
+            spiderfyOnMaxZoom: true,     
+            maxClusterRadius: 35         
+        }).addTo(map);
+
+        const CATEGORY_CONFIG = {
+            all: { text: "全部", icon: "fa-list", color: "#475569" },
+            traffic: { text: "即時路況", icon: "fa-road", color: "#3b82f6" }, 
+            accident: { text: "交通事故", icon: "fa-car-burst", color: "#ef4444" }, 
+            construction: { text: "施工管制", icon: "fa-person-digging", color: "#f97316" },
+            disaster: { text: "災害意外", icon: "fa-triangle-exclamation", color: "#dc2626" },
+            activity: { text: "活動", icon: "fa-users", color: "#10b981" },
+            other: { text: "其他", icon: "fa-circle-info", color: "#6b7280" }
+        };
+
+        const FIXED_CATEGORY_ORDER = ["all", "traffic", "accident", "construction", "disaster", "activity", "other"];
+
+        const SOURCE_CONFIG = {
+            "TDX CMS": { text: "TDX 即時路況", shortText: "TDX", color: "#0f766e", bg: "#ccfbf1", textColor: "#115e59" },
+            RSS: { text: "RSS 新聞事件", shortText: "RSS", color: "#1d4ed8", bg: "#dbeafe", textColor: "#1d4ed8" },
+            news: { text: "AI 擷取事件", shortText: "AI", color: "#7c3aed", bg: "#ede9fe", textColor: "#6d28d9" },
+            default: { text: "其他來源", shortText: "其他", color: "#475569", bg: "#e2e8f0", textColor: "#334155" }
+        };
+
+        const CITY_OPTIONS = [
+            { value: "基隆", label: "基隆市" }, { value: "台北", label: "台北市" }, { value: "新北", label: "新北市" },
+            { value: "桃園", label: "桃園市" }, { value: "新竹", label: "新竹縣市" }, { value: "苗栗", label: "苗栗縣" },
+            { value: "台中", label: "台中市" }, { value: "彰化", label: "彰化縣" }, { value: "南投", label: "南投縣" },
+            { value: "雲林", label: "雲林縣" }, { value: "嘉義", label: "嘉義縣市" }, { value: "台南", label: "台南市" },
+            { value: "高雄", label: "高雄市" }, { value: "屏東", label: "屏東縣" }, { value: "宜蘭", label: "宜蘭縣" },
+            { value: "花蓮", label: "花蓮縣" }, { value: "台東", label: "台東縣" }, { value: "澎湖", label: "澎湖縣" },
+            { value: "金門", label: "金門縣" }, { value: "連江", label: "連江縣" }, 
+            { value: "國道", label: "國道 (高速公路)" }, { value: "省道", label: "省道" }
+        ];
+
+        const taiwanView = { center: [23.6, 120.9], zoom: 7 };
+        const globalView = { center: [20, 0], zoom: 2 };
+
+        let parsedEvents = [];
+        let activeCategory = "all";
+        let searchKeyword = "";
+        let isTaiwanMode = true;
+        let selectedTitleForReport = "";
+        
+        let twGeoJSON = null;               
+        let currentBoundaryLayer = null;    
+
+        const statusText = document.getElementById("status-text");
+        const eventList = document.getElementById("event-list");
+        const categoryFilters = document.getElementById("category-filters");
+        const reportModal = document.getElementById("report-modal");
+        const betaModal = document.getElementById("beta-modal");
+        const newsSidebar = document.getElementById("news-sidebar");
+
+        async function loadTwGeoJSON() {
+            try {
+                const res = await fetch("https://cdn.jsdelivr.net/gh/g0v/twgeojson@master/json/twCounty2010.geo.json");
+                twGeoJSON = await res.json();
+            } catch (error) {
+                console.error("載入縣市邊界失敗:", error);
+            }
+        }
+
+        function drawCityBoundary(selectedCity) {
+            if (currentBoundaryLayer) {
+                map.removeLayer(currentBoundaryLayer);
+                currentBoundaryLayer = null;
+            }
+
+            if (!selectedCity || selectedCity === "all" || selectedCity === "全部" || !twGeoJSON) return;
+
+            currentBoundaryLayer = L.geoJSON(twGeoJSON, {
+                filter: function (feature) {
+                    const featureName = (feature.properties.COUNTYNAME || feature.properties.name || "").replace(/臺/g, "台");
+                    const targetCity = selectedCity.replace(/臺/g, "台");
+                    return featureName.includes(targetCity) || targetCity.includes(featureName);
+                },
+                style: {
+                    color: "#ef4444",     // 紅色邊框
+                    weight: 3,            // 粗細
+                    opacity: 0.8,         
+                    fillColor: "#ef4444", 
+                    fillOpacity: 0.08     // 極低透明度，不擋住標記
+                }
+            }).addTo(map);
+        }
+
+        function currentCityFilter() { return document.getElementById("city-filter")?.value || "all"; }
+
+        function populateCityFilters() {
+            const desktopFilter = document.getElementById("city-filter");
+            const mobileFilter = document.getElementById("city-filter-mobile");
+            if (!desktopFilter || !mobileFilter) return;
+
+            const selectedValue = desktopFilter.value || "all";
+            const optionsHtml = ['<option value="all">全部城市</option>', ...CITY_OPTIONS.map((item) => `<option value="${item.value}">${item.label}</option>`)].join("");
+
+            desktopFilter.innerHTML = optionsHtml;
+            mobileFilter.innerHTML = optionsHtml;
+            desktopFilter.value = selectedValue;
+            mobileFilter.value = selectedValue;
+        }
+
+        function setStatus(text) { if (statusText) statusText.textContent = text; }
+
+        function makeBadge(category) {
+            const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.other;
+            return `<span class="badge" style="background:${config.color}"><i class="fa-solid ${config.icon}"></i>${config.text}</span>`;
+        }
+
+        function getSourceConfig(source) { return SOURCE_CONFIG[source] || SOURCE_CONFIG.default; }
+
+        function makeSourceBadge(source, compact = false) {
+            const config = getSourceConfig(source);
+            const text = compact ? config.shortText : config.text;
+            return `<span class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold" style="background:${config.bg}; color:${config.textColor};">${text}</span>`;
+        }
+
+        function tryParseJson(text, fallback) {
+            try { return text ? JSON.parse(text) : fallback; } catch { return fallback; }
+        }
+
+        function normalizeText(value) { return String(value || "").trim(); }
+
+        function renderCategoryButtons() {
+            categoryFilters.innerHTML = FIXED_CATEGORY_ORDER.map((category) => {
+                const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.other;
+                const activeClass = activeCategory === category ? "active" : "";
+                return `<button class="filter-btn badge ${activeClass}" style="background:${config.color}" data-category="${category}"><i class="fa-solid ${config.icon}"></i>${config.text}</button>`;
+            }).join("");
+
+            categoryFilters.querySelectorAll("[data-category]").forEach((button) => {
+                button.addEventListener("click", () => {
+                    activeCategory = button.dataset.category || "all";
+                    renderCategoryButtons();
+                    renderEvents();
+                });
+            });
+        }
+
+        function getFilteredEvents() {
+            const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
+            return parsedEvents.filter((eventItem) => {
+                const lat = Number(eventItem.lat); const lng = Number(eventItem.lng);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+                if (activeCategory !== "all" && eventItem.category !== activeCategory) return false;
+                if (cityFilter !== "all") {
+                    const cityText = normalizeText(eventItem.city).toLowerCase();
+                    if (!cityText.includes(cityFilter.toLowerCase())) return false;
+                }
+                if (searchKeyword) {
+                    const haystack = [eventItem.title, eventItem.content, eventItem.city, eventItem.source].join(" ").toLowerCase();
+                    if (!haystack.includes(searchKeyword)) return false;
+                }
+                return true;
+            });
+        }
+
+        function getEventZoom(eventItem) {
+            if (eventItem.source === "TDX CMS") return 14;
+            if (["traffic", "accident", "disaster", "fire"].includes(eventItem.category)) return 13;
+            return 12;
+        }
+
+        function flyToEvent(eventItem) {
+            const latlng = [Number(eventItem.lat), Number(eventItem.lng)];
+            map.flyTo(latlng, getEventZoom(eventItem), { duration: 0.8 });
+        }
+
+        function openReportModal(title) {
+            selectedTitleForReport = title;
+            document.getElementById("report-title").value = title;
+            document.getElementById("report-type").value = "資料錯誤";
+            document.getElementById("report-message").value = "";
+            reportModal.classList.remove("hidden"); reportModal.classList.add("flex");
+        }
+
+        function closeReportModal() {
+            reportModal.classList.add("hidden"); reportModal.classList.remove("flex");
+        }
+
+        async function submitReport() {
+            const titleInput = document.getElementById("report-title");
+            const typeInput = document.getElementById("report-type");
+            const contentInput = document.getElementById("report-message"); 
+            const title = titleInput ? titleInput.value.trim() : "未提供標題";
+            const errorType = typeInput ? typeInput.value : "未分類錯誤";
+            const message = contentInput ? contentInput.value.trim() : "";
+
+            if (!message) { alert("請填寫補充說明內容！"); return; }
+
+            const submitBtn = document.getElementById("report-submit-btn");
+            const originalBtnText = submitBtn.innerText;
+            submitBtn.innerText = "傳送中..."; submitBtn.disabled = true;
+
+            try {
+                const response = await fetch("/api/report", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title, errorType, message })
+                });
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    alert("✅ 回報成功！感謝您的提供。");
+                    closeReportModal(); 
+                } else { throw new Error(result.error || "伺服器錯誤"); }
+            } catch (error) {
+                alert("❌ 回報傳送失敗，請稍後再試。");
+            } finally {
+                submitBtn.innerText = originalBtnText; submitBtn.disabled = false;
+            }
+        }
+
+        // 🌟 修改：呼叫綠界金流的函數 (更新成加油)
+        async function handleDonate(amount, btnElement) {
+            try {
+                const originalHtml = btnElement.innerHTML;
+                btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 準備綠界金流...';
+                btnElement.disabled = true;
+
+                const response = await fetch('/api/create-payment', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        amount: amount, 
+                        // 🌟 傳給綠界的商品明細
+                        itemName: `幫地圖加油 ${amount} 元` 
+                    })
+                });
+                
+                if (!response.ok) throw new Error("API 回應錯誤");
+
+                const htmlForm = await response.text();
+                const div = document.createElement('div');
+                div.innerHTML = htmlForm;
+                document.body.appendChild(div);
+                div.querySelector('form').submit(); 
+                
+            } catch (error) {
+                alert('金流系統初始化失敗，請確認後端設定是否正確。');
+                console.error(error);
+                // 🌟 發生錯誤時恢復加油按鈕
+                btnElement.innerHTML = '⛽ 幫地圖加油';
+                btnElement.disabled = false;
+            }
+        }
+
+        function renderEvents() {
+            let filteredEvents = getFilteredEvents();
+
+            filteredEvents.sort((a, b) => {
+                const aIsNews = (a.source === "news" || a.source === "RSS") ? 1 : 0;
+                const bIsNews = (b.source === "news" || b.source === "RSS") ? 1 : 0;
+                return bIsNews - aIsNews; 
+            });
+
+            markers.clearLayers();
+            eventList.innerHTML = "";
+
+            if (!filteredEvents.length) {
+                eventList.innerHTML = `<div class="px-5 py-8 text-center text-sm text-slate-500 md:text-slate-400">目前沒有符合條件的事件。</div>`;
+            }
+
+            filteredEvents.forEach((eventItem) => {
+                const category = CATEGORY_CONFIG[eventItem.category] || CATEGORY_CONFIG.other;
+                const sourceBadge = makeSourceBadge(eventItem.source);
+                const sourceBadgeCompact = makeSourceBadge(eventItem.source, true);
+                const latlng = [Number(eventItem.lat), Number(eventItem.lng)];
+
+                const marker = L.marker(latlng, {
+                    icon: L.divIcon({
+                        className: "",
+                        iconSize: [34, 34],
+                        iconAnchor: [17, 17],
+                        html: `<div class="custom-marker" style="background:${category.color}"><i class="fa-solid ${category.icon}"></i></div>`
+                    })
+                });
+                
+                markers.addLayer(marker);
+
+                const popupHtml = `
+                    <div class="min-w-[220px]">
+                        <div class="mb-2 flex items-start justify-between gap-3">
+                            <div class="font-bold">${eventItem.title || "未命名事件"}</div>
+                            <div class="flex items-center gap-2">${sourceBadgeCompact} ${makeBadge(eventItem.category)}</div>
+                        </div>
+                        <div class="mb-3 text-xs text-slate-600">${eventItem.content || "沒有摘要"}</div>
+                        <div class="mb-3 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                            <span>${eventItem.city || "未知城市"}</span> ${sourceBadge}
+                        </div>
+                        <div class="flex gap-2 text-xs">
+                            ${eventItem.url ? `<a href="${eventItem.url}" target="_blank" rel="noreferrer" class="rounded-lg bg-blue-50 px-3 py-2 font-semibold text-blue-600">查看原文</a>` : ""}
+                            <button type="button" class="rounded-lg bg-red-50 px-3 py-2 font-semibold text-red-600" onclick='openReportModal(decodeURIComponent("${encodeURIComponent(eventItem.title || "")}"))'>回報資料</button>
+                        </div>
+                    </div>
+                `;
+
+                marker.bindPopup(popupHtml, { className: "custom-popup" });
+
+                const card = document.createElement("article");
+                card.className = "border-b border-slate-200 bg-white px-4 py-4 text-slate-900 transition hover:bg-slate-50 md:border-slate-800 md:bg-slate-900 md:text-white md:hover:bg-slate-800 cursor-pointer";
+                card.innerHTML = `
+                    <div class="mb-2 flex items-start justify-between gap-2">
+                        <div class="text-xs font-bold uppercase tracking-wide text-blue-600">${normalizeText(eventItem.city) || "未知城市"}</div>
+                        <div class="flex items-center gap-2">${sourceBadgeCompact} ${makeBadge(eventItem.category)}</div>
+                    </div>
+                    <h3 class="mb-2 text-sm font-bold leading-6">${eventItem.title || "未命名事件"}</h3>
+                    <p class="mb-3 text-xs leading-6 text-slate-500 md:text-slate-300">${eventItem.content || "沒有摘要"}</p>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400">
+                        ${sourceBadge}
+                        <div class="flex items-center gap-3">
+                            <button type="button" class="font-semibold text-red-500 hover:text-red-600" data-report-title="${encodeURIComponent(eventItem.title || "")}">回報</button>
+                            ${eventItem.url ? `<a href="${eventItem.url}" target="_blank" rel="noreferrer" class="font-semibold text-blue-500 hover:text-blue-600">原文</a>` : ""}
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener("click", (event) => {
+                    const target = event.target;
+                    if (target instanceof HTMLElement && (target.tagName === "A" || target.tagName === "BUTTON")) return;
+                    
+                    markers.zoomToShowLayer(marker, () => {
+                        flyToEvent(eventItem);
+                        marker.openPopup();
+                    });
+
+                    if (window.innerWidth < 768) newsSidebar.classList.add("drawer-collapsed");
+                });
+
+                const reportButton = card.querySelector("[data-report-title]");
+                if (reportButton) {
+                    reportButton.addEventListener("click", (event) => {
+                        event.stopPropagation();
+                        openReportModal(decodeURIComponent(reportButton.dataset.reportTitle || ""));
+                    });
+                }
+
+                eventList.appendChild(card);
+            });
+
+            const mobileCount = document.getElementById("mobile-count");
+            if (mobileCount) mobileCount.textContent = `${filteredEvents.length} 筆`;
+
+            setStatus(`目前顯示 ${filteredEvents.length} 筆事件`);
+        }
+
+        const MOCK_EVENTS = [
+            { id: "mock-1", title: "國道1號南向 林口段 車輛故障", category: "traffic", city: "新北", lat: 25.07, lng: 121.38, publishedAt: new Date().toISOString(), source: "TDX CMS", summary: "林口交流道附近有車輛故障，請用路人注意行車安全。" },
+            { id: "mock-2", title: "台北市信義區 追撞事故", category: "accident", city: "台北", lat: 25.033, lng: 121.564, publishedAt: new Date().toISOString(), source: "RSS", summary: "信義路五段發生輕微追撞，已報警處理中。" },
+            { id: "mock-3", title: "台中市北屯區 道路施工管制", category: "construction", city: "台中", lat: 24.17, lng: 120.69, publishedAt: new Date().toISOString(), source: "TDX CMS", summary: "文心路四段進行路面刨除工程，預計施工至下午六點。" },
+            { id: "mock-4", title: "花蓮縣 地震後山區道路落石", category: "disaster", city: "花蓮", lat: 23.98, lng: 121.60, publishedAt: new Date().toISOString(), source: "news", summary: "蘇花公路部分路段因餘震出現落石，已進行臨時管制。" },
+            { id: "mock-5", title: "高雄市左營區 路跑活動交通管制", category: "activity", city: "高雄", lat: 22.68, lng: 120.30, publishedAt: new Date().toISOString(), source: "RSS", summary: "左營大路周六上午舉辦路跑，部分路段暫停停車。" },
+            { id: "mock-6", title: "新竹縣竹北市 水管破裂搶修", category: "other", city: "新竹", lat: 24.83, lng: 121.01, publishedAt: new Date().toISOString(), source: "news", summary: "光明六路發生自來水管破裂，施工人員緊急搶修中。" }
+        ];
+
+        async function syncNewsAndRender() {
+            setStatus("正在抓取事件資料...");
+            try {
+                const response = await fetch("/api/events");
+                const rawText = await response.text();
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${rawText.slice(0, 120)}`);
+
+                const data = tryParseJson(rawText, []);
+                parsedEvents = Array.isArray(data) ? data : [];
+                renderCategoryButtons();
+                renderEvents();
+            } catch (error) {
+                console.warn("無法連線至 API，使用本機展示資料。", error);
+                parsedEvents = MOCK_EVENTS;
+                renderCategoryButtons();
+                renderEvents();
+                setStatus("展示模式：顯示範例資料（本機無後端）");
+            }
+        }
+
+        function switchMode(mode) {
+            isTaiwanMode = mode;
+            document.getElementById("btn-tw").classList.toggle("bg-blue-600", mode);
+            document.getElementById("btn-global").classList.toggle("bg-blue-600", !mode);
+            document.getElementById("btn-global").classList.toggle("text-slate-300", mode);
+            document.getElementById("btn-tw-mobile").classList.toggle("bg-blue-600", mode);
+            document.getElementById("btn-tw-mobile").classList.toggle("text-white", mode);
+            document.getElementById("btn-global-mobile").classList.toggle("bg-blue-600", !mode);
+            document.getElementById("btn-global-mobile").classList.toggle("text-white", !mode);
+            document.getElementById("btn-global-mobile").classList.toggle("text-slate-600", mode);
+
+            if (mode) map.flyTo(taiwanView.center, taiwanView.zoom, { duration: 0.7 });
+            else map.flyTo(globalView.center, globalView.zoom, { duration: 0.7 });
+
+            renderEvents();
+        }
+
+        function handleSearch(event) {
+            searchKeyword = event.target.value.trim().toLowerCase();
+            renderEvents();
+        }
+
+        // 🌟 剛剛斷掉的程式碼從這邊開始補齊：
+        function syncCityFilter(value) {
+            document.getElementById("city-filter").value = value;
+            document.getElementById("city-filter-mobile").value = value;
+            
+            drawCityBoundary(value); 
+            renderEvents();
+
+            if (value === "all") {
+                map.flyTo([23.6978, 120.9605], 7, { duration: 1.5 });
+            } else {
+                const cityCenters = {
+                    "台北市": [25.032969, 121.565418],
+                    "新北市": [25.011235, 121.465745],
+                    "基隆市": [25.127603, 121.739183],
+                    "桃園市": [24.993628, 121.300979],
+                    "新竹市": [24.813828, 120.967579],
+                    "新竹縣": [24.828271, 121.012895],
+                    "苗栗縣": [24.560159, 120.821427],
+                    "台中市": [24.147735, 120.673648],
+                    "彰化縣": [24.051796, 120.539458],
+                    "南投縣": [23.903023, 120.687707],
+                    "雲林縣": [23.709203, 120.431337],
+                    "嘉義市": [23.480075, 120.449111],
+                    "嘉義縣": [23.451842, 120.255461],
+                    "台南市": [22.999728, 120.227027],
+                    "高雄市": [22.627278, 120.301435],
+                    "屏東縣": [22.671975, 120.486241],
+                    "宜蘭縣": [24.730245, 121.762886],
+                    "花蓮縣": [23.987158, 121.601571],
+                    "台東縣": [22.758331, 121.144419],
+                    "澎湖縣": [23.571088, 119.579165],
+                    "金門縣": [24.449118, 118.375628],
+                    "連江縣": [26.150493, 119.936081],
+                    "國道": [24.147735, 120.673648], 
+                    "省道": [23.6978, 120.9605]
+                };
+
+                if (cityCenters[value]) {
+                    map.flyTo(cityCenters[value], 11, { duration: 1.5 });
+                }
+            }
+        }
+
+        function toggleDrawer() {
+            if (window.innerWidth < 768) newsSidebar.classList.toggle("drawer-collapsed");
+        }
+
+        function checkBetaModal() {
+            if (!localStorage.getItem("beta_accepted")) {
+                betaModal.classList.remove("hidden"); betaModal.classList.add("flex");
+            }
+        }
+
+        function closeBetaModal() {
+            localStorage.setItem("beta_accepted", "true");
+            betaModal.classList.add("hidden"); betaModal.classList.remove("flex");
+        }
+
+        window.openReportModal = openReportModal;
+        document.getElementById("event-search").addEventListener("input", handleSearch);
+        document.getElementById("event-search-mobile").addEventListener("input", handleSearch);
+        document.getElementById("city-filter").addEventListener("change", (event) => syncCityFilter(event.target.value));
+        document.getElementById("city-filter-mobile").addEventListener("change", (event) => syncCityFilter(event.target.value));
+        document.getElementById("btn-tw").addEventListener("click", () => switchMode(true));
+        document.getElementById("btn-global").addEventListener("click", () => switchMode(false));
+        document.getElementById("btn-tw-mobile").addEventListener("click", () => switchMode(true));
+        document.getElementById("btn-global-mobile").addEventListener("click", () => switchMode(false));
+        document.getElementById("drawer-handle").addEventListener("click", toggleDrawer);
+        document.getElementById("report-cancel-btn").addEventListener("click", closeReportModal);
+        document.getElementById("report-submit-btn").addEventListener("click", submitReport);
+        document.getElementById("beta-close-btn").addEventListener("click", closeBetaModal);
+        
+        reportModal.addEventListener("click", (event) => { if (event.target === reportModal) closeReportModal(); });
+        betaModal.addEventListener("click", (event) => { if (event.target === betaModal) closeBetaModal(); });
+
+        document.addEventListener("DOMContentLoaded", () => {
+            populateCityFilters();
+            checkBetaModal();
+            syncNewsAndRender();
+            loadTwGeoJSON();
+        });
+    </script>
+    <script defer src="/_vercel/insights/script.js"></script>
+</body>
+</html>
