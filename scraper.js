@@ -481,18 +481,13 @@ async function main() {
 
         if (target.name === "台南市") {
           console.log(`🔍 [台南 debug] ${evType} 原始資料筆數: ${eventsList.length}`);
-          if (eventsList.length > 0) {
-            const s = eventsList[0];
-            console.log(`🔍 [台南 debug] 第一筆欄位:`, JSON.stringify({
+          eventsList.slice(0, 5).forEach((s, i) => {
+            console.log(`🔍 [台南 debug] 第 ${i+1} 筆:`, JSON.stringify({
               EventID: s.EventID || s.RoadEventID,
-              summary: (s.EventTitle || s.EventSummary || s.Description || "").slice(0, 40),
-              PositionLat: s.PositionLat,
-              PositionLon: s.PositionLon,
-              EventPosition: s.EventPosition,
-              Positions: typeof s.Positions === "string" ? s.Positions.slice(0, 80) : s.Positions,
-              EndTime: s.EndTime || s.EventEndTime,
+              summary: (s.EventTitle || "").slice(0, 20),
+              Positions: s.Positions,
             }));
-          }
+          });
         }
 
         eventsList.forEach(event => {
