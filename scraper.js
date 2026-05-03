@@ -207,7 +207,7 @@ async function geocode(locationText) {
   if (geocodeFailCache.get(locationText)) return null;
 
   try {
-    const url = \`https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw\`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
     const res = await fetch(url, {
       headers: { "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)" }
     });
@@ -223,7 +223,7 @@ async function geocode(locationText) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
   } catch (e) {
-    console.error(\`❌ Geocode 失敗 [\${locationText}]:\`, e.message);
+    console.error(`❌ Geocode 失敗 [${locationText}]:`, e.message);
   }
   geocodeFailCache.set(locationText, true);
   return null;
