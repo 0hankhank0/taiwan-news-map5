@@ -162,28 +162,28 @@ ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.descript
 
 // 台灣縣市中心座標對照表（Nominatim 429 時的 fallback）
 const TAIWAN_CITY_COORDS = {
-  "台北市": { lat: 25.0478, lng: 121.5319 },
-  "新北市": { lat: 25.0052, lng: 121.4657 },
-  "桃園市": { lat: 24.9937, lng: 121.3010 },
-  "台中市": { lat: 24.1477, lng: 120.6736 },
-  "台南市": { lat: 22.9999, lng: 120.2269 },
-  "高雄市": { lat: 22.6273, lng: 120.3014 },
-  "基隆市": { lat: 25.1276, lng: 121.7392 },
-  "新竹市": { lat: 24.8138, lng: 120.9675 },
-  "新竹縣": { lat: 24.8387, lng: 121.0177 },
-  "苗栗縣": { lat: 24.5602, lng: 120.8214 },
-  "彰化縣": { lat: 24.0518, lng: 120.5161 },
-  "南投縣": { lat: 23.9609, lng: 120.9718 },
-  "雲林縣": { lat: 23.7092, lng: 120.4313 },
-  "嘉義市": { lat: 23.4800, lng: 120.4491 },
-  "嘉義縣": { lat: 23.4518, lng: 120.2554 },
-  "屏東縣": { lat: 22.5519, lng: 120.5487 },
-  "宜蘭縣": { lat: 24.7021, lng: 121.7377 },
-  "花蓮縣": { lat: 23.9871, lng: 121.6015 },
-  "台東縣": { lat: 22.7583, lng: 121.1444 },
-  "澎湖縣": { lat: 23.5711, lng: 119.5793 },
-  "金門縣": { lat: 24.4493, lng: 118.3765 },
-  "連江縣": { lat: 26.1505, lng: 119.9289 },
+  "台北市": { lat: 25.0330, lng: 121.5654 },  // 台北市中心（忠孝東路）
+  "新北市": { lat: 25.0120, lng: 121.4628 },  // 板橋市中心
+  "桃園市": { lat: 24.9936, lng: 121.3010 },  // 桃園市中心
+  "台中市": { lat: 24.1477, lng: 120.6736 },  // 台中市中心
+  "台南市": { lat: 23.1728, lng: 120.2793 },  // 台南市中心（來源：月沙生活通）
+  "高雄市": { lat: 22.6273, lng: 120.3014 },  // 高雄市中心
+  "基隆市": { lat: 25.1276, lng: 121.7392 },  // 基隆市中心
+  "新竹市": { lat: 24.8138, lng: 120.9675 },  // 新竹市中心
+  "新竹縣": { lat: 24.8387, lng: 121.0177 },  // 新竹縣中心
+  "苗栗縣": { lat: 24.5602, lng: 120.8214 },  // 苗栗縣中心
+  "彰化縣": { lat: 24.0518, lng: 120.5161 },  // 彰化縣中心
+  "南投縣": { lat: 23.9609, lng: 120.9718 },  // 南投縣中心
+  "雲林縣": { lat: 23.7092, lng: 120.4313 },  // 雲林縣中心
+  "嘉義市": { lat: 23.4800, lng: 120.4491 },  // 嘉義市中心
+  "嘉義縣": { lat: 23.4518, lng: 120.2554 },  // 嘉義縣中心
+  "屏東縣": { lat: 22.5519, lng: 120.5487 },  // 屏東縣中心
+  "宜蘭縣": { lat: 24.7021, lng: 121.7377 },  // 宜蘭縣中心
+  "花蓮縣": { lat: 23.9871, lng: 121.6015 },  // 花蓮縣中心
+  "台東縣": { lat: 22.7583, lng: 121.1444 },  // 台東縣中心
+  "澎湖縣": { lat: 23.5711, lng: 119.5793 },  // 澎湖縣中心
+  "金門縣": { lat: 24.4493, lng: 118.3765 },  // 金門縣中心
+  "連江縣": { lat: 26.1505, lng: 119.9289 },  // 連江縣中心
   "國道":   { lat: 24.0, lng: 121.0 },
   "省道":   { lat: 24.0, lng: 121.0 },
 };
@@ -220,7 +220,12 @@ async function geocode(locationText) {
     }
     const data = await res.json();
     if (data && data.length > 0) {
-      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+      const lat = parseFloat(data[0].lat);
+      const lng = parseFloat(data[0].lon);
+      // 驗證座標在台灣範圍內，避免 Nominatim 亂猜到海外
+      if (lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123) {
+        return { lat, lng };
+      }
     }
   } catch (e) {
     console.error(`❌ Geocode 失敗 [${locationText}]:`, e.message);
@@ -303,6 +308,21 @@ async function fetchNews() {
   }
 
   console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
+
+  // 【修復】AI 篩選後二次去重：同城市 + 同類型 + 標題相似 → 只保留第一筆
+  const seenEventKeys = new Set();
+  relevantArticles = relevantArticles.filter(article => {
+    const ai = article.aiResult;
+    const city = ai.locationFallback || ai.location || "";
+    const cat = ai.category || "";
+    // 標題取前10字當指紋
+    const titleKey = (ai.title || article.title || "").slice(0, 10);
+    const key = `${city}_${cat}_${titleKey}`;
+    if (seenEventKeys.has(key)) return false;
+    seenEventKeys.add(key);
+    return true;
+  });
+  console.log(`🔍 [新聞] 二次去重後剩 ${relevantArticles.length} 則`);
 
   let newsEvents = [];
   for (const article of relevantArticles) {
