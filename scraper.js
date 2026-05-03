@@ -305,81 +305,95 @@ async function fetchNews() {
 // 外掛 API：v2 Road/Traffic/Live 路段即時壅塞
 // ==========================================
 async function fetchPBS(token) {
-  console.log("⏳ [Live路況] 開始抓取各縣市路段即時壅塞...");
+  console.log("⏳ [警廣] 開始抓取警廣路況播報...");
   let results = [];
 
-  const liveTargets = [
-    { city: "Taoyuan",        name: "桃園市" },
-    { city: "ChanghuaCounty", name: "彰化縣" },
-    { city: "Hsinchu",        name: "新竹市" },
-    { city: "YunlinCounty",   name: "雲林縣" },
+  // 警廣涵蓋範圍：全台 + 國道 + 省道
+  const pbsTargets = [
+    { path: "Freeway",           name: "國道警廣",  cityName: "國道"   },
+    { path: "Highway",           name: "省道警廣",  cityName: "省道"   },
+    { path: "City/Taipei",       name: "台北警廣",  cityName: "台北市" },
+    { path: "City/NewTaipei",    name: "新北警廣",  cityName: "新北市" },
+    { path: "City/Taoyuan",      name: "桃園警廣",  cityName: "桃園市" }, // ✅ 修復：移除重複的桃園
+    { path: "City/Taichung",     name: "台中警廣",  cityName: "台中市" },
+    { path: "City/Tainan",       name: "台南警廣",  cityName: "台南市" },
+    { path: "City/Kaohsiung",    name: "高雄警廣",  cityName: "高雄市" },
+    { path: "City/Keelung",      name: "基隆警廣",  cityName: "基隆市" },
+    { path: "City/YilanCounty",  name: "宜蘭警廣",  cityName: "宜蘭縣" },
   ];
 
-  for (const t of liveTargets) {
-    const url = `https://tdx.transportdata.tw/api/basic/v2/Road/Traffic/Live/City/${t.city}?$format=JSON`;
-    const data = await fetchTDX(url, token, `Live-${t.name}`);
+  for (const t of pbsTargets) {
+    const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/LiveEvent/${t.path}?$format=JSON`;
+    const data = await fetchTDX(url, token, t.name);
     if (!data) { await delay(3000); continue; }
 
-    const sections = Array.isArray(data) ? data :
-      (data?.LiveTrafficData || data?.RoadSections || data?.Sections ||
-       data?.LiveTraffics || data?.value || []);
+    const events = data.LiveEvents || data.Events || data.value || (Array.isArray(data) ? data : []);
+    console.log(`📦 [${t.name}] 原始筆數: ${events.length}`);
 
-    console.log(`📦 [Live-${t.name}] 原始路段數: ${sections.length}`);
-
-    if (sections.length > 0) {
-      const s0 = sections[0];
-      console.log(`🔍 [Live-${t.name}] 第一筆欄位:`, JSON.stringify({
-        SectionID: s0.SectionID || s0.RoadID,
-        LiveLevel: s0.LiveLevel,
-        CongestionLevel: s0.CongestionLevel,
-        TrafficLevel: s0.TrafficLevel,
-        Level: s0.Level,
-        Status: s0.Status,
-        LiveSpeed: s0.LiveSpeed || s0.Speed,
-        keys: Object.keys(s0).slice(0, 12),
+    // debug：印出第一筆欄位
+    if (events.length > 0) {
+      const e0 = events[0];
+      console.log(`🔍 [${t.name}] 第一筆:`, JSON.stringify({
+        EventID: e0.EventID || e0.RoadEventID,
+        summary: (e0.EventTitle || e0.EventSummary || e0.Description || "").slice(0, 50),
+        PositionLat: e0.PositionLat,
+        PositionLon: e0.PositionLon,
+        EventPosition: e0.EventPosition,
+        Positions: typeof e0.Positions === "string" ? e0.Positions.slice(0, 80) : e0.Positions,
       }));
     }
 
+    // 各城市警廣筆數上限
+    const PBS_CITY_LIMIT = 50;
     let added = 0;
-    sections.forEach(sec => {
-      const level = sec.LiveLevel ?? sec.CongestionLevel ?? sec.TrafficLevel ?? sec.Level ?? -1;
-      if (level < 2 || level > 3) return;
+    events.forEach(event => {
+      if (added >= PBS_CITY_LIMIT) return;
 
-      let lat = sec.StartLat || sec.PositionLat || sec.Lat ||
-                sec.StartPosition?.PositionLat || sec.GeometryCenter?.PositionLat;
-      let lng = sec.StartLon || sec.PositionLon || sec.Lon ||
-                sec.StartPosition?.PositionLon || sec.GeometryCenter?.PositionLon;
+      const eventId = event.EventID || event.RoadEventID;
+      const summary = event.EventTitle || event.EventSummary || event.Description || "";
+      if (!eventId || !summary) return;
 
-      const wkt = sec.Geometry || sec.RoadGeometry || "";
-      if (!lat && wkt.includes("LINESTRING")) {
-        const m = wkt.match(/LINESTRING[^(]*\(([^,]+)/);
-        if (m) {
-          const parts = m[1].trim().split(/\s+/);
-          if (parts.length >= 2) { lng = parseFloat(parts[0]); lat = parseFloat(parts[1]); }
-        }
+      // 排除宣導
+      if (summary.includes("宣導")) return;
+
+      // 排除通用施工（重用既有函式）
+      if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) return;
+
+      // 過期過濾
+      const endTime = event.EndTime || event.EventEndTime;
+      if (endTime && new Date(endTime).getTime() < Date.now()) return;
+
+      // 座標解析
+      let lat, lng;
+      if (typeof event.Positions === "string" && event.Positions.includes("POINT")) {
+        const m = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
+        if (m) { lng = parseFloat(m[1]); lat = parseFloat(m[2]); }
+      } else {
+        lat = event.PositionLat || event.EventPosition?.PositionLat;
+        lng = event.PositionLon || event.EventPosition?.PositionLon;
       }
 
       if (!lat || !lng) return;
 
-      const roadName = sec.RoadName || sec.SectionName || sec.RoadID || "路段";
-      const levelText = level === 2 ? "壅塞" : "嚴重壅塞";
-      const speed = sec.LiveSpeed ?? sec.Speed ?? "";
-      const speedText = speed !== "" ? `(${speed}km/h)` : "";
-      const id = sec.SectionID || sec.RoadID || sec.ID || Math.random().toString(36).substring(7);
+      const startTime = event.StartTime || event.EventStartTime || "";
+      const timeInfo = (startTime || endTime)
+        ? ` (${startTime} ~ ${endTime || "未定"})`
+        : "";
 
       results.push({
-        id: `LIVE_${t.city}_${id}`,
-        text: `【${t.name}路況】${roadName} ${levelText}${speedText}`,
-        lat, lng, city: t.name,
+        id: `PBS_${eventId}`,
+        text: `【警廣播報】${summary}${timeInfo}`,
+        lat, lng,
+        city: t.cityName, // ✅ 修復：使用正確的完整縣市名，避免 geocode 定位到市政府
       });
       added++;
     });
 
-    console.log(`✅ [Live-${t.name}] 壅塞路段: ${added} 筆`);
+    console.log(`✅ [${t.name}] 有效筆數: ${added}`);
     await delay(5000);
   }
 
-  console.log(`✅ [Live路況+事故] 成功整理 ${results.length} 筆！`);
+  console.log(`✅ [警廣] 共整理 ${results.length} 筆！`);
   return results;
 }
 
@@ -397,7 +411,7 @@ async function fetchTaichung() {
 // ==========================================
 
 // 【修復】判斷是否為無意義的施工通用案件
-function isEmptyConstructionEvent(summary, eventTypeName) {
+function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
   if (!summary) {
     // 沒有摘要且類型包含施工/一般案件 → 過濾
     if (
@@ -412,8 +426,13 @@ function isEmptyConstructionEvent(summary, eventTypeName) {
     /^一般案件$/,
     /^道路施工$/,
     /^施工管制$/,
+    /^道路維護$/,
   ];
-  if (genericPatterns.some(p => p.test(summary.trim()))) return true;
+  if (genericPatterns.some(p => p.test(summary?.trim()))) {
+    // ✅ 修復：Location.Other 有具體地址則保留，不過濾
+    if (locationOther && locationOther.trim().length > 5) return false;
+    return true;
+  }
   return false;
 }
 
@@ -481,7 +500,7 @@ async function main() {
           const eventId = event.EventID || event.RoadEventID;
 
           // 【修復】過濾無摘要的通用施工案件
-          if (isEmptyConstructionEvent(summary, event.EventTypeName)) return;
+          if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) return;
 
           // 過濾宣導、交通管制
           if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
