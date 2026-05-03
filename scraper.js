@@ -504,23 +504,23 @@ async function main() {
           });
         }
 
-        eventsList.forEach(event => {
+        for (const event of eventsList) {
           const summary = event.EventTitle || event.EventSummary || event.Description || "";
           const eventId = event.EventID || event.RoadEventID;
 
           // 【修復】過濾無摘要的通用施工案件
-          if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) return;
+          if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) continue;
 
           // 過濾宣導、交通管制
-          if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
+          if (summary.includes("宣導") || event.EventTypeName === "交通管制") continue;
 
           // 【修復】城市筆數上限
-          if ((cityStats[target.name] || 0) >= CITY_LIMIT) return;
+          if ((cityStats[target.name] || 0) >= CITY_LIMIT) continue;
 
           const endTime = event.EndTime || event.EventEndTime;
           if (endTime) {
             const endTs = new Date(endTime).getTime();
-            if (endTs && endTs < Date.now()) return;
+            if (endTs && endTs < Date.now()) continue;
           }
 
           let lat, lng;
@@ -537,7 +537,20 @@ async function main() {
             lng = event.PositionLon || event.EventPosition?.PositionLon;
           }
 
-          if (eventId && summary && lat && lng) {
+          if (!eventId || !summary) continue;
+
+          // 沒座標 → 嘗試從 Location.Other geocode
+          if (!lat || !lng) {
+            const locText = event.Location?.Other || event.Location?.Road || "";
+            if (!locText || locText.length < 4) continue; // 地名太短，跳過
+            const coords = await geocode(locText);
+            if (!coords) continue; // geocode 也失敗，丟掉
+            lat = coords.lat;
+            lng = coords.lng;
+            await delay(1200); // Nominatim 限速
+          }
+
+          if (lat && lng) {
             const startTime = event.StartTime || event.EventStartTime || "";
             const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
 
@@ -550,7 +563,7 @@ async function main() {
             });
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
           }
-        });
+        }
       }
       console.log(`💤 ${target.name} 完畢，冷卻中...`);
       await delay(20000);
