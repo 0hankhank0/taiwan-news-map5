@@ -160,18 +160,62 @@ ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.descript
   }
 }
 
+// 台灣縣市中心座標對照表（Nominatim 429 時的 fallback）
+const TAIWAN_CITY_COORDS = {
+  "台北市": { lat: 25.0478, lng: 121.5319 },
+  "新北市": { lat: 25.0052, lng: 121.4657 },
+  "桃園市": { lat: 24.9937, lng: 121.3010 },
+  "台中市": { lat: 24.1477, lng: 120.6736 },
+  "台南市": { lat: 22.9999, lng: 120.2269 },
+  "高雄市": { lat: 22.6273, lng: 120.3014 },
+  "基隆市": { lat: 25.1276, lng: 121.7392 },
+  "新竹市": { lat: 24.8138, lng: 120.9675 },
+  "新竹縣": { lat: 24.8387, lng: 121.0177 },
+  "苗栗縣": { lat: 24.5602, lng: 120.8214 },
+  "彰化縣": { lat: 24.0518, lng: 120.5161 },
+  "南投縣": { lat: 23.9609, lng: 120.9718 },
+  "雲林縣": { lat: 23.7092, lng: 120.4313 },
+  "嘉義市": { lat: 23.4800, lng: 120.4491 },
+  "嘉義縣": { lat: 23.4518, lng: 120.2554 },
+  "屏東縣": { lat: 22.5519, lng: 120.5487 },
+  "宜蘭縣": { lat: 24.7021, lng: 121.7377 },
+  "花蓮縣": { lat: 23.9871, lng: 121.6015 },
+  "台東縣": { lat: 22.7583, lng: 121.1444 },
+  "澎湖縣": { lat: 23.5711, lng: 119.5793 },
+  "金門縣": { lat: 24.4493, lng: 118.3765 },
+  "連江縣": { lat: 26.1505, lng: 119.9289 },
+  "國道":   { lat: 24.0, lng: 121.0 },
+  "省道":   { lat: 24.0, lng: 121.0 },
+};
+
+// geocode 失敗計數（同一地名連續失敗就跳過）
+const geocodeFailCache = new Map();
+
 async function geocode(locationText) {
   if (!locationText) return null;
+
+  // 1. 先查縣市對照表（含部分比對），避免打 Nominatim
+  for (const [city, coords] of Object.entries(TAIWAN_CITY_COORDS)) {
+    if (locationText.startsWith(city) || locationText === city) {
+      // 加小幅隨機 jitter 避免全堆同一點
+      const jitter = () => (Math.random() - 0.5) * 0.04;
+      return { lat: coords.lat + jitter(), lng: coords.lng + jitter() };
+    }
+  }
+
+  // 2. 已知失敗的地名直接跳過
+  if (geocodeFailCache.get(locationText)) return null;
+
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
+    const url = \`https://nominatim.openstreetmap.org/search?q=\${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw\`;
     const res = await fetch(url, {
-      headers: { 
-        "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)"
-      }
+      headers: { "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)" }
     });
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      console.error(`❌ Nominatim 回傳非 JSON [${locationText}]: ${res.status}`);
+      if (res.status === 429) {
+        geocodeFailCache.set(locationText, true); // 限速，記住不要再試
+      }
       return null;
     }
     const data = await res.json();
@@ -179,8 +223,9 @@ async function geocode(locationText) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
   } catch (e) {
-    console.error(`❌ Geocode 失敗 [${locationText}]:`, e.message);
+    console.error(\`❌ Geocode 失敗 [\${locationText}]:\`, e.message);
   }
+  geocodeFailCache.set(locationText, true);
   return null;
 }
 
