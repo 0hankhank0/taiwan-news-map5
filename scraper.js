@@ -136,15 +136,16 @@ async function aiFilterNews(articles) {
 - isRelevant: true
 - title: 簡短中文標題（20字內）
 - category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
-- location: 最具體的地名（例如"屏東縣鹽埔鄉勝利街"、"國道3號關廟段"、"彰化大度橋"），若無則填 null
-- locationFallback: 更粗略的備用地名（只到縣市或鄉鎮層級，例如"屏東縣"、"台南市關廟區"、"彰化縣"），若 location 為 null 則此項也填 null
+- location: 最具體的地名，要能直接 geocode 的地址或地標（例如"台南市運河旁河樂廣場"、"國道3號關廟段"、"屏東縣鹽埔鄉勝利街"）。若新聞提到知名地標請使用地標全名。若無具體地點則填 null。
+- locationFallback: 只到縣市層級（例如"台南市"、"屏東縣"、"新北市"），location 為 null 時也填 null
+- eventFingerprint: 用來識別同一事件的指紋，格式為「縣市_類型_事件關鍵字3個字」，例如「台南市_disaster_縱火砍」、「高雄市_accident_追撞」。同一事件不同媒體報導的 fingerprint 必須完全一樣。
 - ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
 
 不符合的新聞請回傳 { id, isRelevant: false }。
 只回傳 JSON 陣列，不要其他文字。
 
 新聞列表：
-${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 100) })))}`;
+${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 150) })))}`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -309,15 +310,12 @@ async function fetchNews() {
 
   console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
 
-  // 【修復】AI 篩選後二次去重：同城市 + 同類型 + 標題相似 → 只保留第一筆
+  // 【修復】AI 篩選後二次去重：優先用 AI 給的 eventFingerprint，沒有則用城市+類型+標題前8字
   const seenEventKeys = new Set();
   relevantArticles = relevantArticles.filter(article => {
     const ai = article.aiResult;
-    const city = ai.locationFallback || ai.location || "";
-    const cat = ai.category || "";
-    // 標題取前10字當指紋
-    const titleKey = (ai.title || article.title || "").slice(0, 10);
-    const key = `${city}_${cat}_${titleKey}`;
+    const key = ai.eventFingerprint ||
+      `${ai.locationFallback || ai.location || ""}_${ai.category || ""}_${(ai.title || article.title || "").slice(0, 8)}`;
     if (seenEventKeys.has(key)) return false;
     seenEventKeys.add(key);
     return true;
