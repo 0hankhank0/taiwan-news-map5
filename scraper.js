@@ -662,6 +662,11 @@ async function main() {
     const allFinalEvents = [...finalEvents, ...validNewsEvents];
 
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
+    // 🔍 debug：印出台南相關事件的最終座標
+    const tainanFinal = allFinalEvents.filter(e => (e.city || "").includes("台南"));
+    console.log(`🔍 [台南最終] ${tainanFinal.length} 筆，座標如下:`);
+    tainanFinal.forEach(e => console.log(`  - ${e.title || e.text} | lat:${e.lat} lng:${e.lng} city:${e.city}`));
+
     await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
     console.log(`💾 全部完工！交通 ${finalEvents.length} 筆 + 新聞 ${validNewsEvents.length} 筆 = 共 ${allFinalEvents.length} 筆`);
 
