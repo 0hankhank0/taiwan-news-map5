@@ -539,15 +539,32 @@ async function main() {
 
           if (!eventId || !summary) continue;
 
-          // 沒座標 → 嘗試從 Location.Other geocode
+          // 沒座標 → 優先從 Location.Other 裡抽出內嵌座標，再 geocode
           if (!lat || !lng) {
             const locText = event.Location?.Other || event.Location?.Road || "";
-            if (!locText || locText.length < 4) continue; // 地名太短，跳過
-            const coords = await geocode(locText);
-            if (!coords) continue; // geocode 也失敗，丟掉
-            lat = coords.lat;
-            lng = coords.lng;
-            await delay(1200); // Nominatim 限速
+
+            // 先嘗試從字串抽出 (lat,lng) 格式，例如 "台南市善化區南129上(23.149,120.3237)"
+            const coordMatch = locText.match(/\(\s*([0-9]{1,3}\.[0-9]+)\s*,\s*([0-9]{1,3}\.[0-9]+)\s*\)/);
+            if (coordMatch) {
+              const a = parseFloat(coordMatch[1]);
+              const b = parseFloat(coordMatch[2]);
+              // 判斷哪個是 lat（台灣緯度約 21~26）哪個是 lng（120~122）
+              if (a >= 20 && a <= 27 && b >= 118 && b <= 123) {
+                lat = a; lng = b;
+              } else if (b >= 20 && b <= 27 && a >= 118 && a <= 123) {
+                lat = b; lng = a;
+              }
+            }
+
+            // 抽不到才 geocode
+            if (!lat || !lng) {
+              if (!locText || locText.length < 4) continue;
+              const coords = await geocode(locText);
+              if (!coords) continue;
+              lat = coords.lat;
+              lng = coords.lng;
+              await delay(1200); // Nominatim 限速
+            }
           }
 
           if (lat && lng) {
