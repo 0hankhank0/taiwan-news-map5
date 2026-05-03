@@ -380,10 +380,12 @@ async function fetchPBS(token) {
         ? ` (${startTime} ~ ${endTime || "未定"})`
         : "";
 
+      // 同座標抖動
+      const jittered = jitterCoord(lat, lng, added);
       results.push({
         id: `PBS_${eventId}`,
         text: `【警廣播報】${summary}${timeInfo}`,
-        lat, lng,
+        lat: jittered.lat, lng: jittered.lng,
         city: t.cityName, // ✅ 修復：使用正確的完整縣市名，避免 geocode 定位到市政府
       });
       added++;
@@ -409,6 +411,18 @@ async function fetchTaichung() {
 // ==========================================
 // 主程式
 // ==========================================
+
+// 【修復】同座標事件抖動，避免地圖堆疊成一圈
+function jitterCoord(lat, lng, index) {
+  if (index === 0) return { lat, lng };
+  // 每筆偏移約 50~150 公尺，依 index 螺旋分散
+  const angle = (index * 137.5) * (Math.PI / 180); // 黃金角分散
+  const radius = 0.0005 + index * 0.0002;
+  return {
+    lat: lat + radius * Math.sin(angle),
+    lng: lng + radius * Math.cos(angle),
+  };
+}
 
 // 【修復】判斷是否為無意義的施工通用案件
 function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
@@ -527,10 +541,12 @@ async function main() {
             const startTime = event.StartTime || event.EventStartTime || "";
             const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
 
+            // 同座標抖動
+            const jittered = jitterCoord(lat, lng, cityStats[target.name] || 0);
             candidatesMap.set(eventId, {
               id: eventId,
               text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
-              lat, lng, city: target.name,
+              lat: jittered.lat, lng: jittered.lng, city: target.name,
             });
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
           }
