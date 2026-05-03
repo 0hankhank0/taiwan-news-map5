@@ -516,10 +516,14 @@ async function main() {
 
           let lat, lng;
 
-          if (event.Positions?.includes("POINT")) {
-            const match = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
+          // 【修復】防禦性座標解析，避免定位失敗跑到市政府
+          const posStr = typeof event.Positions === "string" ? event.Positions : "";
+          if (posStr.includes("POINT")) {
+            const match = posStr.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
             if (match) { lng = parseFloat(match[1]); lat = parseFloat(match[2]); }
-          } else {
+          }
+          // fallback：改用其他座標欄位
+          if (!lat || !lng) {
             lat = event.PositionLat || event.EventPosition?.PositionLat;
             lng = event.PositionLon || event.EventPosition?.PositionLon;
           }
