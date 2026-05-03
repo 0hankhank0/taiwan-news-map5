@@ -720,7 +720,22 @@ async function main() {
     }
 
     newsEvents.forEach(item => newsCacheMap.set(item.id, item));
-    const validNewsEvents = Array.from(newsCacheMap.values()).filter(n => n.expiresAt > Date.now());
+
+    // 【修復】news cache 合併後去重：同標題只保留最新一筆，並清除座標明顯錯誤的事件
+    const seenNewsTitles = new Map();
+    Array.from(newsCacheMap.values())
+      .sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0)) // 新的優先
+      .forEach(item => {
+        const titleKey = (item.title || "").slice(0, 12);
+        if (!seenNewsTitles.has(titleKey)) {
+          seenNewsTitles.set(titleKey, item);
+        }
+      });
+    const validNewsEvents = Array.from(seenNewsTitles.values()).filter(n =>
+      n.expiresAt > Date.now() &&
+      // 清除座標明顯錯誤的事件（lat/lng 超出台灣範圍）
+      n.lat >= 21 && n.lat <= 27 && n.lng >= 118 && n.lng <= 123
+    );
 
     await kv.set("taiwan_news_cache", JSON.stringify(validNewsEvents));
 
