@@ -136,16 +136,15 @@ async function aiFilterNews(articles) {
 - isRelevant: true
 - title: 簡短中文標題（20字內）
 - category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
-- location: 最具體的地名，要能直接 geocode 的地址或地標（例如"台南市運河旁河樂廣場"、"國道3號關廟段"、"屏東縣鹽埔鄉勝利街"）。若新聞提到知名地標請使用地標全名。若無具體地點則填 null。
-- locationFallback: 只到縣市層級（例如"台南市"、"屏東縣"、"新北市"），location 為 null 時也填 null
-- eventFingerprint: 用來識別同一事件的指紋，格式為「縣市_類型_事件關鍵字3個字」，例如「台南市_disaster_縱火砍」、「高雄市_accident_追撞」。同一事件不同媒體報導的 fingerprint 必須完全一樣。
+- location: 最具體的地名（例如"屏東縣鹽埔鄉勝利街"、"國道3號關廟段"、"彰化大度橋"），若無則填 null
+- locationFallback: 更粗略的備用地名（只到縣市或鄉鎮層級，例如"屏東縣"、"台南市關廟區"、"彰化縣"），若 location 為 null 則此項也填 null
 - ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
 
 不符合的新聞請回傳 { id, isRelevant: false }。
 只回傳 JSON 陣列，不要其他文字。
 
 新聞列表：
-${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 150) })))}`;
+${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 100) })))}`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -161,77 +160,27 @@ ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.descript
   }
 }
 
-// 台灣縣市中心座標對照表（Nominatim 429 時的 fallback）
-const TAIWAN_CITY_COORDS = {
-  "台北市": { lat: 25.0330, lng: 121.5654 },  // 台北市中心（忠孝東路）
-  "新北市": { lat: 25.0120, lng: 121.4628 },  // 板橋市中心
-  "桃園市": { lat: 24.9936, lng: 121.3010 },  // 桃園市中心
-  "台中市": { lat: 24.1477, lng: 120.6736 },  // 台中市中心
-  "台南市": { lat: 23.1728, lng: 120.2793 },  // 台南市中心（來源：月沙生活通）
-  "高雄市": { lat: 22.6273, lng: 120.3014 },  // 高雄市中心
-  "基隆市": { lat: 25.1276, lng: 121.7392 },  // 基隆市中心
-  "新竹市": { lat: 24.8138, lng: 120.9675 },  // 新竹市中心
-  "新竹縣": { lat: 24.8387, lng: 121.0177 },  // 新竹縣中心
-  "苗栗縣": { lat: 24.5602, lng: 120.8214 },  // 苗栗縣中心
-  "彰化縣": { lat: 24.0518, lng: 120.5161 },  // 彰化縣中心
-  "南投縣": { lat: 23.9609, lng: 120.9718 },  // 南投縣中心
-  "雲林縣": { lat: 23.7092, lng: 120.4313 },  // 雲林縣中心
-  "嘉義市": { lat: 23.4800, lng: 120.4491 },  // 嘉義市中心
-  "嘉義縣": { lat: 23.4518, lng: 120.2554 },  // 嘉義縣中心
-  "屏東縣": { lat: 22.5519, lng: 120.5487 },  // 屏東縣中心
-  "宜蘭縣": { lat: 24.7021, lng: 121.7377 },  // 宜蘭縣中心
-  "花蓮縣": { lat: 23.9871, lng: 121.6015 },  // 花蓮縣中心
-  "台東縣": { lat: 22.7583, lng: 121.1444 },  // 台東縣中心
-  "澎湖縣": { lat: 23.5711, lng: 119.5793 },  // 澎湖縣中心
-  "金門縣": { lat: 24.4493, lng: 118.3765 },  // 金門縣中心
-  "連江縣": { lat: 26.1505, lng: 119.9289 },  // 連江縣中心
-  "國道":   { lat: 24.0, lng: 121.0 },
-  "省道":   { lat: 24.0, lng: 121.0 },
-};
-
-// geocode 失敗計數（同一地名連續失敗就跳過）
-const geocodeFailCache = new Map();
-
 async function geocode(locationText) {
   if (!locationText) return null;
-
-  // 1. 先查縣市對照表（含部分比對），避免打 Nominatim
-  for (const [city, coords] of Object.entries(TAIWAN_CITY_COORDS)) {
-    if (locationText.startsWith(city) || locationText === city) {
-      // 加小幅隨機 jitter 避免全堆同一點
-      const jitter = () => (Math.random() - 0.5) * 0.04;
-      return { lat: coords.lat + jitter(), lng: coords.lng + jitter() };
-    }
-  }
-
-  // 2. 已知失敗的地名直接跳過
-  if (geocodeFailCache.get(locationText)) return null;
-
   try {
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)" }
+      headers: { 
+        "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)"
+      }
     });
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
-      if (res.status === 429) {
-        geocodeFailCache.set(locationText, true); // 限速，記住不要再試
-      }
+      console.error(`❌ Nominatim 回傳非 JSON [${locationText}]: ${res.status}`);
       return null;
     }
     const data = await res.json();
     if (data && data.length > 0) {
-      const lat = parseFloat(data[0].lat);
-      const lng = parseFloat(data[0].lon);
-      // 驗證座標在台灣範圍內，避免 Nominatim 亂猜到海外
-      if (lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123) {
-        return { lat, lng };
-      }
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
     }
   } catch (e) {
     console.error(`❌ Geocode 失敗 [${locationText}]:`, e.message);
   }
-  geocodeFailCache.set(locationText, true);
   return null;
 }
 
@@ -310,18 +259,6 @@ async function fetchNews() {
 
   console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
 
-  // 【修復】AI 篩選後二次去重：優先用 AI 給的 eventFingerprint，沒有則用城市+類型+標題前8字
-  const seenEventKeys = new Set();
-  relevantArticles = relevantArticles.filter(article => {
-    const ai = article.aiResult;
-    const key = ai.eventFingerprint ||
-      `${ai.locationFallback || ai.location || ""}_${ai.category || ""}_${(ai.title || article.title || "").slice(0, 8)}`;
-    if (seenEventKeys.has(key)) return false;
-    seenEventKeys.add(key);
-    return true;
-  });
-  console.log(`🔍 [新聞] 二次去重後剩 ${relevantArticles.length} 則`);
-
   let newsEvents = [];
   for (const article of relevantArticles) {
     const ai = article.aiResult;
@@ -373,16 +310,17 @@ async function fetchPBS(token) {
 
   // 警廣涵蓋範圍：全台 + 國道 + 省道
   const pbsTargets = [
-    { path: "Freeway",           name: "國道警廣",  cityName: "國道"   },
-    { path: "Highway",           name: "省道警廣",  cityName: "省道"   },
-    { path: "City/Taipei",       name: "台北警廣",  cityName: "台北市" },
-    { path: "City/NewTaipei",    name: "新北警廣",  cityName: "新北市" },
-    { path: "City/Taoyuan",      name: "桃園警廣",  cityName: "桃園市" }, // ✅ 修復：移除重複的桃園
-    { path: "City/Taichung",     name: "台中警廣",  cityName: "台中市" },
-    { path: "City/Tainan",       name: "台南警廣",  cityName: "台南市" },
-    { path: "City/Kaohsiung",    name: "高雄警廣",  cityName: "高雄市" },
-    { path: "City/Keelung",      name: "基隆警廣",  cityName: "基隆市" },
-    { path: "City/YilanCounty",  name: "宜蘭警廣",  cityName: "宜蘭縣" },
+    { path: "Freeway",           name: "國道警廣" },
+    { path: "Highway",           name: "省道警廣" },
+    { path: "City/Taipei",       name: "台北警廣" },
+    { path: "City/NewTaipei",    name: "新北警廣" },
+    { path: "City/Taoyuan",      name: "桃園警廣" },
+    { path: "City/Taichung",     name: "台中警廣" },
+    { path: "City/Tainan",       name: "台南警廣" },
+    { path: "City/Kaohsiung",    name: "高雄警廣" },
+    { path: "City/Keelung",      name: "基隆警廣" },
+    { path: "City/YilanCounty",  name: "宜蘭警廣" },
+    { path: "City/Taoyuan",      name: "桃園警廣" },
   ];
 
   for (const t of pbsTargets) {
@@ -406,21 +344,11 @@ async function fetchPBS(token) {
       }));
     }
 
-    // 各城市警廣筆數上限
-    const PBS_CITY_LIMIT = 50;
     let added = 0;
     events.forEach(event => {
-      if (added >= PBS_CITY_LIMIT) return;
-
       const eventId = event.EventID || event.RoadEventID;
       const summary = event.EventTitle || event.EventSummary || event.Description || "";
       if (!eventId || !summary) return;
-
-      // 排除宣導
-      if (summary.includes("宣導")) return;
-
-      // 排除通用施工（重用既有函式）
-      if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) return;
 
       // 過期過濾
       const endTime = event.EndTime || event.EventEndTime;
@@ -443,13 +371,11 @@ async function fetchPBS(token) {
         ? ` (${startTime} ~ ${endTime || "未定"})`
         : "";
 
-      // 同座標抖動
-      const jittered = jitterCoord(lat, lng, added);
       results.push({
         id: `PBS_${eventId}`,
         text: `【警廣播報】${summary}${timeInfo}`,
-        lat: jittered.lat, lng: jittered.lng,
-        city: t.cityName, // ✅ 修復：使用正確的完整縣市名，避免 geocode 定位到市政府
+        lat, lng,
+        city: t.name.replace("警廣", ""),
       });
       added++;
     });
@@ -475,20 +401,8 @@ async function fetchTaichung() {
 // 主程式
 // ==========================================
 
-// 【修復】同座標事件抖動，避免地圖堆疊成一圈
-function jitterCoord(lat, lng, index) {
-  if (index === 0) return { lat, lng };
-  // 每筆偏移約 50~150 公尺，依 index 螺旋分散
-  const angle = (index * 137.5) * (Math.PI / 180); // 黃金角分散
-  const radius = 0.0005 + index * 0.0002;
-  return {
-    lat: lat + radius * Math.sin(angle),
-    lng: lng + radius * Math.cos(angle),
-  };
-}
-
 // 【修復】判斷是否為無意義的施工通用案件
-function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
+function isEmptyConstructionEvent(summary, eventTypeName) {
   if (!summary) {
     // 沒有摘要且類型包含施工/一般案件 → 過濾
     if (
@@ -503,122 +417,9 @@ function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
     /^一般案件$/,
     /^道路施工$/,
     /^施工管制$/,
-    /^道路維護$/,
   ];
-  if (genericPatterns.some(p => p.test(summary?.trim()))) {
-    // ✅ 修復：Location.Other 有具體地址則保留，不過濾
-    if (locationOther && locationOther.trim().length > 5) return false;
-    return true;
-  }
+  if (genericPatterns.some(p => p.test(summary.trim()))) return true;
   return false;
-}
-
-
-// ===== Threads 自動發文 =====
-const THREADS_USER_ID = process.env.THREADS_USER_ID;
-const THREADS_TOKEN   = process.env.THREADS_ACCESS_TOKEN;
-
-function shouldPost(event) {
-  const title = (event.title || event.text || "").toLowerCase();
-  const cat   = event.category || "";
-
-  // 重大事故：死亡、多人傷亡
-  if (cat === "accident" && /死亡|死[0-9]|[0-9]死|多人傷|重傷|[3-9]人傷|[1-9][0-9]人/.test(title)) return true;
-  // 火災災害
-  if (cat === "disaster") return true;
-  // 大型活動（ttl >= 12 小時）
-  if (cat === "activity" && (event.ttl_hours || 0) >= 12) return true;
-
-  return false;
-}
-
-const SITE_URL = "https://taiwan-news-map.vercel.app/";
-
-function buildPostText(event) {
-  const cat = event.category || "";
-  const emoji = cat === "accident" ? "🚨" : cat === "disaster" ? "🔥" : "📣";
-  const label = cat === "accident" ? "即時事故" : cat === "disaster" ? "即時災情" : "活動資訊";
-  const title = event.title || event.text || "";
-  const city  = event.city || "";
-  const now   = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" });
-
-  let text = `${emoji} 【${label}】${title}\n\n`;
-  if (city) text += `📍 ${city}\n`;
-  text += `🕐 ${now}\n\n`;
-  text += `🗺️ 查看地圖：${SITE_URL}\n`;
-  text += `#台灣即時 #${city.replace(/[市縣]/g, "")} #台灣新聞事件地圖`;
-  return text;
-}
-
-async function postToThreads(event) {
-  if (!THREADS_USER_ID || !THREADS_TOKEN) {
-    console.log("⚠️ [Threads] 未設定 THREADS_USER_ID 或 THREADS_ACCESS_TOKEN，跳過發文");
-    return;
-  }
-  try {
-    const text = buildPostText(event);
-
-    // Step 1: 建立媒體容器
-    const createRes = await fetch(
-      `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          media_type: "TEXT",
-          text,
-          access_token: THREADS_TOKEN,
-        }),
-      }
-    );
-    const createData = await createRes.json();
-    if (!createData.id) {
-      console.error("❌ [Threads] 建立容器失敗:", JSON.stringify(createData));
-      return;
-    }
-
-    // Step 2: 發布
-    const publishRes = await fetch(
-      `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          creation_id: createData.id,
-          access_token: THREADS_TOKEN,
-        }),
-      }
-    );
-    const publishData = await publishRes.json();
-    if (publishData.id) {
-      console.log(`✅ [Threads] 發文成功：${event.title || event.text}`);
-    } else {
-      console.error("❌ [Threads] 發文失敗:", JSON.stringify(publishData));
-    }
-  } catch (e) {
-    console.error("❌ [Threads] 發文錯誤:", e.message);
-  }
-}
-
-async function runThreadsAutoPost(newEvents) {
-  // 只對「這次新抓到」的事件發文，避免每次重跑都重發
-  let postedIds = [];
-  try {
-    const raw = await kv.get("threads_posted_ids");
-    postedIds = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
-  } catch {}
-
-  const toPost = newEvents.filter(e => shouldPost(e) && !postedIds.includes(e.id));
-
-  for (const event of toPost) {
-    await postToThreads(event);
-    postedIds.push(event.id);
-    await delay(3000); // 避免 API 限速
-  }
-
-  // 只保留最近 500 筆已發 id
-  await kv.set("threads_posted_ids", JSON.stringify(postedIds.slice(-500)));
-  if (toPost.length > 0) console.log(`📣 [Threads] 本次發文 ${toPost.length} 則`);
 }
 
 async function main() {
@@ -666,95 +467,64 @@ async function main() {
 
         if (target.name === "台南市") {
           console.log(`🔍 [台南 debug] ${evType} 原始資料筆數: ${eventsList.length}`);
-          eventsList.slice(0, 5).forEach((s, i) => {
-            console.log(`🔍 [台南 debug] 第 ${i+1} 筆:`, JSON.stringify({
+          if (eventsList.length > 0) {
+            const s = eventsList[0];
+            console.log(`🔍 [台南 debug] 第一筆欄位:`, JSON.stringify({
               EventID: s.EventID || s.RoadEventID,
-              summary: (s.EventTitle || "").slice(0, 20),
-              Positions: s.Positions,
+              summary: (s.EventTitle || s.EventSummary || s.Description || "").slice(0, 40),
+              PositionLat: s.PositionLat,
+              PositionLon: s.PositionLon,
+              EventPosition: s.EventPosition,
+              Positions: typeof s.Positions === "string" ? s.Positions.slice(0, 80) : s.Positions,
+              EndTime: s.EndTime || s.EventEndTime,
             }));
-          });
+          }
         }
 
-        for (const event of eventsList) {
+        eventsList.forEach(event => {
           const summary = event.EventTitle || event.EventSummary || event.Description || "";
           const eventId = event.EventID || event.RoadEventID;
 
           // 【修復】過濾無摘要的通用施工案件
-          if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) continue;
+          if (isEmptyConstructionEvent(summary, event.EventTypeName)) return;
 
           // 過濾宣導、交通管制
-          if (summary.includes("宣導") || event.EventTypeName === "交通管制") continue;
+          if (summary.includes("宣導") || event.EventTypeName === "交通管制") return;
 
           // 【修復】城市筆數上限
-          if ((cityStats[target.name] || 0) >= CITY_LIMIT) continue;
+          if ((cityStats[target.name] || 0) >= CITY_LIMIT) return;
 
           const endTime = event.EndTime || event.EventEndTime;
           if (endTime) {
             const endTs = new Date(endTime).getTime();
-            if (endTs && endTs < Date.now()) continue;
+            if (endTs && endTs < Date.now()) return;
           }
 
           let lat, lng;
 
-          // 【修復】防禦性座標解析，避免定位失敗跑到市政府
-          const posStr = typeof event.Positions === "string" ? event.Positions : "";
-          if (posStr.includes("POINT")) {
-            const match = posStr.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
+          if (event.Positions?.includes("POINT")) {
+            const match = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
             if (match) { lng = parseFloat(match[1]); lat = parseFloat(match[2]); }
-          }
-          // fallback：改用其他座標欄位
-          if (!lat || !lng) {
+          } else {
             lat = event.PositionLat || event.EventPosition?.PositionLat;
             lng = event.PositionLon || event.EventPosition?.PositionLon;
           }
 
-          if (!eventId || !summary) continue;
-
-          // 沒座標 → 優先從 Location.Other 裡抽出內嵌座標，再 geocode
-          if (!lat || !lng) {
-            const locText = event.Location?.Other || event.Location?.Road || "";
-
-            // 先嘗試從字串抽出 (lat,lng) 格式，例如 "台南市善化區南129上(23.149,120.3237)"
-            const coordMatch = locText.match(/\(\s*([0-9]{1,3}\.[0-9]+)\s*,\s*([0-9]{1,3}\.[0-9]+)\s*\)/);
-            if (coordMatch) {
-              const a = parseFloat(coordMatch[1]);
-              const b = parseFloat(coordMatch[2]);
-              // 判斷哪個是 lat（台灣緯度約 21~26）哪個是 lng（120~122）
-              if (a >= 20 && a <= 27 && b >= 118 && b <= 123) {
-                lat = a; lng = b;
-              } else if (b >= 20 && b <= 27 && a >= 118 && a <= 123) {
-                lat = b; lng = a;
-              }
-            }
-
-            // 抽不到才 geocode
-            if (!lat || !lng) {
-              if (!locText || locText.length < 4) continue;
-              const coords = await geocode(locText);
-              if (!coords) continue;
-              lat = coords.lat;
-              lng = coords.lng;
-              await delay(800); // Nominatim 限速
-            }
-          }
-
-          if (lat && lng) {
+          if (eventId && summary && lat && lng) {
             const startTime = event.StartTime || event.EventStartTime || "";
             const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
 
-            // 同座標抖動
-            const jittered = jitterCoord(lat, lng, cityStats[target.name] || 0);
             candidatesMap.set(eventId, {
               id: eventId,
               text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
-              lat: jittered.lat, lng: jittered.lng, city: target.name,
+              lat, lng, city: target.name,
             });
             cityStats[target.name] = (cityStats[target.name] || 0) + 1;
           }
-        }
+        });
       }
       console.log(`💤 ${target.name} 完畢，冷卻中...`);
-      await delay(2000);
+      await delay(20000);
     }
 
     console.log("\n⏳ 準備啟動警廣抓取...");
@@ -826,41 +596,13 @@ async function main() {
     }
 
     newsEvents.forEach(item => newsCacheMap.set(item.id, item));
-
-    // 【修復】news cache 合併後去重：同標題只保留最新一筆，並清除座標明顯錯誤的事件
-    const seenNewsTitles = new Map();
-    Array.from(newsCacheMap.values())
-      .sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0)) // 新的優先
-      .forEach(item => {
-        const titleKey = (item.title || "").slice(0, 12);
-        if (!seenNewsTitles.has(titleKey)) {
-          seenNewsTitles.set(titleKey, item);
-        }
-      });
-    const validNewsEvents = Array.from(seenNewsTitles.values()).filter(n =>
-      n.expiresAt > Date.now() &&
-      // 清除座標明顯錯誤的事件（lat/lng 超出台灣範圍）
-      n.lat >= 21 && n.lat <= 27 && n.lng >= 118 && n.lng <= 123
-    );
+    const validNewsEvents = Array.from(newsCacheMap.values()).filter(n => n.expiresAt > Date.now());
 
     await kv.set("taiwan_news_cache", JSON.stringify(validNewsEvents));
 
     const allFinalEvents = [...finalEvents, ...validNewsEvents];
 
     await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
-    // 🔍 debug：印出台南相關事件的最終座標
-    const tainanFinal = allFinalEvents.filter(e => (e.city || "").includes("台南"));
-    console.log(`🔍 [台南最終] ${tainanFinal.length} 筆，座標如下:`);
-    tainanFinal.forEach(e => console.log(`  - ${e.title || e.text} | lat:${e.lat} lng:${e.lng} city:${e.city}`));
-
-    // 自動發文：只對本次新增的事件觸發
-    const newlyAdded = allFinalEvents.filter(e => {
-      const isNew = !Array.from(cacheMap.keys()).includes(e.id) &&
-                    !Array.from(newsCacheMap.keys()).includes(e.id);
-      return isNew;
-    });
-    await runThreadsAutoPost([...newsEvents, ...newlyAdded]);
-
     await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
     console.log(`💾 全部完工！交通 ${finalEvents.length} 筆 + 新聞 ${validNewsEvents.length} 筆 = 共 ${allFinalEvents.length} 筆`);
 
