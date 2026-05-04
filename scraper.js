@@ -734,7 +734,7 @@ async function main() {
               if (!coords) continue;
               lat = coords.lat;
               lng = coords.lng;
-              await delay(1200); // Nominatim 限速
+              await delay(800); // Nominatim 限速
             }
           }
 
@@ -754,7 +754,7 @@ async function main() {
         }
       }
       console.log(`💤 ${target.name} 完畢，冷卻中...`);
-      await delay(20000);
+      await delay(2000);
     }
 
     console.log("\n⏳ 準備啟動警廣抓取...");
