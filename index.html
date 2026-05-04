@@ -808,7 +808,7 @@
             border-color: var(--border) !important;
         }
         .leaflet-control-zoom a:hover { background: var(--bg-elevated) !important; }
-        .leaflet-container { background: #131b2e; }
+        .leaflet-container { background: #1e2a3a; }
     </style>
 </head>
 <body>
@@ -934,11 +934,19 @@
     const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    // Dark-ish tile
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // Mid-tone dark tile
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png", {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: "abcd",
-        maxZoom: 19
+        maxZoom: 19,
+        opacity: 0.75
+    }).addTo(map);
+
+    // Label layer on top (so text is still visible)
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd",
+        maxZoom: 19,
+        pane: "shadowPane"
     }).addTo(map);
 
     const markers = L.markerClusterGroup({
