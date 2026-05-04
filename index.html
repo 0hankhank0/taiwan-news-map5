@@ -1,6 +1,7 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+    <script src="/config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>台灣新聞事件地圖 | 即時路況、事故、災情查詢</title>
@@ -49,11 +50,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/leaflet.markercluster.min.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
     <style>
@@ -606,16 +604,29 @@
         }
 
         /* ── POPUP ───────────────────────────────────────────── */
-        .custom-popup .leaflet-popup-content-wrapper {
+        .custom-popup.mapboxgl-popup {
+            max-width: 300px !important;
+        }
+        .custom-popup .mapboxgl-popup-content {
             background: var(--bg-panel);
             color: var(--text-primary);
             border-radius: var(--radius-lg);
             box-shadow: 0 24px 48px rgba(0,0,0,0.6);
             border: 1px solid var(--border);
+            padding: 16px 18px;
         }
-        .custom-popup .leaflet-popup-content { margin: 16px 18px; line-height: 1.6; }
-        .custom-popup .leaflet-popup-tip-container { display: none; }
-        .custom-popup .leaflet-popup-close-button { color: var(--text-muted) !important; top: 8px !important; right: 10px !important; }
+        .custom-popup .mapboxgl-popup-close-button {
+            color: var(--text-muted);
+            top: 8px;
+            right: 10px;
+            font-size: 20px;
+            line-height: 1;
+            padding: 0;
+            background: transparent;
+            border: none;
+        }
+        .custom-popup .mapboxgl-popup-close-button:hover { color: var(--text-primary); }
+        .custom-popup .mapboxgl-popup-tip { border-top-color: var(--bg-panel) !important; }
 
         .popup-inner {}
         .popup-title {
@@ -677,13 +688,17 @@
             stroke-width: 2px;
         }
 
-        /* MarkerCluster */
-        .marker-cluster-small { background-color: rgba(79,140,255,0.35); }
-        .marker-cluster-small div { background-color: rgba(79,140,255,0.85); color: white; font-weight: 700; font-family: "Space Mono", monospace; }
-        .marker-cluster-medium { background-color: rgba(251,191,36,0.35); }
-        .marker-cluster-medium div { background-color: rgba(251,191,36,0.85); color: #1a1a1a; font-weight: 700; }
-        .marker-cluster-large { background-color: rgba(240,90,90,0.35); }
-        .marker-cluster-large div { background-color: rgba(240,90,90,0.85); color: white; font-weight: 700; }
+        .mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-group {
+            background: rgba(15,21,37,0.92);
+            border: 1px solid var(--border);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+        }
+        .mapboxgl-ctrl-group button + button {
+            border-top: 1px solid var(--border) !important;
+        }
+        .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+            filter: invert(1) brightness(1.15);
+        }
 
         /* ── MODAL ───────────────────────────────────────────── */
         .modal-overlay {
@@ -801,14 +816,8 @@
         .empty-state i { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
         .empty-state p { font-size: 13px; }
 
-        /* ── Leaflet overrides ───────────────────────────────── */
-        .leaflet-control-zoom a {
-            background: var(--bg-panel) !important;
-            color: var(--text-primary) !important;
-            border-color: var(--border) !important;
-        }
-        .leaflet-control-zoom a:hover { background: var(--bg-elevated) !important; }
-        .leaflet-container { background: #212933; }
+        /* ── MAPBOX OVERRIDES ────────────────────────────────── */
+        .mapboxgl-map { background: #212933; }
     </style>
 </head>
 <body>
@@ -930,34 +939,6 @@
 </div>
 
 <script>
-    // ── MAP INIT ────────────────────────────────────────────
-    const map = L.map("map", { zoomControl: false }).setView([23.6, 120.9], 7);
-    L.control.zoom({ position: "bottomright" }).addTo(map);
-
-    // Dark tile with full street detail
-        // ⭐ 建立 labels 層（一定要放最前面）
-map.createPane('labels');
-map.getPane('labels').style.zIndex = 650;
-map.getPane('labels').style.pointerEvents = 'none';
-
-// ⭐ 深色底圖（無文字）
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd',
-    maxZoom: 20
-}).addTo(map);
-
-// ⭐ 白色路名
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd',
-    maxZoom: 20,
-    pane: 'labels'
-}).addTo(map);
-
-    const markers = L.markerClusterGroup({
-        disableClusteringAtZoom: 15,
-        spiderfyOnMaxZoom: true,
-        maxClusterRadius: 35
-    }).addTo(map);
 
     // ── CONFIG ──────────────────────────────────────────────
     // SVG outline icons (stroke-based, clean line style)
@@ -1003,13 +984,43 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
 
     const taiwanView = { center:[23.6,120.9], zoom:7 };
     const globalView = { center:[20,0], zoom:2 };
+    const EMPTY_GEOJSON = { type:"FeatureCollection", features:[] };
 
     let parsedEvents = [];
     let activeCategory = "all";
     let searchKeyword = "";
     let isTaiwanMode = true;
     let twGeoJSON = null;
-    let currentBoundaryLayer = null;
+    let activePopup = null;
+    const renderedMarkers = [];
+
+    // ── MAP INIT ────────────────────────────────────────────
+    mapboxgl.accessToken = window.MAPBOX_ACCESS_TOKEN || localStorage.getItem("MAPBOX_ACCESS_TOKEN") || "";
+    const map = new mapboxgl.Map({
+        container: "map",
+        style: mapboxgl.accessToken ? "mapbox://styles/mapbox/dark-v11" : {
+            version: 8,
+            sources: {
+                "stadia-dark": {
+                    type: "raster",
+                    tiles: ["https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png"],
+                    tileSize: 256,
+                    attribution: '&copy; <a href="https://stadiamaps.com/">Stadia Maps</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                }
+            },
+            layers: [
+                { id: "stadia-dark", type: "raster", source: "stadia-dark" }
+            ]
+        },
+        center: [taiwanView.center[1], taiwanView.center[0]],
+        zoom: taiwanView.zoom
+    });
+    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
+    map.on("load", () => {
+        ensureBoundaryLayer();
+        drawCityBoundary(currentCityFilter());
+        if(parsedEvents.length) renderEvents();
+    });
 
     const statusText   = document.getElementById("status-text");
     const eventList    = document.getElementById("event-list");
@@ -1022,6 +1033,43 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
     function setStatus(t){ if(statusText) statusText.textContent = t; }
     function normalizeText(v){ return String(v||"").trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
+    function flyToLatLng(latlng, zoom, duration=800){
+        map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
+    }
+    function closeActivePopup(){
+        if(activePopup){
+            activePopup.remove();
+            activePopup = null;
+        }
+    }
+    function clearRenderedMarkers(){
+        closeActivePopup();
+        while(renderedMarkers.length) renderedMarkers.pop().remove();
+    }
+    function makeMarkerElement(color, svg){
+        const wrapper = document.createElement("div");
+        wrapper.className = "custom-marker";
+        wrapper.style.background = `linear-gradient(135deg,${color},${color}cc)`;
+        wrapper.innerHTML = `<span class="marker-svg-icon">${svg}</span>`;
+        return wrapper;
+    }
+    function ensureBoundaryLayer(){
+        if(!map.getSource("city-boundary")){
+            map.addSource("city-boundary", { type:"geojson", data: EMPTY_GEOJSON });
+            map.addLayer({
+                id: "city-boundary-fill",
+                type: "fill",
+                source: "city-boundary",
+                paint: { "fill-color":"#4f8cff", "fill-opacity":0.06 }
+            });
+            map.addLayer({
+                id: "city-boundary-line",
+                type: "line",
+                source: "city-boundary",
+                paint: { "line-color":"#4f8cff", "line-width":2.5, "line-opacity":0.7 }
+            });
+        }
+    }
 
     function makeSourceBadge(source, compact=false){
         const c = SOURCE_CONFIG[source] || SOURCE_CONFIG.default;
@@ -1039,20 +1087,25 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
         try{
             const res = await fetch("https://cdn.jsdelivr.net/gh/g0v/twgeojson@master/json/twCounty2010.geo.json");
             twGeoJSON = await res.json();
+            drawCityBoundary(currentCityFilter());
         }catch(e){ console.warn("GeoJSON載入失敗", e); }
     }
 
     function drawCityBoundary(city){
-        if(currentBoundaryLayer){ map.removeLayer(currentBoundaryLayer); currentBoundaryLayer=null; }
-        if(!city || city==="all" || !twGeoJSON) return;
-        currentBoundaryLayer = L.geoJSON(twGeoJSON,{
-            filter: f=>{
-                const n=(f.properties.COUNTYNAME||f.properties.name||"").replace(/臺/g,"台");
-                const t=city.replace(/臺/g,"台");
-                return n.includes(t)||t.includes(n);
-            },
-            style:{ color:"#4f8cff", weight:2.5, opacity:0.7, fillColor:"#4f8cff", fillOpacity:0.06 }
-        }).addTo(map);
+        if(!map.isStyleLoaded()) return;
+        ensureBoundaryLayer();
+        const source = map.getSource("city-boundary");
+        if(!source) return;
+        if(!city || city==="all" || !twGeoJSON){
+            source.setData(EMPTY_GEOJSON);
+            return;
+        }
+        const filteredFeatures = twGeoJSON.features.filter(f=>{
+            const n=(f.properties.COUNTYNAME||f.properties.name||"").replace(/臺/g,"台");
+            const t=city.replace(/臺/g,"台");
+            return n.includes(t)||t.includes(n);
+        });
+        source.setData(filteredFeatures.length ? { ...twGeoJSON, features: filteredFeatures } : EMPTY_GEOJSON);
     }
 
     function currentCityFilter(){ return document.getElementById("city-filter")?.value||"all"; }
@@ -1109,7 +1162,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
             return bNews-aNews;
         });
 
-        markers.clearLayers();
+        clearRenderedMarkers();
         eventList.innerHTML="";
 
         if(!events.length){
@@ -1121,15 +1174,6 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
             const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
-            const marker = L.marker(latlng,{
-                icon: L.divIcon({
-                    className:"",
-                    iconSize:[36,36], iconAnchor:[18,18],
-                    html:`<div class="custom-marker" style="background:linear-gradient(135deg,${cat.color},${cat.color}cc)"><span class="marker-svg-icon">${CAT_SVG[ev.category]||CAT_SVG.other}</span></div>`
-                })
-            });
-            markers.addLayer(marker);
-
             const popupHtml=`
                 <div class="popup-inner">
                     <div class="popup-top">
@@ -1149,7 +1193,25 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
                     </div>
                 </div>
             `;
-            marker.bindPopup(popupHtml,{ className:"custom-popup", maxWidth:300 });
+            const popup = new mapboxgl.Popup({
+                className: "custom-popup",
+                closeButton: true,
+                closeOnClick: false,
+                maxWidth: "300px",
+                offset: 18
+            }).setHTML(popupHtml);
+            popup.on("open", ()=>{ activePopup = popup; });
+            popup.on("close", ()=>{ if(activePopup === popup) activePopup = null; });
+
+            const marker = new mapboxgl.Marker({
+                element: makeMarkerElement(cat.color, CAT_SVG[ev.category]||CAT_SVG.other),
+                anchor: "center"
+            })
+                .setLngLat([latlng[1], latlng[0]])
+                .setPopup(popup)
+                .addTo(map);
+            marker.getElement().style.cursor = "pointer";
+            renderedMarkers.push(marker);
 
             // Card
             const card = document.createElement("article");
@@ -1173,10 +1235,9 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
 
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON")) return;
-                markers.zoomToShowLayer(marker,()=>{
-                    map.flyTo(latlng, ev.source==="TDX CMS"?14:13, {duration:0.8});
-                    marker.openPopup();
-                });
+                closeActivePopup();
+                flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
+                popup.addTo(map);
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
             });
 
@@ -1241,9 +1302,9 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
         };
         const match = Object.keys(centers).find(k=>k.startsWith(value)||value.startsWith(k));
         if(value==="all"){
-            map.flyTo([23.698,120.961],7,{duration:1.5});
+            flyToLatLng([23.698,120.961],7,1500);
         } else if(match){
-            map.flyTo(centers[match],11,{duration:1.5});
+            flyToLatLng(centers[match],11,1500);
         }
     }
 
@@ -1258,7 +1319,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
             const b=document.getElementById(id);
             if(b) b.classList.toggle("active",!mode);
         });
-        map.flyTo(mode?taiwanView.center:globalView.center, mode?taiwanView.zoom:globalView.zoom,{duration:0.8});
+        flyToLatLng(mode?taiwanView.center:globalView.center, mode?taiwanView.zoom:globalView.zoom, 800);
         renderEvents();
     }
 
@@ -1351,3 +1412,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.
 <script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
+
+
+
+
