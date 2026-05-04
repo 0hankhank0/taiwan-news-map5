@@ -513,6 +513,114 @@ function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
   return false;
 }
 
+
+// ===== Threads 自動發文 =====
+const THREADS_USER_ID = process.env.THREADS_USER_ID;
+const THREADS_TOKEN   = process.env.THREADS_ACCESS_TOKEN;
+
+function shouldPost(event) {
+  const title = (event.title || event.text || "").toLowerCase();
+  const cat   = event.category || "";
+
+  // 重大事故：死亡、多人傷亡
+  if (cat === "accident" && /死亡|死[0-9]|[0-9]死|多人傷|重傷|[3-9]人傷|[1-9][0-9]人/.test(title)) return true;
+  // 火災災害
+  if (cat === "disaster") return true;
+  // 大型活動（ttl >= 12 小時）
+  if (cat === "activity" && (event.ttl_hours || 0) >= 12) return true;
+
+  return false;
+}
+
+const SITE_URL = "https://taiwan-news-map.vercel.app/";
+
+function buildPostText(event) {
+  const cat = event.category || "";
+  const emoji = cat === "accident" ? "🚨" : cat === "disaster" ? "🔥" : "📣";
+  const label = cat === "accident" ? "即時事故" : cat === "disaster" ? "即時災情" : "活動資訊";
+  const title = event.title || event.text || "";
+  const city  = event.city || "";
+  const now   = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" });
+
+  let text = `${emoji} 【${label}】${title}\n\n`;
+  if (city) text += `📍 ${city}\n`;
+  text += `🕐 ${now}\n\n`;
+  text += `🗺️ 查看地圖：${SITE_URL}\n`;
+  text += `#台灣即時 #${city.replace(/[市縣]/g, "")} #台灣新聞事件地圖`;
+  return text;
+}
+
+async function postToThreads(event) {
+  if (!THREADS_USER_ID || !THREADS_TOKEN) {
+    console.log("⚠️ [Threads] 未設定 THREADS_USER_ID 或 THREADS_ACCESS_TOKEN，跳過發文");
+    return;
+  }
+  try {
+    const text = buildPostText(event);
+
+    // Step 1: 建立媒體容器
+    const createRes = await fetch(
+      `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          media_type: "TEXT",
+          text,
+          access_token: THREADS_TOKEN,
+        }),
+      }
+    );
+    const createData = await createRes.json();
+    if (!createData.id) {
+      console.error("❌ [Threads] 建立容器失敗:", JSON.stringify(createData));
+      return;
+    }
+
+    // Step 2: 發布
+    const publishRes = await fetch(
+      `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creation_id: createData.id,
+          access_token: THREADS_TOKEN,
+        }),
+      }
+    );
+    const publishData = await publishRes.json();
+    if (publishData.id) {
+      console.log(`✅ [Threads] 發文成功：${event.title || event.text}`);
+    } else {
+      console.error("❌ [Threads] 發文失敗:", JSON.stringify(publishData));
+    }
+  } catch (e) {
+    console.error("❌ [Threads] 發文錯誤:", e.message);
+  }
+}
+
+async function runThreadsAutoPost(newEvents) {
+  // 只對「這次新抓到」的事件發文，避免每次重跑都重發
+  let postedIds = [];
+  try {
+    const raw = await kv.get("threads_posted_ids");
+    postedIds = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
+  } catch {}
+
+  const toPost = newEvents.filter(e => shouldPost(e) && !postedIds.includes(e.id));
+
+  for (const event of toPost) {
+    await postToThreads(event);
+    postedIds.push(event.id);
+    await delay(3000); // 避免 API 限速
+  }
+
+  // 只保留最近 500 筆已發 id
+  await kv.set("threads_posted_ids", JSON.stringify(postedIds.slice(-500)));
+  if (toPost.length > 0) console.log(`📣 [Threads] 本次發文 ${toPost.length} 則`);
+}
+
 async function main() {
   try {
     console.log("🚀 啟動全台新聞同步系統 (新聞整合版)...");
@@ -744,6 +852,14 @@ async function main() {
     const tainanFinal = allFinalEvents.filter(e => (e.city || "").includes("台南"));
     console.log(`🔍 [台南最終] ${tainanFinal.length} 筆，座標如下:`);
     tainanFinal.forEach(e => console.log(`  - ${e.title || e.text} | lat:${e.lat} lng:${e.lng} city:${e.city}`));
+
+    // 自動發文：只對本次新增的事件觸發
+    const newlyAdded = allFinalEvents.filter(e => {
+      const isNew = !Array.from(cacheMap.keys()).includes(e.id) &&
+                    !Array.from(newsCacheMap.keys()).includes(e.id);
+      return isNew;
+    });
+    await runThreadsAutoPost([...newsEvents, ...newlyAdded]);
 
     await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
     console.log(`💾 全部完工！交通 ${finalEvents.length} 筆 + 新聞 ${validNewsEvents.length} 筆 = 共 ${allFinalEvents.length} 筆`);
