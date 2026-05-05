@@ -1301,9 +1301,35 @@
         return lat >= 21.5 && lat <= 26.5 && lng >= 118.0 && lng <= 122.5;
     }
 
+    function deduplicateEvents(events) {
+        const seenTitles = new Set();
+        const seenContent = new Set();
+        return events.filter(ev => {
+            // 把標題與內容正規化：去空白、去標點、只留文字
+            const titleKey = (ev.title || ev.text || "")
+                .replace(/\s+/g, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
+                .slice(0, 20); // 取前20字
+            
+            const contentKey = (ev.content || "")
+                .replace(/\s+/g, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
+                .slice(0, 30); // 取前30字比對
+
+            // 如果標題或內容其中一個重複，就視為重複事件
+            if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
+                return false;
+            }
+
+            seenTitles.add(titleKey);
+            if (contentKey) seenContent.add(contentKey);
+            return true;
+        });
+    }
+
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
-        return parsedEvents.filter(ev=>{
+        const filtered = parsedEvents.filter(ev=>{
             const lat=Number(ev.lat), lng=Number(ev.lng);
             
             // 座標無效或不在台灣直接排除
@@ -1320,6 +1346,7 @@
             }
             return true;
         });
+        return deduplicateEvents(filtered);
     }
 
     // ── RENDER ──────────────────────────────────────────────
