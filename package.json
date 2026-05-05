@@ -2,8 +2,8 @@
   "name": "just-happened",
   "version": "1.0.0",
   "scripts": {
-    "start": "node server.js",
-    "fetch": "tsx scripts/fetcher.ts"
+    "start": "node api/events.js",
+    "scraper": "node scraper.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
