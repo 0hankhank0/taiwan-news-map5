@@ -689,7 +689,32 @@
             font-size: 14px;
             border: 2.5px solid rgba(255,255,255,0.2);
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-            transition: transform 0.15s;
+            /* Removed transition: transform to fix marker lag during map movement */
+        }
+        .clean-marker-icon {
+            background: none !important;
+            border: none !important;
+        }
+
+        /* ── TOOLTIP ────────────────────────────────────────── */
+        .custom-tooltip {
+            z-index: 10002;
+            pointer-events: none;
+        }
+        .custom-tooltip .mapboxgl-popup-content {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: var(--text-primary);
+            padding: 6px 10px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            font-family: "Noto Sans TC", sans-serif;
+        }
+        .custom-tooltip .mapboxgl-popup-tip {
+            display: none;
+        }
+        .custom-tooltip::before {
+            display: none;
         }
         .custom-marker:hover { transform: scale(1.1); }
         .marker-svg-icon {
@@ -1169,7 +1194,7 @@
     }
     function makeMarkerElement(color, svg){
         const wrapper = document.createElement("div");
-        wrapper.className = "custom-marker";
+        wrapper.className = "custom-marker clean-marker-icon";
         wrapper.style.background = `linear-gradient(135deg,${color},${color}cc)`;
         wrapper.innerHTML = `<span class="marker-svg-icon">${svg}</span>`;
         return wrapper;
