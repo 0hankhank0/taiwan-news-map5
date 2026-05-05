@@ -41,7 +41,7 @@ const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 const TDX_CITY_SOURCES = [
   { path: "Taipei", city: "Taipei", lat: 25.033, lng: 121.5654 },
   { path: "NewTaipei", city: "New Taipei", lat: 25.0169, lng: 121.4628 },
-  { path: "Taoyuan", city: "Taoyuan", lat: 24.9937, lng: 121.3009 }
+  { path: "Taoyuan", city: "Taoyuan", lat: 24.9937, lng: 121.3009 },
   { path: "Taichung", city: "Taichung", lat: 24.1477, lng: 120.6736 },
   { path: "Tainan", city: "Tainan", lat: 22.9997, lng: 120.227 },
   { path: "Kaohsiung", city: "Kaohsiung", lat: 22.6273, lng: 120.3014 },
