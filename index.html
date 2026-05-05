@@ -306,15 +306,17 @@
         .drawer-handle {
             display: none;
             justify-content: center;
-            padding: 10px 0 6px;
-            cursor: pointer;
+            padding: 14px 0 10px;
+            cursor: grab;
+            touch-action: none;
         }
         @media (max-width: 767px) { .drawer-handle { display: flex; } }
         .handle-bar {
-            width: 40px;
-            height: 4px;
-            background: var(--border-bright);
+            width: 48px;
+            height: 5px;
+            background: #94a3b8;
             border-radius: 99px;
+            margin: 0 auto;
         }
 
         .sidebar-top-row {
@@ -1552,7 +1554,58 @@
         if(window.innerWidth<768) newsSidebar.classList.toggle("drawer-collapsed");
     }
 
-    // ── REPORT MODAL ─────────────────────────────────────────
+    // ── MOBILE GESTURES ──────────────────────────────────────
+    let startY = 0;
+    let isDragging = false;
+    const sidebar = document.getElementById("news-sidebar");
+
+    sidebar.addEventListener("touchstart", e => {
+        if (window.innerWidth >= 768) return;
+        const touch = e.touches[0];
+        const sidebarTop = sidebar.getBoundingClientRect().top;
+        // 只有在頂部區域 (把手附近) 才觸發拖曳
+        if (touch.clientY - sidebarTop > 80) return;
+        
+        isDragging = true;
+        startY = touch.clientY;
+        sidebar.style.transition = "none";
+    }, { passive: true });
+
+    sidebar.addEventListener("touchmove", e => {
+        if (!isDragging) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta < 0) return; // 不能往上拉超過展開位置
+        sidebar.style.transform = `translateY(${delta}px)`;
+        
+        // 展開時防止地圖被滑動干擾
+        if (!sidebar.classList.contains("drawer-collapsed")) {
+            // 注意：因為使用 passive: true，這裡不能 preventDefault
+            // 但我們可以透過 stopPropagation 防止事件傳到地圖層
+            e.stopPropagation();
+        }
+    }, { passive: true });
+
+    sidebar.addEventListener("touchend", e => {
+        if (!isDragging) return;
+        isDragging = false;
+        sidebar.style.transition = "transform 0.3s cubic-bezier(0.32,0,0.15,1)";
+        
+        const delta = e.changedTouches[0].clientY - startY;
+        if (delta > 80) {
+            sidebar.classList.add("drawer-collapsed");
+            sidebar.style.transform = "";
+        } else {
+            sidebar.classList.remove("drawer-collapsed");
+            sidebar.style.transform = "";
+        }
+    });
+
+    // 點擊地圖收起抽屜
+    map.on("click", () => {
+        if (window.innerWidth < 768) {
+            sidebar.classList.add("drawer-collapsed");
+        }
+    });
     function openReportModal(title){
         document.getElementById("report-title").value=title;
         document.getElementById("report-type").value="資料錯誤";
