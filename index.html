@@ -1297,11 +1297,19 @@
         });
     }
 
+    function isValidTaiwanCoord(lat, lng) {
+        return lat >= 21.5 && lat <= 26.5 && lng >= 118.0 && lng <= 122.5;
+    }
+
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         return parsedEvents.filter(ev=>{
             const lat=Number(ev.lat), lng=Number(ev.lng);
+            
+            // 座標無效或不在台灣直接排除
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
+            if(!isValidTaiwanCoord(lat, lng)) return false;
+
             if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
             if(cityFilter!=="all"){
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
