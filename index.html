@@ -306,17 +306,15 @@
         .drawer-handle {
             display: none;
             justify-content: center;
-            padding: 14px 0 10px;
-            cursor: grab;
-            touch-action: none;
+            padding: 10px 0 6px;
+            cursor: pointer;
         }
         @media (max-width: 767px) { .drawer-handle { display: flex; } }
         .handle-bar {
-            width: 48px;
-            height: 5px;
-            background: #94a3b8;
+            width: 40px;
+            height: 4px;
+            background: var(--border-bright);
             border-radius: 99px;
-            margin: 0 auto;
         }
 
         .sidebar-top-row {
@@ -691,11 +689,9 @@
             font-size: 14px;
             border: 2.5px solid rgba(255,255,255,0.2);
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-            /* Removed transition: transform to fix marker lag during map movement */
+            transition: transform 0.15s;
         }
-        .custom-marker:hover .marker-svg-icon { 
-            transform: scale(1.2); 
-        }
+        .custom-marker:hover { transform: scale(1.1); }
         .marker-svg-icon {
             display: inline-flex;
             align-items: center;
@@ -703,25 +699,6 @@
             width: 18px;
             height: 18px;
             color: #fff;
-            transition: transform 0.15s; /* Safe to transition child element */
-        }
-
-        /* ── TOOLTIP ────────────────────────────────────────── */
-        .custom-tooltip {
-            z-index: 10002;
-            pointer-events: none;
-        }
-        .custom-tooltip .mapboxgl-popup-content {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-primary);
-            padding: 6px 10px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            font-family: "Noto Sans TC", sans-serif;
-        }
-        .custom-tooltip .mapboxgl-popup-tip {
-            display: none;
         }
         .marker-svg-icon svg {
             width: 18px;
@@ -990,7 +967,7 @@
 
 <script>
     // ── CONFIG ──────────────────────────────────────────────
-    const MAPBOX_TOKEN = "pk.eyJ1IjoiaGFua2hhbmsiLCJhIjoiY21vcjcxYm1lMDFsbTJxcTh2Nm12a3U3NiJ9.bJNo9TlXJNA35QEDeN031A"; 
+    const MAPBOX_TOKEN = "THAA734NpeuyFBYmJYNGoyOWU0LW42ZAnF5alhtRnEyc1NSNEhBZA0hudjl2Ri1FdllZATXF4WU00WkZAYY0NPd2JMdlY1R3VJTXJBREN5R3RTYXNBNDNCTm1EejdIdk1UWnlZAOXJoeVVpM2d6TUZAWWThHMWd6YUloVnQ1THhhaFdZASDJFZAwZDZD"; 
     
     // 測試 Mapbox Token 是否有效
     async function checkMapboxToken() {
@@ -1030,7 +1007,7 @@
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
         RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
         news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
-        default:    { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" }
+        default:    { text:"其他來源",    shortText:"其他",  bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
     };
 
     const CITY_OPTIONS = [
@@ -1109,9 +1086,14 @@
     });
 
     function initBaseMaps() {
-        console.log("🛠️ 開始初始化底圖...");
-        
-        // Carto Voyager Raster (先載入保底)
+        // Mapbox Dark Raster
+        map.addSource("mapbox-dark", {
+            type: "raster",
+            tiles: [`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${MAPBOX_TOKEN}`],
+            tileSize: 512
+        });
+
+        // Carto Voyager Raster (Slightly more detailed than Positron)
         map.addSource("carto-voyager", {
             type: "raster",
             tiles: ["https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"],
@@ -1119,67 +1101,43 @@
             attribution: '&copy; OpenStreetMap &copy; CARTO'
         });
 
-        // Mapbox Dark Raster
-        map.addSource("mapbox-dark", {
-            type: "raster",
-            tiles: [`https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/256/{z}/{x}/{y}@2x?access_token=${MAPBOX_TOKEN}`],
-            tileSize: 512
-        });
-
-        // 先把底圖層加進去，但根據當前主題設定初始透明度
-        map.addLayer({
-            id: "base-light",
-            type: "raster",
-            source: "carto-voyager",
-            paint: { "raster-opacity": currentTheme === "light" ? 1 : 0, "raster-opacity-transition": { duration: 300 } }
-        });
-
         map.addLayer({
             id: "base-dark",
             type: "raster",
             source: "mapbox-dark",
             paint: { "raster-opacity": currentTheme === "dark" ? 1 : 0, "raster-opacity-transition": { duration: 300 } }
-        });
+        }, "background");
 
-        // 確保 background 層在最下面，且不要遮擋到 raster 層
-        if (map.getLayer("background")) {
-            map.moveLayer("base-light", undefined); // 移到最上（相對於 background）
-            map.moveLayer("base-dark", undefined);
-            map.setPaintProperty("background", "background-opacity", 0.5); // 讓背景色半透明，避免全黑遮擋
-        }
+        map.addLayer({
+            id: "base-light",
+            type: "raster",
+            source: "carto-voyager",
+            paint: { "raster-opacity": currentTheme === "light" ? 1 : 0, "raster-opacity-transition": { duration: 300 } }
+        }, "background");
         
-        console.log("✅ 底圖圖層已建立，當前模式:", currentTheme);
+        // Ensure background is at the very bottom
+        map.moveLayer("base-dark", undefined);
+        map.moveLayer("base-light", undefined);
+        map.moveLayer("background", "base-light");
     }
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("load", async () => {
-        console.log("🚀 地圖載入完成，執行初始化...");
+        isMapboxValid = await checkMapboxToken();
         
-        // 1. 先用 Voyager 淺色模式保底
-        currentTheme = "light";
-        initBaseMaps();
-        
-        // 2. 非同步檢測 Mapbox Token
-        checkMapboxToken().then(valid => {
-            isMapboxValid = valid;
-            console.log("Key 驗證結果:", valid ? "有效" : "無效");
-            
-            if (valid) {
-                // Token 有效，切換回深色模式（預設）
-                switchTheme("dark");
-            } else {
-                // Token 無效，鎖定按鈕
-                ["btn-dark", "btn-dark-mobile"].forEach(id => {
-                    const b = document.getElementById(id);
-                    if (b) {
-                        b.disabled = true;
-                        b.textContent = id.includes("mobile") ? "🌙(鎖)" : "🌙 深色（暫停）";
-                    }
-                });
-                switchTheme("light");
-            }
-        });
+        if (!isMapboxValid) {
+            ["btn-dark", "btn-dark-mobile"].forEach(id => {
+                const b = document.getElementById(id);
+                if (b) {
+                    b.disabled = true;
+                    b.textContent = id.includes("mobile") ? "🌙(鎖)" : "🌙 深色（暫停）";
+                }
+            });
+            currentTheme = "light";
+            switchTheme("light");
+        }
 
+        initBaseMaps();
         ensureBoundaryLayer();
         drawCityBoundary(currentCityFilter());
         if(parsedEvents.length) renderEvents();
@@ -1299,45 +1257,11 @@
         });
     }
 
-    function isValidTaiwanCoord(lat, lng) {
-        return lat >= 21.5 && lat <= 26.5 && lng >= 118.0 && lng <= 122.5;
-    }
-
-    function deduplicateEvents(events) {
-        const seenTitles = new Set();
-        const seenContent = new Set();
-        return events.filter(ev => {
-            // 把標題與內容正規化：去空白、去標點、只留文字
-            const titleKey = (ev.title || ev.text || "")
-                .replace(/\s+/g, "")
-                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
-                .slice(0, 20); // 取前20字
-            
-            const contentKey = (ev.content || "")
-                .replace(/\s+/g, "")
-                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
-                .slice(0, 30); // 取前30字比對
-
-            // 如果標題或內容其中一個重複，就視為重複事件
-            if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
-                return false;
-            }
-
-            seenTitles.add(titleKey);
-            if (contentKey) seenContent.add(contentKey);
-            return true;
-        });
-    }
-
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
-        const filtered = parsedEvents.filter(ev=>{
+        return parsedEvents.filter(ev=>{
             const lat=Number(ev.lat), lng=Number(ev.lng);
-            
-            // 座標無效或不在台灣直接排除
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
-            if(!isValidTaiwanCoord(lat, lng)) return false;
-
             if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
             if(cityFilter!=="all"){
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
@@ -1348,7 +1272,6 @@
             }
             return true;
         });
-        return deduplicateEvents(filtered);
     }
 
     // ── RENDER ──────────────────────────────────────────────
@@ -1408,29 +1331,7 @@
                 .setLngLat([latlng[1], latlng[0]])
                 .setPopup(popup)
                 .addTo(map);
-            
-            // Tooltip on hover
-            const markerEl = marker.getElement();
-            markerEl.style.cursor = "pointer";
-
-            const tooltip = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false,
-                className: "custom-tooltip",
-                offset: [0, -20],
-                anchor: "bottom"
-            });
-
-            markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat([latlng[1], latlng[0]])
-                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
-                    .addTo(map);
-            });
-
-            markerEl.addEventListener("mouseleave", () => {
-                tooltip.remove();
-            });
-
+            marker.getElement().style.cursor = "pointer";
             renderedMarkers.push(marker);
 
             // Card
@@ -1554,58 +1455,7 @@
         if(window.innerWidth<768) newsSidebar.classList.toggle("drawer-collapsed");
     }
 
-    // ── MOBILE GESTURES ──────────────────────────────────────
-    let startY = 0;
-    let isDragging = false;
-    const sidebar = document.getElementById("news-sidebar");
-
-    sidebar.addEventListener("touchstart", e => {
-        if (window.innerWidth >= 768) return;
-        const touch = e.touches[0];
-        const sidebarTop = sidebar.getBoundingClientRect().top;
-        // 只有在頂部區域 (把手附近) 才觸發拖曳
-        if (touch.clientY - sidebarTop > 80) return;
-        
-        isDragging = true;
-        startY = touch.clientY;
-        sidebar.style.transition = "none";
-    }, { passive: true });
-
-    sidebar.addEventListener("touchmove", e => {
-        if (!isDragging) return;
-        const delta = e.touches[0].clientY - startY;
-        if (delta < 0) return; // 不能往上拉超過展開位置
-        sidebar.style.transform = `translateY(${delta}px)`;
-        
-        // 展開時防止地圖被滑動干擾
-        if (!sidebar.classList.contains("drawer-collapsed")) {
-            // 注意：因為使用 passive: true，這裡不能 preventDefault
-            // 但我們可以透過 stopPropagation 防止事件傳到地圖層
-            e.stopPropagation();
-        }
-    }, { passive: true });
-
-    sidebar.addEventListener("touchend", e => {
-        if (!isDragging) return;
-        isDragging = false;
-        sidebar.style.transition = "transform 0.3s cubic-bezier(0.32,0,0.15,1)";
-        
-        const delta = e.changedTouches[0].clientY - startY;
-        if (delta > 80) {
-            sidebar.classList.add("drawer-collapsed");
-            sidebar.style.transform = "";
-        } else {
-            sidebar.classList.remove("drawer-collapsed");
-            sidebar.style.transform = "";
-        }
-    });
-
-    // 點擊地圖收起抽屜
-    map.on("click", () => {
-        if (window.innerWidth < 768) {
-            sidebar.classList.add("drawer-collapsed");
-        }
-    });
+    // ── REPORT MODAL ─────────────────────────────────────────
     function openReportModal(title){
         document.getElementById("report-title").value=title;
         document.getElementById("report-type").value="資料錯誤";
@@ -1684,6 +1534,7 @@
         loadTwGeoJSON();
     });
 </script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
 
