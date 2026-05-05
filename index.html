@@ -4,16 +4,16 @@
     <script src="/api/config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>台灣即時新聞與災害地圖 (Taiwan News Map) - 即時追蹤各地事件</title>
-    <meta name="description" content="台灣即時新聞與災害地圖，全台最即時的交通事故、施工管制與突發災情地圖。結合政府 TDX 交通 API 與 AI 新聞分析，出門前幫你避開塞車與危險路段。">
+    <title>台灣新聞事件地圖 | 即時路況、事故、災情查詢</title>
+    <meta name="description" content="全台最即時的交通事故、施工管制與突發災情地圖。結合政府 TDX 交通 API 與 AI 新聞分析，出門前幫你避開塞車與危險路段。支援台北、台中、台南、高雄等全台縣市。">
     <meta name="keywords" content="台灣地圖, 交通事故, 即時路況, TDX, 災情即時, 塞車地圖, AI 地圖, 道路施工, 警廣路況, 台灣車禍, 即時新聞地圖">
-    <meta name="author" content="Taiwan News Map">
+    <meta name="author" content="台灣新聞事件地圖">
     <meta name="robots" content="index, follow">
     <link rel="canonical" href="https://taiwan-news-map.vercel.app/">
     <meta name="google-site-verification" content="TSf_qxT0E0bM68SRH_aWAkwa9GXlPoPwX73l-9VKbJM" />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="台灣即時新聞與災害地圖 (Taiwan News Map) 📍 出門前看一下！">
+    <meta property="og:title" content="台灣新聞事件地圖 📍 出門前看一下！">
     <meta property="og:description" content="結合 AI 與政府開放資料，全台交通事故、施工、突發災情一目了然。每30分鐘自動更新。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://taiwan-news-map.vercel.app/">
@@ -21,11 +21,11 @@
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:locale" content="zh_TW">
-    <meta property="og:site_name" content="台灣即時新聞與災害地圖 (Taiwan News Map)">
+    <meta property="og:site_name" content="台灣新聞事件地圖">
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="台灣即時新聞與災害地圖 (Taiwan News Map) 📍 出門前看一下！">
+    <meta name="twitter:title" content="台灣新聞事件地圖 📍 出門前看一下！">
     <meta name="twitter:description" content="結合 AI 與政府開放資料，全台交通事故、施工、突發災情一目了然。每30分鐘自動更新。">
     <meta name="twitter:image" content="https://taiwan-news-map.vercel.app/og-image.jpg">
 
@@ -34,14 +34,14 @@
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
-      "name": "台灣即時新聞與災害地圖 (Taiwan News Map)",
+      "name": "台灣新聞事件地圖",
       "url": "https://taiwan-news-map.vercel.app/",
       "description": "全台最即時的交通事故、施工管制與突發災情地圖。結合政府 TDX 交通 API 與 AI 新聞分析。",
       "applicationCategory": "TravelApplication",
       "operatingSystem": "Web",
       "offers": { "@type": "Offer", "price": "0" },
       "inLanguage": "zh-TW",
-      "author": { "@type": "Organization", "name": "Taiwan News Map" },
+      "author": { "@type": "Organization", "name": "台灣新聞事件地圖" },
       "keywords": "台灣地圖,交通事故,即時路況,災情,警廣路況"
     }
     </script>
@@ -50,8 +50,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
     <style>
@@ -306,17 +306,15 @@
         .drawer-handle {
             display: none;
             justify-content: center;
-            padding: 14px 0 10px;  /* 原本太窄，加大點擊區 */
-            cursor: grab;
-            touch-action: none;
+            padding: 10px 0 6px;
+            cursor: pointer;
         }
         @media (max-width: 767px) { .drawer-handle { display: flex; } }
         .handle-bar {
-            width: 48px;
-            height: 5px;
-            background: #94a3b8;
+            width: 40px;
+            height: 4px;
+            background: var(--border-bright);
             border-radius: 99px;
-            margin: 0 auto;
         }
 
         .sidebar-top-row {
@@ -691,28 +689,7 @@
             font-size: 14px;
             border: 2.5px solid rgba(255,255,255,0.2);
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-            /* Removed transition: transform to fix marker lag during map movement */
-        }
-
-        /* ── TOOLTIP ────────────────────────────────────────── */
-        .custom-tooltip {
-            z-index: 10002;
-            pointer-events: none;
-        }
-        .custom-tooltip .mapboxgl-popup-content {
-            background: var(--bg-panel);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-primary);
-            padding: 6px 10px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            font-family: "Noto Sans TC", sans-serif;
-        }
-        .custom-tooltip .mapboxgl-popup-tip {
-            display: none;
-        }
-        .custom-tooltip::before {
-            display: none;
+            transition: transform 0.15s;
         }
         .custom-marker:hover { transform: scale(1.1); }
         .marker-svg-icon {
@@ -1030,7 +1007,7 @@
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
         RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
         news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
-        default:    { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" }
+        default:    { text:"其他來源",    shortText:"其他",  bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
     };
 
     const CITY_OPTIONS = [
@@ -1164,13 +1141,6 @@
         ensureBoundaryLayer();
         drawCityBoundary(currentCityFilter());
         if(parsedEvents.length) renderEvents();
-
-        // 點擊地圖收起抽屜
-        map.on("click", () => {
-            if (window.innerWidth < 768) {
-                newsSidebar.classList.add("drawer-collapsed");
-            }
-        });
     });
 
     const statusText   = document.getElementById("status-text");
@@ -1361,29 +1331,7 @@
                 .setLngLat([latlng[1], latlng[0]])
                 .setPopup(popup)
                 .addTo(map);
-
-            // Tooltip on hover
-            const markerEl = marker.getElement();
-            markerEl.style.cursor = "pointer";
-
-            const tooltip = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false,
-                className: "custom-tooltip",
-                offset: [0, -20],
-                anchor: "bottom"
-            });
-
-            markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat([latlng[1], latlng[0]])
-                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title || ev.text}</div>`)
-                    .addTo(map);
-            });
-
-            markerEl.addEventListener("mouseleave", () => {
-                tooltip.remove();
-            });
-
+            marker.getElement().style.cursor = "pointer";
             renderedMarkers.push(marker);
 
             // Card
@@ -1507,52 +1455,6 @@
         if(window.innerWidth<768) newsSidebar.classList.toggle("drawer-collapsed");
     }
 
-    // ── MOBILE GESTURES ──────────────────────────────────────
-    let startY = 0;
-    let isDragging = false;
-    const sidebar = document.getElementById("news-sidebar");
-
-    sidebar.addEventListener("touchstart", e => {
-        if (window.innerWidth >= 768) return;
-        // 只有在頂部區域才觸發拖曳
-        const touch = e.touches[0];
-        const sidebarTop = sidebar.getBoundingClientRect().top;
-        if (touch.clientY - sidebarTop > 80) return; // 超過80px不觸發
-        
-        isDragging = true;
-        startY = touch.clientY;
-        sidebar.style.transition = "none"; // 拖曳時關掉動畫
-    }, { passive: true });
-
-    sidebar.addEventListener("touchmove", e => {
-        if (!isDragging) return;
-        const delta = e.touches[0].clientY - startY;
-        if (delta < 0) return; // 不能往上拉超過展開位置
-        sidebar.style.transform = `translateY(${delta}px)`;
-
-        // 展開時防止地圖被滑動干擾
-        if (!sidebar.classList.contains("drawer-collapsed")) {
-            e.stopPropagation();
-        }
-    }, { passive: true });
-
-    sidebar.addEventListener("touchend", e => {
-        if (!isDragging) return;
-        isDragging = false;
-        sidebar.style.transition = "transform 0.3s cubic-bezier(0.32,0,0.15,1)";
-        
-        const delta = e.changedTouches[0].clientY - startY;
-        if (delta > 80) {
-            // 滑超過80px → 收起
-            sidebar.classList.add("drawer-collapsed");
-            sidebar.style.transform = "";
-        } else {
-            // 沒超過 → 彈回展開
-            sidebar.classList.remove("drawer-collapsed");
-            sidebar.style.transform = "";
-        }
-    });
-
     // ── REPORT MODAL ─────────────────────────────────────────
     function openReportModal(title){
         document.getElementById("report-title").value=title;
@@ -1632,6 +1534,7 @@
         loadTwGeoJSON();
     });
 </script>
+<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
 
