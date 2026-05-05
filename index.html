@@ -691,10 +691,6 @@
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
             /* Removed transition: transform to fix marker lag during map movement */
         }
-        .clean-marker-icon {
-            background: none !important;
-            border: none !important;
-        }
 
         /* ── TOOLTIP ────────────────────────────────────────── */
         .custom-tooltip {
@@ -1194,7 +1190,7 @@
     }
     function makeMarkerElement(color, svg){
         const wrapper = document.createElement("div");
-        wrapper.className = "custom-marker clean-marker-icon";
+        wrapper.className = "custom-marker";
         wrapper.style.background = `linear-gradient(135deg,${color},${color}cc)`;
         wrapper.innerHTML = `<span class="marker-svg-icon">${svg}</span>`;
         return wrapper;
@@ -1356,7 +1352,29 @@
                 .setLngLat([latlng[1], latlng[0]])
                 .setPopup(popup)
                 .addTo(map);
-            marker.getElement().style.cursor = "pointer";
+
+            // Tooltip on hover
+            const markerEl = marker.getElement();
+            markerEl.style.cursor = "pointer";
+
+            const tooltip = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                className: "custom-tooltip",
+                offset: [0, -20],
+                anchor: "bottom"
+            });
+
+            markerEl.addEventListener("mouseenter", () => {
+                tooltip.setLngLat([latlng[1], latlng[0]])
+                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title || ev.text}</div>`)
+                    .addTo(map);
+            });
+
+            markerEl.addEventListener("mouseleave", () => {
+                tooltip.remove();
+            });
+
             renderedMarkers.push(marker);
 
             // Card
