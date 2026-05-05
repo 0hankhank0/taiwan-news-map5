@@ -50,8 +50,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
-    <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
     <style>
@@ -306,15 +306,17 @@
         .drawer-handle {
             display: none;
             justify-content: center;
-            padding: 10px 0 6px;
-            cursor: pointer;
+            padding: 14px 0 10px;  /* 原本太窄，加大點擊區 */
+            cursor: grab;
+            touch-action: none;
         }
         @media (max-width: 767px) { .drawer-handle { display: flex; } }
         .handle-bar {
-            width: 40px;
-            height: 4px;
-            background: var(--border-bright);
+            width: 48px;
+            height: 5px;
+            background: #94a3b8;
             border-radius: 99px;
+            margin: 0 auto;
         }
 
         .sidebar-top-row {
@@ -1028,7 +1030,7 @@
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
         RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
         news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
-        default:    { text:"其他來源",    shortText:"其他",  bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
+        default:    { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" }
     };
 
     const CITY_OPTIONS = [
@@ -1162,6 +1164,13 @@
         ensureBoundaryLayer();
         drawCityBoundary(currentCityFilter());
         if(parsedEvents.length) renderEvents();
+
+        // 點擊地圖收起抽屜
+        map.on("click", () => {
+            if (window.innerWidth < 768) {
+                newsSidebar.classList.add("drawer-collapsed");
+            }
+        });
     });
 
     const statusText   = document.getElementById("status-text");
@@ -1498,6 +1507,52 @@
         if(window.innerWidth<768) newsSidebar.classList.toggle("drawer-collapsed");
     }
 
+    // ── MOBILE GESTURES ──────────────────────────────────────
+    let startY = 0;
+    let isDragging = false;
+    const sidebar = document.getElementById("news-sidebar");
+
+    sidebar.addEventListener("touchstart", e => {
+        if (window.innerWidth >= 768) return;
+        // 只有在頂部區域才觸發拖曳
+        const touch = e.touches[0];
+        const sidebarTop = sidebar.getBoundingClientRect().top;
+        if (touch.clientY - sidebarTop > 80) return; // 超過80px不觸發
+        
+        isDragging = true;
+        startY = touch.clientY;
+        sidebar.style.transition = "none"; // 拖曳時關掉動畫
+    }, { passive: true });
+
+    sidebar.addEventListener("touchmove", e => {
+        if (!isDragging) return;
+        const delta = e.touches[0].clientY - startY;
+        if (delta < 0) return; // 不能往上拉超過展開位置
+        sidebar.style.transform = `translateY(${delta}px)`;
+
+        // 展開時防止地圖被滑動干擾
+        if (!sidebar.classList.contains("drawer-collapsed")) {
+            e.stopPropagation();
+        }
+    }, { passive: true });
+
+    sidebar.addEventListener("touchend", e => {
+        if (!isDragging) return;
+        isDragging = false;
+        sidebar.style.transition = "transform 0.3s cubic-bezier(0.32,0,0.15,1)";
+        
+        const delta = e.changedTouches[0].clientY - startY;
+        if (delta > 80) {
+            // 滑超過80px → 收起
+            sidebar.classList.add("drawer-collapsed");
+            sidebar.style.transform = "";
+        } else {
+            // 沒超過 → 彈回展開
+            sidebar.classList.remove("drawer-collapsed");
+            sidebar.style.transform = "";
+        }
+    });
+
     // ── REPORT MODAL ─────────────────────────────────────────
     function openReportModal(title){
         document.getElementById("report-title").value=title;
@@ -1577,7 +1632,6 @@
         loadTwGeoJSON();
     });
 </script>
-<script defer src="/_vercel/insights/script.js"></script>
 </body>
 </html>
 
