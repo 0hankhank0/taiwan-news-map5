@@ -35,6 +35,21 @@ function parseTWDate(str) {
   return isNaN(ts) ? null : ts;
 }
 
+function sanitizeText(str) {
+  if (!str) return "";
+  return str
+    // 替換特殊連字符為普通連字符
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    // 替換特殊引號為普通引號
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    // 替換全形空格
+    .replace(/\u3000/g, " ")
+    // 移除其他非 ASCII 可列印字元以外的特殊符號（保留中文）
+    .replace(/[\u0080-\u00FF\u2000-\u206F]/g, "")
+    .trim();
+}
+
 async function getTDXToken() {
   const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
     method: "POST",
@@ -88,7 +103,7 @@ async function aiFilterEvents(items) {
 
 只回傳 JSON，不要其他文字。
 事件列表：
-${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
+${JSON.stringify(items.map(i => ({ id: i.id, text: sanitizeText(i.text) })))}`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -158,7 +173,7 @@ async function aiFilterNews(articles) {
 只回傳 JSON 陣列，不要其他文字。
 
 新聞列表：
-${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.description?.slice(0, 150) })))}`;
+${JSON.stringify(articles.map(a => ({ id: a.id, title: sanitizeText(a.title), desc: sanitizeText(a.description?.slice(0, 150) || "") })))}`;
 
   try {
     const res = await openai.chat.completions.create({
@@ -404,37 +419,48 @@ async function fetchNews() {
 }
 
 async function fetchGDELT() {
-  try {
-    // GDELT Doc API - 抓最近15分鐘台灣中文新聞
-    const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=Taiwan%20(sourcecountry:TW%20OR%20sourcelang:zho)&mode=artlist&maxrecords=75&format=json&timespan=15min`;
-    
-    const res = await fetch(url, fetchOptions);
-    if (!res.ok) {
-      console.error(`❌ [GDELT] 抓取失敗: ${res.status}`);
-      return [];
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=Taiwan%20(sourcecountry:TW%20OR%20sourcelang:zho)&mode=artlist&maxrecords=75&format=json&timespan=15min`;
+  
+  for (let i = 0; i < 3; i++) {
+    try {
+      const res = await fetch(url, fetchOptions);
+      if (res.status === 429) {
+        const wait = 5000 * (i + 1);
+        console.log(`⏳ [GDELT] 429，等待 ${wait / 1000} 秒後重試...`);
+        await delay(wait);
+        continue;
+      }
+      if (!res.ok) {
+        console.error(`❌ [GDELT] 抓取失敗: ${res.status}`);
+        return [];
+      }
+      
+      const data = await res.json();
+      const articles = data.articles || [];
+      console.log(`📦 [GDELT] 原始筆數: ${articles.length}`);
+      
+      return articles
+        .filter(a => a.title && a.url)
+        .map(a => ({
+          id: `GDELT_${Buffer.from(a.url).toString("base64").slice(0, 20)}`,
+          title: a.title,
+          description: a.title,
+          url: a.url,
+          link: a.url,
+          source: a.domain || "GDELT",
+          lat: null,
+          lng: null,
+          publishedAt: a.seendate,
+        }));
+    } catch (e) {
+      console.error("❌ [GDELT] 錯誤:", e.message);
+      if (i < 2) {
+        await delay(2000);
+        continue;
+      }
     }
-    
-    const data = await res.json();
-    const articles = data.articles || [];
-    console.log(`📦 [GDELT] 原始筆數: ${articles.length}`);
-    
-    return articles
-      .filter(a => a.title && a.url)
-      .map(a => ({
-        id: `GDELT_${Buffer.from(a.url).toString("base64").slice(0, 20)}`,
-        title: a.title,
-        description: a.title,
-        url: a.url,
-        link: a.url,
-        source: a.domain || "GDELT",
-        lat: null,
-        lng: null,
-        publishedAt: a.seendate,
-      }));
-  } catch (e) {
-    console.error("❌ [GDELT] 錯誤:", e.message);
-    return [];
   }
+  return [];
 }
 
 async function fetchGDELTGeo() {
