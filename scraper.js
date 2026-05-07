@@ -25,7 +25,7 @@ async function callAzureAI(prompt) {
 
   const body = JSON.stringify({
     messages: [{ role: "user", content: cleanPrompt }],
-    max_completion_tokens: 4000,
+    max_completion_tokens: 8000,
     temperature: 0,
   });
 
@@ -377,8 +377,8 @@ async function fetchNews() {
   console.log(`🗂️ [新聞] 去重後剩 ${allArticles.length} 則`);
 
   let relevantArticles = [];
-  for (let i = 0; i < allArticles.length; i += 15) {
-    const batch = allArticles.slice(i, i + 15);
+  for (let i = 0; i < allArticles.length; i += 8) {
+    const batch = allArticles.slice(i, i + 8);
     const aiResults = await aiFilterNews(batch);
     batch.forEach(article => {
       const ai = aiResults.find(r => r.id === article.id);
@@ -436,6 +436,7 @@ async function fetchNews() {
       lng: coords.lng,
       city: ai.locationFallback || ai.location,
       isReal: true,
+      pubDate: article.pubDate,
       createdAt: Date.now(),
       expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
     });
@@ -720,11 +721,13 @@ function buildPostText(event) {
   const label = cat === "accident" ? "即時事故" : cat === "disaster" ? "即時災情" : "活動資訊";
   const title = event.title || event.text || "";
   const city  = event.city || "";
-  const now   = new Date().toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" });
+  const eventTime = event.pubDate 
+    ? new Date(event.pubDate).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" }) 
+    : new Date(event.createdAt || Date.now()).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" });
 
   let text = `${emoji} 【${label}】${title}\n\n`;
   if (city) text += `📍 ${city}\n`;
-  text += `🕐 ${now}\n\n`;
+  text += `🕐 ${eventTime}\n\n`;
   text += `🗺️ 查看地圖：${SITE_URL}\n`;
   text += `#台灣即時 #${city.replace(/[市縣]/g, "")} #台灣新聞事件地圖`;
   return text;
