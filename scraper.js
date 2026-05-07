@@ -728,7 +728,12 @@ async function runThreadsAutoPost(newEvents) {
 async function main() {
   try {
     console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
-    const token = await getTDXToken();
+    
+    // 只有 traffic 或 all mode 才需要 TDX token
+    let token = null;
+    if (mode === "traffic" || mode === "all") {
+      token = await getTDXToken();
+    }
 
     let finalEvents = [];
     let trafficCacheList = [];
