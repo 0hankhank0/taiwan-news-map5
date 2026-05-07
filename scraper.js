@@ -25,7 +25,7 @@ async function callAzureAI(prompt) {
 
   const body = JSON.stringify({
     messages: [{ role: "user", content: cleanPrompt }],
-    max_tokens: 4000,
+    max_completion_tokens: 4000,
     temperature: 0,
   });
 
