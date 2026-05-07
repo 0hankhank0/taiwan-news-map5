@@ -4,19 +4,49 @@ const mode = process.argv.includes("--mode=news") ? "news" :
              process.argv.includes("--mode=traffic") ? "traffic" : "all";
 
 const { Redis } = require("@upstash/redis");
-const { AzureOpenAI } = require("openai");
 
 const kv = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN,
 });
 
-const openai = new AzureOpenAI({
-  endpoint: "https://timcs-me2fe94e-eastus2.cognitiveservices.azure.com",
-  apiKey: process.env.AZURE_OPENAI_API_KEY,
-  apiVersion: "2025-04-01-preview",
-  deployment: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
-});
+const AZURE_ENDPOINT = "https://timcs-me2fe94e-eastus2.cognitiveservices.azure.com";
+const AZURE_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI";
+const AZURE_API_VERSION = "2025-01-01-preview";
+
+async function callAzureAI(prompt) {
+  const url = `${AZURE_ENDPOINT}/openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=${AZURE_API_VERSION}`;
+   
+  // 清理特殊字元
+  const cleanPrompt = Buffer.from(prompt, "utf8").toString("utf8")
+    .replace(/[\u2010-\u2015\u2212\u2011]/g, "-")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2000-\u200F\u2028\u2029]/g, " ");
+
+  const body = JSON.stringify({
+    messages: [{ role: "user", content: cleanPrompt }],
+    max_tokens: 4000,
+    temperature: 0,
+  });
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "api-key": process.env.AZURE_OPENAI_API_KEY,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`${res.status} ${err}`);
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "";
+}
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -105,16 +135,9 @@ async function aiFilterEvents(items) {
 事件列表：
 ${JSON.stringify(items.map(i => ({ id: i.id, text: sanitizeText(i.text) })))}`;
 
-  const cleanPrompt = prompt.replace(/[^\x00-\x7F\u4E00-\u9FFF\u3400-\u4DBF]/g, " ");
-
   try {
-    const res = await openai.chat.completions.create({
-      model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
-      messages: [{ role: "user", content: cleanPrompt }],
-      temperature: 0,
-    });
-    const text = res.choices[0].message.content.replace(/```json|```/g, "").trim();
-    return JSON.parse(text);
+    const text = await callAzureAI(prompt);
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (err) {
     console.error("❌ AI 篩選失敗:", err.message);
     return [];
@@ -177,16 +200,9 @@ async function aiFilterNews(articles) {
 新聞列表：
 ${JSON.stringify(articles.map(a => ({ id: a.id, title: sanitizeText(a.title), desc: sanitizeText(a.description?.slice(0, 150) || "") })))}`;
 
-  const cleanPrompt = prompt.replace(/[^\x00-\x7F\u4E00-\u9FFF\u3400-\u4DBF]/g, " ");
-
   try {
-    const res = await openai.chat.completions.create({
-      model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
-      messages: [{ role: "user", content: cleanPrompt }],
-      temperature: 0,
-    });
-    const text = res.choices[0].message.content.replace(/```json|```/g, "").trim();
-    return JSON.parse(text);
+    const text = await callAzureAI(prompt);
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
   } catch (err) {
     console.error("❌ 新聞 AI 篩選失敗:", err.message);
     return [];
