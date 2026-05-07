@@ -212,8 +212,14 @@ async function aiFilterNews(articles) {
 - category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
 - location: 最具體的地名，要能直接 geocode 的地址或地標（例如"台南市運河旁河樂廣場"、"國道3號關廟段"、"屏東縣鹽埔鄉勝利街"）。若新聞提到知名地標請使用地標全名。若無具體地點則填 null。
 - locationFallback: 只到縣市層級（例如"台南市"、"屏東縣"、"新北市"），location 為 null 時也填 null
+- lat: 事件發生地點的緯度（台灣範圍 21~26，無法確定填 null）
+- lng: 事件發生地點的經度（台灣範圍 118~123，無法確定填 null）
 - eventFingerprint: 用來識別同一事件的指紋，格式為「縣市_類型_事件關鍵字3個字」，例如「台南市_disaster_縱火砍」、「高雄市_accident_追撞」。同一事件不同媒體報導的 fingerprint 必須完全一樣。
 - ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
+
+prompt 說明：
+- lat/lng 請盡量給到小數點後4位，精確到街道等級。若新聞提到知名地標、路口、路段，請直接給出該地點的精確座標。
+- 若只知道縣市，lat/lng 填 null，改用 locationFallback 讓程式 fallback。
 
 不符合的新聞請回傳 { id, isRelevant: false }。
 只回傳 JSON 陣列，不要其他文字。
@@ -401,16 +407,17 @@ async function fetchNews() {
   for (const article of relevantArticles) {
     const ai = article.aiResult;
 
-    if (!ai.location) {
-      console.log(`⚠️ 無地名跳過: ${article.title}`);
-      continue;
-    }
-
-    let coords = await geocode(ai.location);
-    if (!coords && ai.locationFallback) {
-      console.log(`🔄 備用定位: ${ai.locationFallback}`);
-      await delay(1200);
-      coords = await geocode(ai.locationFallback);
+    let coords = null;
+    if (ai.lat && ai.lng) {
+      // AI 直接給座標，優先使用
+      coords = { lat: ai.lat, lng: ai.lng };
+    } else if (ai.location) {
+      coords = await geocode(ai.location);
+      if (!coords && ai.locationFallback) {
+        console.log(`🔄 備用定位: ${ai.locationFallback}`);
+        await delay(1200);
+        coords = await geocode(ai.locationFallback);
+      }
     }
 
     if (!coords) {
