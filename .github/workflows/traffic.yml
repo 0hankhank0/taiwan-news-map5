@@ -1,7 +1,7 @@
 name: Taiwan Traffic Scraper
 on:
   schedule:
-    - cron: '*/30 * * * *'   # 每 30 分鐘執行
+    - cron: '0 * * * *'   # 每小時執行（節省 TDX 點數）
   workflow_dispatch:       # 允許手動觸發
 jobs:
   scrape:
