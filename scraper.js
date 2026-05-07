@@ -105,10 +105,12 @@ async function aiFilterEvents(items) {
 事件列表：
 ${JSON.stringify(items.map(i => ({ id: i.id, text: sanitizeText(i.text) })))}`;
 
+  const cleanPrompt = prompt.replace(/[^\x00-\x7F\u4E00-\u9FFF\u3400-\u4DBF]/g, " ");
+
   try {
     const res = await openai.chat.completions.create({
       model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: cleanPrompt }],
       temperature: 0,
     });
     const text = res.choices[0].message.content.replace(/```json|```/g, "").trim();
@@ -175,10 +177,12 @@ async function aiFilterNews(articles) {
 新聞列表：
 ${JSON.stringify(articles.map(a => ({ id: a.id, title: sanitizeText(a.title), desc: sanitizeText(a.description?.slice(0, 150) || "") })))}`;
 
+  const cleanPrompt = prompt.replace(/[^\x00-\x7F\u4E00-\u9FFF\u3400-\u4DBF]/g, " ");
+
   try {
     const res = await openai.chat.completions.create({
       model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
-      messages: [{ role: "user", content: prompt }],
+      messages: [{ role: "user", content: cleanPrompt }],
       temperature: 0,
     });
     const text = res.choices[0].message.content.replace(/```json|```/g, "").trim();
