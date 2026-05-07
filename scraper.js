@@ -1,14 +1,19 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 const { Redis } = require("@upstash/redis");
-const OpenAI = require("openai");
+const { AzureOpenAI } = require("openai");
 
 const kv = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN,
 });
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new AzureOpenAI({
+  endpoint: "https://timcs-me2fe94e-eastus2.cognitiveservices.azure.com",
+  apiKey: process.env.AZURE_OPENAI_API_KEY,
+  apiVersion: "2025-04-01-preview",
+  deployment: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
+});
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -84,7 +89,7 @@ ${JSON.stringify(items.map(i => ({ id: i.id, text: i.text })))}`;
 
   try {
     const res = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
     });
@@ -154,7 +159,7 @@ ${JSON.stringify(articles.map(a => ({ id: a.id, title: a.title, desc: a.descript
 
   try {
     const res = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI",
       messages: [{ role: "user", content: prompt }],
       temperature: 0,
     });
