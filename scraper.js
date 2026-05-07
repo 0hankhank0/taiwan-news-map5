@@ -429,6 +429,7 @@ async function fetchNews() {
       lng: coords.lng,
       city: ai.locationFallback || ai.location,
       isReal: true,
+      createdAt: Date.now(),
       expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
     });
 
@@ -450,6 +451,7 @@ async function fetchNews() {
       lng: e.lng,
       city: e.city,
       isReal: true,
+      createdAt: Date.now(),
       expiresAt: Date.now() + 2 * 60 * 60 * 1000, // 2小時 TTL
     });
   });
@@ -695,8 +697,8 @@ function shouldPost(event) {
 
   // 重大事故：死亡、多人傷亡
   if (cat === "accident" && /死亡|死[0-9]|[0-9]死|多人傷|重傷|[3-9]人傷|[1-9][0-9]人/.test(title)) return true;
-  // 火災災害
-  if (cat === "disaster") return true;
+  // 火災災害 (加嚴篩選：火災、爆炸、氣爆、工安、毒化、化學)
+  if (cat === "disaster" && /火災|火警|爆炸|氣爆|工安|毒化|化學/.test(title)) return true;
   // 大型活動（ttl >= 12 小時）
   if (cat === "activity" && (event.ttl_hours || 0) >= 12) return true;
 
@@ -779,7 +781,11 @@ async function runThreadsAutoPost(newEvents) {
     postedIds = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
   } catch {}
 
-  const toPost = newEvents.filter(e => shouldPost(e) && !postedIds.includes(e.id));
+  const toPost = newEvents.filter(e => 
+    shouldPost(e) && 
+    !postedIds.includes(e.id) && 
+    (Date.now() - (e.createdAt || 0)) < 2 * 60 * 60 * 1000 // 超過2小時的事件不發
+  );
 
   for (const event of toPost) {
     await postToThreads(event);
@@ -843,9 +849,11 @@ async function main() {
           const ai = aiResults.find(r => r.id === item.id);
           if (!ai) return;
           const processedItem = {
-            ...item, title: ai.title || item.text, category: ai.category || "accident",
-            isReal: ai.isReal, expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
-          };
+          ...item, title: ai.title || item.text, category: ai.category || "accident",
+          isReal: ai.isReal, 
+          createdAt: Date.now(),
+          expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
+        };
           trafficCacheList.push(processedItem);
           if (ai.isReal) finalEvents.push(processedItem);
         });
