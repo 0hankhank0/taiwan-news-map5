@@ -15,14 +15,13 @@ const AZURE_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "GPT4OMINI";
 const AZURE_API_VERSION = "2025-01-01-preview";
 
 async function callAzureAI(prompt) {
-  const url = `${AZURE_ENDPOINT}/openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=${AZURE_API_VERSION}`;
-   
-  // 清理特殊字元
-  const cleanPrompt = Buffer.from(prompt, "utf8").toString("utf8")
+  // 清理所有非 ASCII + 非中文字元，避免 ByteString 錯誤
+  const cleanPrompt = prompt
     .replace(/[\u2010-\u2015\u2212\u2011]/g, "-")
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u201C\u201D]/g, '"')
-    .replace(/[\u2000-\u200F\u2028\u2029]/g, " ");
+    .replace(/[\u2000-\u200F\u2028\u2029\uFEFF]/g, " ")
+    .replace(/[^\x00-\x7F\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF]/g, " ");
 
   const body = JSON.stringify({
     messages: [{ role: "user", content: cleanPrompt }],
@@ -30,22 +29,44 @@ async function callAzureAI(prompt) {
     temperature: 0,
   });
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json; charset=utf-8",
-      "api-key": process.env.AZURE_OPENAI_API_KEY,
-    },
-    body,
+  // 用 Node.js https module 取代 fetch，完全繞過 ByteString header 問題
+  return new Promise((resolve, reject) => {
+    const https = require("https");
+    const apiKey = (process.env.AZURE_OPENAI_API_KEY || "").replace(/[^\x20-\x7E]/g, "");
+    const path = `/openai/deployments/${AZURE_DEPLOYMENT}/chat/completions?api-version=${AZURE_API_VERSION}`;
+    
+    const options = {
+      hostname: "timcs-me2fe94e-eastus2.cognitiveservices.azure.com",
+      path,
+      method: "POST",
+      rejectUnauthorized: false,
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": apiKey,
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.on("data", chunk => data += chunk);
+      res.on("end", () => {
+        try {
+          if (res.statusCode !== 200) {
+            reject(new Error(`${res.statusCode} ${data}`));
+            return;
+          }
+          const json = JSON.parse(data);
+          resolve(json.choices?.[0]?.message?.content || "");
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
   });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`${res.status} ${err}`);
-  }
-
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
 }
 
 const delay = (ms) => new Promise((res) => setTimeout(res, ms));
