@@ -11,7 +11,7 @@ const kv = new Redis({
 });
 
 const AZURE_ENDPOINT = "https://timcs-me2fe94e-eastus2.cognitiveservices.azure.com";
-const AZURE_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-4.5-mini";
+const AZURE_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-5.4-mini";
 const AZURE_API_VERSION = "2025-01-01-preview";
 
 async function callAzureAI(prompt) {
