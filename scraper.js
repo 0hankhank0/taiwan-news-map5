@@ -1,5 +1,8 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
+const mode = process.argv.includes("--mode=news") ? "news" : 
+             process.argv.includes("--mode=traffic") ? "traffic" : "all";
+
 const { Redis } = require("@upstash/redis");
 const { AzureOpenAI } = require("openai");
 
@@ -293,6 +296,12 @@ async function fetchNews() {
     await delay(1000);
   }
 
+  // ── GDELT 補充新聞 ──
+  console.log("📡 [GDELT] 開始抓取補充新聞...");
+  const gdeltArticles = await fetchGDELT();
+  allArticles.push(...gdeltArticles);
+  console.log(`✅ [GDELT] 補充 ${gdeltArticles.length} 筆文字新聞進 AI 篩選`);
+
   if (allArticles.length === 0) return [];
 
   // 標題去重：相同標題只保留第一筆
@@ -358,8 +367,8 @@ async function fetchNews() {
       title: ai.title || article.title,
       content: article.description?.slice(0, 120) || "",
       category: ai.category || "other",
-      source: "news",
-      url: article.link,
+      source: article.source || "news",
+      url: article.link || article.url,
       lat: coords.lat,
       lng: coords.lng,
       city: ai.locationFallback || ai.location,
@@ -370,8 +379,93 @@ async function fetchNews() {
     await delay(1200);
   }
 
+  // ── GDELT 地理事件 ──
+  console.log("📡 [GDELT] 開始抓取地理座標事件...");
+  const gdeltGeoEvents = await fetchGDELTGeo();
+  gdeltGeoEvents.forEach(e => {
+    newsEvents.push({
+      id: e.id,
+      title: e.title,
+      content: `【GDELT 地理事件】${e.title}`,
+      category: "news",
+      source: "GDELT",
+      url: e.url,
+      lat: e.lat,
+      lng: e.lng,
+      city: e.city,
+      isReal: true,
+      expiresAt: Date.now() + 2 * 60 * 60 * 1000, // 2小時 TTL
+    });
+  });
+  console.log(`✅ [GDELT] 新增 ${gdeltGeoEvents.length} 筆地理事件`);
+
   console.log(`📍 [新聞] 成功定位 ${newsEvents.length} 則，寫入地圖`);
   return newsEvents;
+}
+
+async function fetchGDELT() {
+  try {
+    // GDELT Doc API - 抓最近15分鐘台灣中文新聞
+    const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=Taiwan%20(sourcecountry:TW%20OR%20sourcelang:zho)&mode=artlist&maxrecords=75&format=json&timespan=15min`;
+    
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) {
+      console.error(`❌ [GDELT] 抓取失敗: ${res.status}`);
+      return [];
+    }
+    
+    const data = await res.json();
+    const articles = data.articles || [];
+    console.log(`📦 [GDELT] 原始筆數: ${articles.length}`);
+    
+    return articles
+      .filter(a => a.title && a.url)
+      .map(a => ({
+        id: `GDELT_${Buffer.from(a.url).toString("base64").slice(0, 20)}`,
+        title: a.title,
+        description: a.title,
+        url: a.url,
+        link: a.url,
+        source: a.domain || "GDELT",
+        lat: null,
+        lng: null,
+        publishedAt: a.seendate,
+      }));
+  } catch (e) {
+    console.error("❌ [GDELT] 錯誤:", e.message);
+    return [];
+  }
+}
+
+async function fetchGDELTGeo() {
+  try {
+    // GDELT GKG API - 取得有地理座標的台灣事件
+    const url = `https://api.gdeltproject.org/api/v2/geo/geo?query=Taiwan&mode=pointdata&format=json&timespan=60min`;
+    
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) return [];
+    
+    const data = await res.json();
+    const features = data.features || [];
+    console.log(`📦 [GDELT GKG] 地理事件筆數: ${features.length}`);
+    
+    return features
+      .filter(f => f.geometry?.coordinates && f.properties?.name)
+      .map(f => ({
+        id: `GDELTGEO_${f.properties.url ? Buffer.from(f.properties.url).toString("base64").slice(0, 20) : Math.random().toString(36).slice(2)}`,
+        title: f.properties.name,
+        description: f.properties.name,
+        url: f.properties.url || "",
+        source: "GDELT",
+        lat: f.geometry.coordinates[1],  // GeoJSON 是 [lng, lat]
+        lng: f.geometry.coordinates[0],
+        city: f.properties.countryname || "台灣",
+        publishedAt: f.properties.dateadded,
+      }));
+  } catch (e) {
+    console.error("❌ [GDELT GEO] 錯誤:", e.message);
+    return [];
+  }
 }
 
 // ==========================================
@@ -633,246 +727,120 @@ async function runThreadsAutoPost(newEvents) {
 
 async function main() {
   try {
-    console.log("🚀 啟動全台新聞同步系統 (新聞整合版)...");
+    console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
     const token = await getTDXToken();
 
-    let rawCache = await kv.get("taiwan_traffic_cache");
-    let cacheMap = new Map();
-    if (rawCache) {
-      const parsed = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
-      parsed.forEach(item => { if (item.expiresAt > Date.now()) cacheMap.set(item.id, item); });
-    }
-
-    let candidatesMap = new Map();
-    let cityStats = {};
-
-    // 各城市寫入上限（避免單一城市塞爆）
-    const CITY_LIMIT = 50;
-
-    let tdxTargets = [
-      { path: "Freeway",           name: "國道",   types: ["LiveEvent"] },
-      { path: "Highway",           name: "省道",   types: ["LiveEvent"] },
-      { path: "City/Taipei",       name: "台北市", types: ["Event", "LiveEvent"] },
-      { path: "City/NewTaipei",    name: "新北市", types: ["Event", "LiveEvent"] },
-      { path: "City/Taichung",     name: "台中市", types: ["Event", "LiveEvent"] },
-      { path: "City/Tainan",       name: "台南市", types: ["Event", "LiveEvent"] },
-      { path: "City/Keelung",      name: "基隆市", types: ["Event", "LiveEvent"] },
-      { path: "City/YilanCounty",  name: "宜蘭縣", types: ["Event", "LiveEvent"] },
-      { path: "City/Kaohsiung",    name: "高雄市", types: ["Event", "LiveEvent"] },
-      { path: "City/KinmenCounty", name: "金門縣", types: ["Event", "LiveEvent"] },
-      { path: "City/Taoyuan",      name: "桃園市", types: ["Event", "LiveEvent"] },
-    ];
-
-    tdxTargets = tdxTargets.sort(() => Math.random() - 0.5);
-    console.log(`📡 [中央 TDX] 本次抓取順序：${tdxTargets.map(t => t.name).join(" -> ")}`);
-
-    for (const target of tdxTargets) {
-      for (const evType of target.types) {
-        const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/${evType}/${target.path}?$format=JSON`;
-        const data = await fetchTDX(url, token, `${target.name}-${evType}`);
-        if (!data) continue;
-
-        const eventsList = data.Events || data.LiveEvents || data.value || (Array.isArray(data) ? data : []);
-
-        if (target.name === "台南市") {
-          console.log(`🔍 [台南 debug] ${evType} 原始資料筆數: ${eventsList.length}`);
-          eventsList.slice(0, 5).forEach((s, i) => {
-            console.log(`🔍 [台南 debug] 第 ${i+1} 筆:`, JSON.stringify({
-              EventID: s.EventID || s.RoadEventID,
-              summary: (s.EventTitle || "").slice(0, 20),
-              Positions: s.Positions,
-            }));
-          });
-        }
-
-        for (const event of eventsList) {
-          const summary = event.EventTitle || event.EventSummary || event.Description || "";
-          const eventId = event.EventID || event.RoadEventID;
-
-          // 【修復】過濾無摘要的通用施工案件
-          if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) continue;
-
-          // 過濾宣導、交通管制
-          if (summary.includes("宣導") || event.EventTypeName === "交通管制") continue;
-
-          // 【修復】城市筆數上限
-          if ((cityStats[target.name] || 0) >= CITY_LIMIT) continue;
-
-          const endTime = event.EndTime || event.EventEndTime;
-          if (endTime) {
-            const endTs = new Date(endTime).getTime();
-            if (endTs && endTs < Date.now()) continue;
-          }
-
-          let lat, lng;
-
-          // 【修復】防禦性座標解析，避免定位失敗跑到市政府
-          const posStr = typeof event.Positions === "string" ? event.Positions : "";
-          if (posStr.includes("POINT")) {
-            const match = posStr.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
-            if (match) { lng = parseFloat(match[1]); lat = parseFloat(match[2]); }
-          }
-          // fallback：改用其他座標欄位
-          if (!lat || !lng) {
-            lat = event.PositionLat || event.EventPosition?.PositionLat;
-            lng = event.PositionLon || event.EventPosition?.PositionLon;
-          }
-
-          if (!eventId || !summary) continue;
-
-          // 沒座標 → 優先從 Location.Other 裡抽出內嵌座標，再 geocode
-          if (!lat || !lng) {
-            const locText = event.Location?.Other || event.Location?.Road || "";
-
-            // 先嘗試從字串抽出 (lat,lng) 格式，例如 "台南市善化區南129上(23.149,120.3237)"
-            const coordMatch = locText.match(/\(\s*([0-9]{1,3}\.[0-9]+)\s*,\s*([0-9]{1,3}\.[0-9]+)\s*\)/);
-            if (coordMatch) {
-              const a = parseFloat(coordMatch[1]);
-              const b = parseFloat(coordMatch[2]);
-              // 判斷哪個是 lat（台灣緯度約 21~26）哪個是 lng（120~122）
-              if (a >= 20 && a <= 27 && b >= 118 && b <= 123) {
-                lat = a; lng = b;
-              } else if (b >= 20 && b <= 27 && a >= 118 && a <= 123) {
-                lat = b; lng = a;
-              }
-            }
-
-            // 抽不到才 geocode
-            if (!lat || !lng) {
-              if (!locText || locText.length < 4) continue;
-              const coords = await geocode(locText);
-              if (!coords) continue;
-              lat = coords.lat;
-              lng = coords.lng;
-              await delay(800); // Nominatim 限速
-            }
-          }
-
-          if (lat && lng) {
-            const startTime = event.StartTime || event.EventStartTime || "";
-            const timeInfo = (startTime || endTime) ? ` (預計期間: ${startTime} ~ ${endTime || '未定'})` : "";
-
-            // 同座標抖動
-            const jittered = jitterCoord(lat, lng, cityStats[target.name] || 0);
-            candidatesMap.set(eventId, {
-              id: eventId,
-              text: `【${event.EventTypeName || "路況"}】${summary}${timeInfo}`,
-              lat: jittered.lat, lng: jittered.lng, city: target.name,
-            });
-            cityStats[target.name] = (cityStats[target.name] || 0) + 1;
-          }
-        }
-      }
-      console.log(`💤 ${target.name} 完畢，冷卻中...`);
-      await delay(2000);
-    }
-
-    console.log("\n⏳ 準備啟動警廣抓取...");
-    const pbsData = await fetchPBS(token);
-    pbsData.forEach(item => {
-      candidatesMap.set(item.id, item);
-      cityStats["警廣"] = (cityStats["警廣"] || 0) + 1;
-    });
-
-    console.log("\n--- 📊 本次成功抓取統計 ---");
-    const allCities = [...tdxTargets.map(t => t.name), "彰化縣", "新竹市", "雲林縣"];
-    allCities.forEach(name => { if (cityStats[name]) console.log(`${name}: ${cityStats[name]} 筆`); });
-    console.log(`合計: ${Array.from(candidatesMap.values()).length} 筆候選`);
-    console.log("---------------------------\n");
-
-    const candidates = Array.from(candidatesMap.values());
-
-    let itemsForAI = [];
-    let newCacheList = [];
     let finalEvents = [];
+    let trafficCacheList = [];
+    let newsCacheList = [];
+    let candidatesMap = new Map();
+    let pbsCount = 0;
 
-    for (const item of candidates) {
-      const cached = cacheMap.get(item.id);
-      if (cached && cached.text === item.text) {
-        newCacheList.push(cached);
-        if (cached.isReal) finalEvents.push(cached);
-      } else {
-        itemsForAI.push(item);
+    // --- 交通資料抓取 (僅保留警廣 PBS) ---
+    if (mode === "traffic" || mode === "all") {
+      let rawCache = await kv.get("taiwan_traffic_cache");
+      let cacheMap = new Map();
+      if (rawCache) {
+        const parsed = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
+        parsed.forEach(item => { if (item.expiresAt > Date.now()) cacheMap.set(item.id, item); });
       }
-    }
 
-    console.log(`🛡️ 篩選完成：沿用 ${candidates.length - itemsForAI.length} 筆，AI 審核 ${itemsForAI.length} 筆。`);
-
-    for (let i = 0; i < itemsForAI.length; i += 20) {
-      const batch = itemsForAI.slice(i, i + 20);
-      const aiResults = await aiFilterEvents(batch);
-      batch.forEach(item => {
-        const ai = aiResults.find(r => r.id === item.id);
-        if (!ai) return;
-        const processedItem = {
-          ...item,
-          title: ai.title || item.text,
-          category: ai.category || "accident",
-          isReal: ai.isReal,
-          expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
-        };
-        newCacheList.push(processedItem);
-        if (ai.isReal) finalEvents.push(processedItem);
+      console.log("\n⏳ 準備啟動警廣抓取...");
+      const pbsData = await fetchPBS(token);
+      pbsData.forEach(item => {
+        candidatesMap.set(item.id, item);
+        pbsCount++;
       });
-    }
 
-    cacheMap.forEach(cached => {
-      if (!newCacheList.find(n => n.id === cached.id)) {
-        if (cached.expiresAt > Date.now()) {
-          newCacheList.push(cached);
+      const candidates = Array.from(candidatesMap.values());
+      let itemsForAI = [];
+      for (const item of candidates) {
+        const cached = cacheMap.get(item.id);
+        if (cached && cached.text === item.text) {
+          trafficCacheList.push(cached);
           if (cached.isReal) finalEvents.push(cached);
+        } else {
+          itemsForAI.push(item);
         }
       }
-    });
 
-    console.log("\n📰 [新聞] 開始處理新聞來源...");
-    const newsEvents = await fetchNews();
+      for (let i = 0; i < itemsForAI.length; i += 20) {
+        const batch = itemsForAI.slice(i, i + 20);
+        const aiResults = await aiFilterEvents(batch);
+        batch.forEach(item => {
+          const ai = aiResults.find(r => r.id === item.id);
+          if (!ai) return;
+          const processedItem = {
+            ...item, title: ai.title || item.text, category: ai.category || "accident",
+            isReal: ai.isReal, expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
+          };
+          trafficCacheList.push(processedItem);
+          if (ai.isReal) finalEvents.push(processedItem);
+        });
+      }
 
-    let rawNewsCache = await kv.get("taiwan_news_cache");
-    let newsCacheMap = new Map();
-    if (rawNewsCache) {
-      const parsed = typeof rawNewsCache === "string" ? JSON.parse(rawNewsCache) : rawNewsCache;
-      parsed.forEach(item => { if (item.expiresAt > Date.now()) newsCacheMap.set(item.id, item); });
-    }
-
-    newsEvents.forEach(item => newsCacheMap.set(item.id, item));
-
-    // 【修復】news cache 合併後去重：同標題只保留最新一筆，並清除座標明顯錯誤的事件
-    const seenNewsTitles = new Map();
-    Array.from(newsCacheMap.values())
-      .sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0)) // 新的優先
-      .forEach(item => {
-        const titleKey = (item.title || "").slice(0, 12);
-        if (!seenNewsTitles.has(titleKey)) {
-          seenNewsTitles.set(titleKey, item);
+      cacheMap.forEach(cached => {
+        if (!trafficCacheList.find(n => n.id === cached.id)) {
+          if (cached.expiresAt > Date.now()) {
+            trafficCacheList.push(cached);
+            if (cached.isReal) finalEvents.push(cached);
+          }
         }
       });
-    const validNewsEvents = Array.from(seenNewsTitles.values()).filter(n =>
-      n.expiresAt > Date.now() &&
-      // 清除座標明顯錯誤的事件（lat/lng 超出台灣範圍）
-      n.lat >= 21 && n.lat <= 27 && n.lng >= 118 && n.lng <= 123
-    );
+      await kv.set("taiwan_traffic_cache", JSON.stringify(trafficCacheList));
+      console.log(`✅ 交通處理完成，共 ${finalEvents.length} 筆 (警廣: ${pbsCount} 筆)`);
+    } else {
+      // 非交通模式，載入現有交通快取以便合併
+      const rawCache = await kv.get("taiwan_traffic_cache");
+      if (rawCache) {
+        const parsed = typeof rawCache === "string" ? JSON.parse(rawCache) : rawCache;
+        parsed.forEach(item => { if (item.expiresAt > Date.now() && item.isReal) finalEvents.push(item); });
+      }
+    }
 
-    await kv.set("taiwan_news_cache", JSON.stringify(validNewsEvents));
+    // --- 新聞資料抓取 ---
+    let newsEvents = [];
+    if (mode === "news" || mode === "all") {
+      console.log("\n📰 [新聞] 開始處理新聞來源...");
+      newsEvents = await fetchNews();
 
-    const allFinalEvents = [...finalEvents, ...validNewsEvents];
+      let rawNewsCache = await kv.get("taiwan_news_cache");
+      let newsCacheMap = new Map();
+      if (rawNewsCache) {
+        const parsed = typeof rawNewsCache === "string" ? JSON.parse(rawNewsCache) : rawNewsCache;
+        parsed.forEach(item => { if (item.expiresAt > Date.now()) newsCacheMap.set(item.id, item); });
+      }
 
-    await kv.set("taiwan_traffic_cache", JSON.stringify(newCacheList));
-    // 🔍 debug：印出台南相關事件的最終座標
-    const tainanFinal = allFinalEvents.filter(e => (e.city || "").includes("台南"));
-    console.log(`🔍 [台南最終] ${tainanFinal.length} 筆，座標如下:`);
-    tainanFinal.forEach(e => console.log(`  - ${e.title || e.text} | lat:${e.lat} lng:${e.lng} city:${e.city}`));
+      newsEvents.forEach(item => newsCacheMap.set(item.id, item));
+      const seenNewsTitles = new Map();
+      Array.from(newsCacheMap.values())
+        .sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0))
+        .forEach(item => {
+          const titleKey = (item.title || "").slice(0, 12);
+          if (!seenNewsTitles.has(titleKey)) seenNewsTitles.set(titleKey, item);
+        });
+      
+      newsCacheList = Array.from(seenNewsTitles.values()).filter(n =>
+        n.expiresAt > Date.now() && n.lat >= 21 && n.lat <= 27 && n.lng >= 118 && n.lng <= 123
+      );
+      await kv.set("taiwan_news_cache", JSON.stringify(newsCacheList));
+      console.log(`✅ 新聞處理完成，共 ${newsCacheList.length} 筆`);
 
-    // 自動發文：只對本次新增的事件觸發
-    const newlyAdded = allFinalEvents.filter(e => {
-      const isNew = !Array.from(cacheMap.keys()).includes(e.id) &&
-                    !Array.from(newsCacheMap.keys()).includes(e.id);
-      return isNew;
-    });
-    await runThreadsAutoPost([...newsEvents, ...newlyAdded]);
+      // 只有新聞模式或全跑模式才執行 Threads 發文
+      await runThreadsAutoPost(newsEvents);
+    } else {
+      // 非新聞模式，載入現有新聞快取以便合併
+      const rawNewsCache = await kv.get("taiwan_news_cache");
+      if (rawNewsCache) {
+        const parsed = typeof rawNewsCache === "string" ? JSON.parse(rawNewsCache) : rawNewsCache;
+        newsCacheList = parsed.filter(n => n.expiresAt > Date.now());
+      }
+    }
 
+    // --- 合併與存檔 ---
+    const allFinalEvents = [...finalEvents, ...newsCacheList];
     await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
-    console.log(`💾 全部完工！交通 ${finalEvents.length} 筆 + 新聞 ${validNewsEvents.length} 筆 = 共 ${allFinalEvents.length} 筆`);
+    console.log(`💾 全部完工！最終合計: ${allFinalEvents.length} 筆`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
