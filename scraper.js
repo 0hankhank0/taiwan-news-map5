@@ -440,9 +440,6 @@ async function fetchNews() {
   });
   console.log(`🔍 [新聞] 最終去重後剩 ${newsEvents.length} 則`);
 
-  return newsEvents;
-}
-
   // ── GDELT 地理事件 ──
   console.log("📡 [GDELT] 開始抓取地理座標事件...");
   const gdeltGeoEvents = await fetchGDELTGeo();
