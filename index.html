@@ -52,6 +52,8 @@
 
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
 
     <style>
@@ -1057,6 +1059,10 @@
     const renderedMarkers = [];
 
     // ── THEME ───────────────────────────────────────────────
+    const MAPBOX_STYLES = {
+        light: 'mapbox://styles/mapbox/streets-v12',
+        dark: 'mapbox://styles/mapbox/dark-v11'
+    };
     let currentTheme = "dark";
     let isMapboxValid = true;
 
@@ -1073,29 +1079,68 @@
             if (b) b.classList.toggle("active", theme === "light");
         });
 
-        // 樣式切換邏輯 (目前統一使用 streets-v12，此處僅更新 UI)
+        if (map && typeof map.setStyle === "function") {
+            map.setStyle(MAPBOX_STYLES[theme]);
+        }
         console.log("切換主題:", theme);
     }
 
     // ── MAP INIT ────────────────────────────────────────────
+    function setMapLanguageToChinese() {
+        const layers = [
+            'country-label',
+            'state-label',
+            'settlement-label',
+            'settlement-subdivision-label',
+            'road-label-simple'
+        ];
+        layers.forEach(layer => {
+            if (map.getLayer(layer)) {
+                map.setLayoutProperty(layer, 'text-field', ['get', 'name_zh-Hant']);
+            }
+        });
+    }
+
     mapboxgl.accessToken = MAPBOX_TOKEN;
     const map = new mapboxgl.Map({
         container: "map",
-        style: 'mapbox://styles/mapbox/streets-v12',
+        style: MAPBOX_STYLES.dark,
         center: [taiwanView.center[1], taiwanView.center[0]],
         zoom: taiwanView.zoom
     });
 
     map.on('style.load', () => {
-        map.setLayoutProperty('country-label', 'text-field', ['get', 'name_zh-Hant']);
-        map.setLayoutProperty('state-label', 'text-field', ['get', 'name_zh-Hant']);
-        map.setLayoutProperty('settlement-label', 'text-field', ['get', 'name_zh-Hant']);
-        map.setLayoutProperty('settlement-subdivision-label', 'text-field', ['get', 'name_zh-Hant']);
-        map.setLayoutProperty('road-label-simple', 'text-field', ['get', 'name_zh-Hant']);
+        setMapLanguageToChinese();
     });
 
+    map.on('error', (e) => {
+        if (e.error?.status === 401 || e.error?.status === 403) {
+            console.warn('Mapbox token 失效，切換備用地圖');
+            map.remove();
+            fallbackToLeaflet();
+        }
+    });
+
+    function fallbackToLeaflet() {
+        const fallbackMap = L.map('map').setView([23.5, 121], 7);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(fallbackMap);
+        window._fallbackMap = fallbackMap;
+        // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
+        if (parsedEvents.length) {
+            parsedEvents.forEach(ev => {
+                const latlng = [Number(ev.lat), Number(ev.lng)];
+                if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
+                    L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)
+                        .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
+                }
+            });
+        }
+    }
+
     function initBaseMaps() {
-        console.log("底圖語系已設定為繁體中文 (streets-v12)");
+        console.log("地圖語系已設定為繁體中文");
     }
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
