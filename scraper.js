@@ -75,7 +75,7 @@ const fetchOptions = {
   headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
 };
 
-const todayStr = new Date().toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" });
+const todayStr = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" });
 
 function parseTWDate(str) {
   if (!str || str.length < 7) return null;
@@ -193,35 +193,43 @@ function parseRSS(xml) {
 async function aiFilterNews(articles) {
   if (articles.length === 0) return [];
   const prompt = `你是台灣新聞事件分析器。今天日期是【${todayStr}】。
-以下是新聞標題與摘要列表，請判斷每則是否屬於以下三類之一：
-1. 車禍／交通事故
-2. 火災／災害
-3. 活動／展覽／演唱會／節慶
+以下是新聞標題與摘要列表，請判斷每則是否符合以下「嚴格發文審核標準」。
 
-嚴格規則：
-- 只輸出「事件發生地點在台灣境內」的事件。
-- 如果事件是「台灣人/官員去國外」、「台灣與外國的外交活動」、「海外台灣祭」等，地點不在台灣，一律排除，不要輸出。
-- city 欄位只能填台灣的縣市名稱，例如：台北市、高雄市、台南市、花蓮縣等。
-- 如果無法確定事件發生在台灣境內，寧可不輸出也不要猜。
-- 不符合以上三類的新聞（如政治、國際、財經、體育）請過濾掉。
+【審核標準】（以下全部符合才發文，只要有任何一點不符合，importance 務必設為 0）：
 
-對每則符合的新聞，請回傳：
+1. 【嚴重性】必須是以下其中之一：
+   - 火災／爆炸／氣爆（有傷亡或重大財損）
+   - 交通重大事故（死亡、多人受傷、道路封閉）
+   - 天災（地震有感、土石流、淹水影響居民）
+   - 刑事重大案件（殺人、搶劫、綁架、重傷）
+   - 公共安全威脅（毒化災、工安、停電大規模）
+
+2. 【排除清單】以下一律不發：
+   - 輕微違規、開罰、稽查
+   - 動物事件（除非造成人員傷亡）
+   - 政治聲明、記者會、陳情
+   - 5小時前以上的舊新聞
+   - 財經、選舉、社會議題
+   - 無明確地點的新聞
+
+3. 【地點】必須在台灣境內，且能定位到縣市層級以上。
+
+4. 【重複性】相似事件當天已發過則跳過（importance 設為 0）。
+
+對每則新聞，請回傳 JSON 陣列，包含：
 - id: 原始 id
-- isRelevant: true
+- isRelevant: boolean (是否完全符合上述標準且值得發文)
+- importance: 數字 0-10（符合標準且情節重大給 1-10，最高 10；任何一項不符則務必設為 0）
 - title: 簡短中文標題（20字內）
-- category: "accident"（車禍事故）| "disaster"（火災災害）| "activity"（活動）
-- location: 最具體的地名，要能直接 geocode 的地址或地標（例如"台南市運河旁河樂廣場"、"國道3號關廟段"、"屏東縣鹽埔鄉勝利街"）。若新聞提到知名地標請使用地標全名。若無具體地點則填 null。
-- locationFallback: 只到縣市層級（例如"台南市"、"屏東縣"、"新北市"），location 為 null 時也填 null
-- lat: 事件發生地點的緯度（台灣範圍 21~26，無法確定填 null）
-- lng: 事件發生地點的經度（台灣範圍 118~123，無法確定填 null）
-- eventFingerprint: 用來識別同一事件的指紋，格式為「縣市_類型_事件關鍵字3個字」，例如「台南市_disaster_縱火砍」、「高雄市_accident_追撞」。同一事件不同媒體報導的 fingerprint 必須完全一樣。
-- ttl_hours: 預計持續小時數（活動可給 24，事故給 2，火災給 4）
+- category: "accident"（交通/刑事事故）| "disaster"（火災天災）| "safety"（公安威脅）| "activity"（重大活動）
+- location: 最具體的地名
+- locationFallback: 縣市層級
+- lat: 緯度
+- lng: 經度
+- eventFingerprint: 「縣市_類型_事件關鍵字3個字」
+- relatedLinks: 相關連結陣列
+- ttl_hours: 預計持續小時數
 
-prompt 說明：
-- lat/lng 請盡量給到小數點後4位，精確到街道等級。若新聞提到知名地標、路口、路段，請直接給出該地點的精確座標。
-- 若只知道縣市，lat/lng 填 null，改用 locationFallback 讓程式 fallback。
-
-不符合的新聞請回傳 { id, isRelevant: false }。
 只回傳 JSON 陣列，不要其他文字。
 
 新聞列表：
@@ -382,7 +390,8 @@ async function fetchNews() {
     const aiResults = await aiFilterNews(batch);
     batch.forEach(article => {
       const ai = aiResults.find(r => r.id === article.id);
-      if (ai && ai.isRelevant) {
+      // 加嚴篩選：必須 isRelevant 為 true 且 importance > 0
+      if (ai && ai.isRelevant && (ai.importance > 0)) {
         relevantArticles.push({ ...article, aiResult: ai });
       }
     });
@@ -437,6 +446,7 @@ async function fetchNews() {
       city: ai.locationFallback || ai.location,
       isReal: true,
       pubDate: article.pubDate,
+      relatedLinks: ai.relatedLinks || [],
       createdAt: Date.now(),
       expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
     });
@@ -729,6 +739,7 @@ function buildPostText(event) {
   if (city) text += `📍 ${city}\n`;
   text += `🕐 ${eventTime}\n\n`;
   text += `🗺️ 查看地圖：${SITE_URL}\n`;
+  text += `💡 小建議：點右上角選單，以外部瀏覽器開啟效果更佳！\n\n`;
   text += `#台灣即時 #${city.replace(/[市縣]/g, "")} #台灣新聞事件地圖`;
   return text;
 }
@@ -774,7 +785,47 @@ async function postToThreads(event) {
     );
     const publishData = await publishRes.json();
     if (publishData.id) {
+      const postId = publishData.id;
       console.log(`✅ [Threads] 發文成功：${event.title || event.text}`);
+
+      // Step 3: 建立留言內容（相關報導連結）
+      const replyText = event.relatedLinks?.length 
+        ? `📰 相關報導：\n` + event.relatedLinks.slice(0, 3).map((l, i) => `${i + 1}. ${l.title}\n${l.url}`).join("\n\n") 
+        : null;
+
+      if (replyText) {
+        console.log(`💬 [Threads] 正在發布相關報導留言...`);
+        const replyContainerRes = await fetch(
+          `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              media_type: "TEXT",
+              text: replyText,
+              reply_to_id: postId,
+              access_token: THREADS_TOKEN,
+            }),
+          }
+        );
+        const replyContainerData = await replyContainerRes.json();
+        
+        if (replyContainerData.id) {
+          await delay(2000);
+          await fetch(
+            `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                creation_id: replyContainerData.id,
+                access_token: THREADS_TOKEN,
+              }),
+            }
+          );
+          console.log(`✅ [Threads] 相關報導留言發布成功`);
+        }
+      }
     } else {
       console.error("❌ [Threads] 發文失敗:", JSON.stringify(publishData));
     }
