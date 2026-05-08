@@ -193,17 +193,15 @@ function parseRSS(xml) {
 async function aiFilterNews(articles) {
   if (articles.length === 0) return [];
   const prompt = `你是台灣新聞事件分析器。今天日期是【${todayStr}】。
-以下是新聞標題與摘要列表，請判斷每則是否符合以下「嚴格發文審核標準」。
+以下是新聞標題與摘要列表，請判斷每則是否符合以下「嚴格發文審核標準」，並進行「事件聚合」。
 
 【審核標準】（以下全部符合才發文，只要有任何一點不符合，importance 務必設為 0）：
-
 1. 【嚴重性】必須是以下其中之一：
    - 火災／爆炸／氣爆（有傷亡或重大財損）
    - 交通重大事故（死亡、多人受傷、道路封閉）
    - 天災（地震有感、土石流、淹水影響居民）
    - 刑事重大案件（殺人、搶劫、綁架、重傷）
    - 公共安全威脅（毒化災、工安、停電大規模）
-
 2. 【排除清單】以下一律不發：
    - 輕微違規、開罰、稽查
    - 動物事件（除非造成人員傷亡）
@@ -211,29 +209,37 @@ async function aiFilterNews(articles) {
    - 5小時前以上的舊新聞
    - 財經、選舉、社會議題
    - 無明確地點的新聞
-
 3. 【地點】必須在台灣境內，且能定位到縣市層級以上。
 
-4. 【重複性】相似事件當天已發過則跳過（importance 設為 0）。
+【事件聚合規則】（標準從嚴，寧可不合併）：
+- 必須同時符合以下全部條件才能合併為同一個事件：
+  1. 發生地點相同（需精確到同一行政區，「台中」和「台中太平」不算相同）
+  2. 事件類別完全相同
+  3. 發布時間差在2小時內
+  4. 事件描述高度重疊（關鍵細節如地址、人數、起火點需一致）
+- 有任何一點不確定，一律不合併，保持獨立事件。
+- 合併後以最詳細的報導為主標題。
 
-對每則新聞，請回傳 JSON 陣列，包含：
-- id: 原始 id
-- isRelevant: boolean (是否完全符合上述標準且值得發文)
-- importance: 數字 0-10（符合標準且情節重大給 1-10，最高 10；任何一項不符則務必設為 0）
-- title: 簡短中文標題（20字內）
-- category: "accident"（交通/刑事事故）| "disaster"（火災天災）| "safety"（公安威脅）| "activity"（重大活動）
-- location: 最具體的地名
-- locationFallback: 縣市層級
-- lat: 緯度
-- lng: 經度
-- eventFingerprint: 「縣市_類型_事件關鍵字3個字」
-- relatedLinks: 相關連結陣列
-- ttl_hours: 預計持續小時數
+對每則新聞或聚合後的事件，請回傳 JSON 陣列，每個物件格式如下：
+{
+  "title": "主標題（最詳細的版本，20字內）",
+  "category": "accident" | "disaster" | "safety" | "activity",
+  "location": "最具體的地名（如：台中市太平區...）",
+  "lat": 緯度,
+  "lng": 經度,
+  "importance": 數字 0-10（不符標準則為 0）,
+  "sources": [
+    { "outlet": "媒體名稱", "title": "原始標題", "url": "原始連結", "id": "原始 id" }
+  ],
+  "pubDate": "最早的發布時間",
+  "eventFingerprint": "縣市_類型_關鍵字",
+  "ttl_hours": 預計持續小時數
+}
 
 只回傳 JSON 陣列，不要其他文字。
 
 新聞列表：
-${JSON.stringify(articles.map(a => ({ id: a.id, title: sanitizeText(a.title), desc: sanitizeText(a.description?.slice(0, 150) || "") })))}`;
+${JSON.stringify(articles.map(a => ({ id: a.id, title: sanitizeText(a.title), desc: sanitizeText(a.description?.slice(0, 150) || ""), outlet: a.source, url: a.link || a.url, pubDate: a.pubDate })))}`;
 
   try {
     const text = await callAzureAI(prompt);
@@ -384,75 +390,58 @@ async function fetchNews() {
   });
   console.log(`🗂️ [新聞] 去重後剩 ${allArticles.length} 則`);
 
-  let relevantArticles = [];
+  let newsEvents = [];
   for (let i = 0; i < allArticles.length; i += 8) {
     const batch = allArticles.slice(i, i + 8);
     const aiResults = await aiFilterNews(batch);
-    batch.forEach(article => {
-      const ai = aiResults.find(r => r.id === article.id);
-      // 加嚴篩選：必須 isRelevant 為 true 且 importance > 0
-      if (ai && ai.isRelevant && (ai.importance > 0)) {
-        relevantArticles.push({ ...article, aiResult: ai });
+    
+    for (const ai of aiResults) {
+      if (ai.importance > 0) {
+        let coords = null;
+        if (ai.lat && ai.lng) {
+          coords = { lat: ai.lat, lng: ai.lng };
+        } else if (ai.location) {
+          coords = await geocode(ai.location);
+        }
+
+        if (coords) {
+          newsEvents.push({
+            id: ai.sources[0]?.id || `NEWS_${Math.random().toString(36).slice(2)}`,
+            title: ai.title,
+            content: ai.sources[0]?.title || "",
+            category: ai.category || "other",
+            source: ai.sources[0]?.outlet || "news",
+            url: ai.sources[0]?.url || "",
+            lat: coords.lat,
+            lng: coords.lng,
+            city: ai.location,
+            isReal: true,
+            pubDate: ai.pubDate,
+            sources: ai.sources, // 存入聚合後的來源
+            createdAt: Date.now(),
+            expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
+          });
+        }
+        await delay(1200);
       }
-    });
+    }
     await delay(1000);
   }
 
-  console.log(`🤖 [新聞] AI 篩選後剩 ${relevantArticles.length} 則相關新聞`);
+  console.log(`🤖 [新聞] AI 篩選與聚合後剩 ${newsEvents.length} 則相關新聞`);
 
-  // 【修復】AI 篩選後二次去重：優先用 AI 給的 eventFingerprint，沒有則用城市+類型+標題前8字
+  // 二次去重邏輯已由 AI 聚合部分取代，但為了保險起見仍可保留或調整
   const seenEventKeys = new Set();
-  relevantArticles = relevantArticles.filter(article => {
-    const ai = article.aiResult;
-    const key = ai.eventFingerprint ||
-      `${ai.locationFallback || ai.location || ""}_${ai.category || ""}_${(ai.title || article.title || "").slice(0, 8)}`;
+  newsEvents = newsEvents.filter(event => {
+    const key = event.eventFingerprint || `${event.city}_${event.category}_${event.title.slice(0, 8)}`;
     if (seenEventKeys.has(key)) return false;
     seenEventKeys.add(key);
     return true;
   });
-  console.log(`🔍 [新聞] 二次去重後剩 ${relevantArticles.length} 則`);
+  console.log(`🔍 [新聞] 最終去重後剩 ${newsEvents.length} 則`);
 
-  let newsEvents = [];
-  for (const article of relevantArticles) {
-    const ai = article.aiResult;
-
-    let coords = null;
-    if (ai.lat && ai.lng) {
-      // AI 直接給座標，優先使用
-      coords = { lat: ai.lat, lng: ai.lng };
-    } else if (ai.location) {
-      coords = await geocode(ai.location);
-      if (!coords && ai.locationFallback) {
-        console.log(`🔄 備用定位: ${ai.locationFallback}`);
-        await delay(1200);
-        coords = await geocode(ai.locationFallback);
-      }
-    }
-
-    if (!coords) {
-      console.log(`⚠️ 無法定位跳過: ${ai.location}`);
-      continue;
-    }
-
-    newsEvents.push({
-      id: article.id,
-      title: ai.title || article.title,
-      content: article.description?.slice(0, 120) || "",
-      category: ai.category || "other",
-      source: article.source || "news",
-      url: article.link || article.url,
-      lat: coords.lat,
-      lng: coords.lng,
-      city: ai.locationFallback || ai.location,
-      isReal: true,
-      pubDate: article.pubDate,
-      relatedLinks: ai.relatedLinks || [],
-      createdAt: Date.now(),
-      expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
-    });
-
-    await delay(1200);
-  }
+  return newsEvents;
+}
 
   // ── GDELT 地理事件 ──
   console.log("📡 [GDELT] 開始抓取地理座標事件...");

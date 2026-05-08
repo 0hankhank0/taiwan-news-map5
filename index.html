@@ -490,11 +490,42 @@
         }
         .card-footer {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
+            flex-direction: column;
             gap: 8px;
+            margin-top: 8px;
         }
-        .card-actions { display: flex; align-items: center; gap: 10px; }
+        .card-sources-toggle {
+            font-size: 11px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            user-select: none;
+        }
+        .card-sources-toggle:hover { color: var(--accent); }
+        .card-sources-list {
+            display: none;
+            padding: 8px;
+            background: var(--bg-deep);
+            border-radius: var(--radius-sm);
+            margin-top: 4px;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        .card-sources-list.visible { display: block; }
+        .card-sources-list a {
+            display: block;
+            color: var(--accent);
+            text-decoration: none;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .card-sources-list a:hover { text-decoration: underline; }
+        .card-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .card-action-group { display: flex; align-items: center; gap: 10px; }
         .card-action-btn {
             font-size: 11px;
             font-weight: 700;
@@ -1426,10 +1457,20 @@
                 <div class="card-title">${ev.title||"未命名事件"}</div>
                 <div class="card-content">${ev.content||"沒有摘要"}</div>
                 <div class="card-footer">
-                    <div>${makeSourceBadge(ev.source)}</div>
+                    ${ev.sources && ev.sources.length > 0 ? `
+                        <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
+                            <i class="fa-solid fa-newspaper"></i> 📰 ${ev.sources.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
+                        </div>
+                        <div class="card-sources-list">
+                            ${ev.sources.map(s => `<a href="${s.url}" target="_blank" onclick="event.stopPropagation();">${s.outlet}：${s.title}</a>`).join("")}
+                        </div>
+                    ` : ""}
                     <div class="card-actions">
-                        <button class="card-action-btn report" data-report="${encodeURIComponent(ev.title||"")}"><span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報</button>
-                        ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>`:""}
+                        <div>${makeSourceBadge(ev.source)}</div>
+                        <div class="card-action-group">
+                            <button class="card-action-btn report" data-report="${encodeURIComponent(ev.title||"")}"><span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報</button>
+                            ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>`:""}
+                        </div>
                     </div>
                 </div>
             `;
