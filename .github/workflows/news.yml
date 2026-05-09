@@ -1,7 +1,7 @@
 name: Taiwan News Scraper
 on:
   schedule:
-    - cron: '*/30 * * * **'   # 每小時第 15 分執行
+    - cron: '*/30 * * * *'   # 每小時第 15 分執行
   workflow_dispatch:       # 允許手動觸發
 jobs:
   scrape:
