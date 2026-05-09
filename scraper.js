@@ -772,15 +772,16 @@ async function postToThreads(event) {
     const publishData = await publishRes.json();
     if (publishData.id) {
       const postId = publishData.id;
-      console.log(`✅ [Threads] 發文成功：${event.title || event.text}`);
+      console.log(`✅ [Threads] 發文成功，發文 ID：${postId}`);
 
       // Step 3: 建立留言內容（相關報導連結）
-      const replyText = event.relatedLinks?.length 
-        ? `📰 相關報導：\n` + event.relatedLinks.slice(0, 3).map((l, i) => `${i + 1}. ${l.title}\n${l.url}`).join("\n\n") 
+      console.log('相關報導：', event.sources);
+      const replyText = event.sources?.length 
+        ? `📰 相關報導：\n` + event.sources.slice(0, 3).map((s, i) => `${i + 1}. ${s.outlet}：${s.title}\n${s.url}`).join("\n\n") 
         : null;
 
       if (replyText) {
-        console.log(`💬 [Threads] 正在發布相關報導留言...`);
+        console.log(`💬 [Threads] 準備發留言...`);
         const replyContainerRes = await fetch(
           `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads`,
           {
@@ -828,11 +829,15 @@ async function runThreadsAutoPost(newEvents) {
     postedIds = raw ? (typeof raw === "string" ? JSON.parse(raw) : raw) : [];
   } catch {}
 
-  const toPost = newEvents.filter(e => 
-    shouldPost(e) && 
-    !postedIds.includes(e.id) && 
-    (Date.now() - (e.createdAt || 0)) < 2 * 60 * 60 * 1000 // 超過2小時的事件不發
-  );
+  const toPost = newEvents.filter(e => {
+    const eventTime = new Date(e.pubDate || e.createdAt).getTime();
+    const ageHours = (Date.now() - eventTime) / (1000 * 60 * 60);
+    if (ageHours > 2) {
+      console.log(`⏭️ 跳過舊新聞（${ageHours.toFixed(1)}小時前）：${e.title}`);
+      return false;
+    }
+    return shouldPost(e) && !postedIds.includes(e.id);
+  });
 
   for (const event of toPost) {
     await postToThreads(event);
