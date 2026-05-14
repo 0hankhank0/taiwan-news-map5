@@ -10,6 +10,8 @@ const kv = new Redis({
   token: process.env.KV_REST_API_TOKEN,
 });
 
+const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
+
 const AZURE_ENDPOINT = "https://timcs-me2fe94e-eastus2.cognitiveservices.azure.com";
 const AZURE_DEPLOYMENT = process.env.AZURE_OPENAI_DEPLOYMENT || "gpt-5.4-mini";
 const AZURE_API_VERSION = "2025-01-01-preview";
