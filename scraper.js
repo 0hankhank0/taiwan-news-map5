@@ -220,16 +220,15 @@ async function aiFilterNews(articles) {
 - disaster（災害）：火災、爆炸、淹水、土石流。
 - 注意：有人被毆打、拘提、逮捕 → 一律歸類為 criminal，不屬於 traffic。
 
-【事件聚合與指紋去重規則】（核心任務）：
-- 如果多則新聞描述的是「同一個現實事件」，務必將其合併（Aggregate）為一個物件，並在 sources 陣列中收錄所有來源。
-- 合併判定基準：
-  1. 發生地點極其相近（同行政區或同路段）。
-  2. 事件主體一致（如：同一場火警、同一起連環車禍）。
-  3. 時間相近（通常在數小時內）。
-- eventFingerprint 生成規則：
-  - 格式：'縣市_類型_關鍵字'（例如：'台北_fire_信義區百貨'）
-  - 對於同一事件的不同報導，必須生成「完全相同」的 eventFingerprint。
-- 合併時標題請取最完整、最具代表性的一則。
+【事件聚合與去重規則】（非常重要）：
+ - 如果多篇新聞描述的是「同一個現實事件」，只輸出一筆，標題用最完整的那篇，並在 sources 陣列中收錄所有來源。
+ - 判斷是否為同一事件的標準：同地點 + 同時間 + 同性質。
+ - 例如「彰化兒童公園失火」、「彰化公園火災男遭拘捕」、「彰化公園縱火案」都是同一事件，只留一筆。
+ - 後續發展（如「嫌犯落網」、「搜救結束」）不算新事件，請合併進同一筆的摘要/sources 裡。
+ - 寧可少輸出也不要重複。
+ - eventFingerprint 生成規則：
+   - 格式：\`縣市_類型_關鍵字\`（例如：\`台北_fire_信義區百貨\`）。
+   - 對於同一事件的不同報導或後續發展，必須生成「完全相同」的 eventFingerprint。
 
 對每則新聞或聚合後的事件，請回傳 JSON 陣列，每個物件格式如下：
 {
@@ -982,9 +981,47 @@ async function main() {
     }
 
     // --- 合併與存檔 ---
-    const allFinalEvents = [...finalEvents, ...newsCacheList];
-    await kv.set("taiwan_traffic_events", JSON.stringify(allFinalEvents));
-    console.log(`💾 全部完工！最終合計: ${allFinalEvents.length} 筆`);
+    let allFinalEvents = [...finalEvents, ...newsCacheList];
+
+    // --- 相似度比對與合併邏輯 (24小時內, 同地點同類型, 相似度 > 60%) ---
+    console.log("🔍 開始進行最終相似度比對合併...");
+    const finalMerged = [];
+    const SIMILARITY_THRESHOLD = 0.6;
+    const TIME_THRESHOLD = 24 * 60 * 60 * 1000;
+
+    function getSimilarity(s1, s2) {
+      if (!s1 || !s2) return 0;
+      const set1 = new Set(s1.replace(/\s+/g, "").split(""));
+      const set2 = new Set(s2.replace(/\s+/g, "").split(""));
+      const intersection = new Set([...set1].filter(x => set2.has(x)));
+      return intersection.size / Math.max(set1.size, set2.size);
+    }
+
+    allFinalEvents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).forEach(ev => {
+      const duplicate = finalMerged.find(m => 
+        m.city === ev.city && 
+        m.category === ev.category &&
+        Math.abs((m.createdAt || 0) - (ev.createdAt || 0)) < TIME_THRESHOLD &&
+        (getSimilarity(ev.title, m.title) > SIMILARITY_THRESHOLD || getSimilarity(ev.content, m.content) > SIMILARITY_THRESHOLD)
+      );
+
+      if (duplicate) {
+        // 合併來源
+        if (ev.sources && Array.isArray(ev.sources)) {
+          duplicate.sources = duplicate.sources || [];
+          ev.sources.forEach(s => {
+            if (!duplicate.sources.find(ds => ds.url === s.url)) duplicate.sources.push(s);
+          });
+        }
+        // 如果新事件標題更長，更新標題
+        if ((ev.title || "").length > (duplicate.title || "").length) duplicate.title = ev.title;
+      } else {
+        finalMerged.push(ev);
+      }
+    });
+
+    await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
+    console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${allFinalEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
