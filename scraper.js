@@ -992,41 +992,51 @@ async function main() {
     // --- 合併與存檔 ---
     let allFinalEvents = [...finalEvents, ...newsCacheList];
 
-    // --- 相似度比對與合併邏輯 (24小時內, 同地點同類型, 相似度 > 60%) ---
-    console.log("🔍 開始進行最終相似度比對合併...");
-    const finalMerged = [];
-    const SIMILARITY_THRESHOLD = 0.6;
-    const TIME_THRESHOLD = 24 * 60 * 60 * 1000;
-
-    function getSimilarity(s1, s2) {
-      if (!s1 || !s2) return 0;
-      const set1 = new Set(s1.replace(/\s+/g, "").split(""));
-      const set2 = new Set(s2.replace(/\s+/g, "").split(""));
-      const intersection = new Set([...set1].filter(x => set2.has(x)));
-      return intersection.size / Math.max(set1.size, set2.size);
+    // --- 內部寫入 KV 前加強去重 (同一事件只保留一筆) ---
+    console.log("🔍 開始進行內部去重檢查...");
+    
+    function isDuplicateEvent(newEvent, existingEvents) {
+        const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
+        const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
+        
+        return existingEvents.some(ev => {
+            const existTitle = (ev.title || "").replace(/\s+/g, "").slice(0, 15);
+            const existContent = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
+            
+            // 標題前15字相同
+            if (newTitle === existTitle) return true;
+            
+            // 內容前30字相同
+            if (newContent === existContent && newContent.length > 10) return true;
+            
+            // 同城市 + 同類別 + 標題有5個以上相同字
+            if (ev.city === newEvent.city && ev.category === newEvent.category) {
+                let sameCount = 0;
+                for (const char of newTitle) {
+                    if (existTitle.includes(char)) sameCount++;
+                }
+                if (sameCount >= 5) return true;
+            }
+            return false;
+        });
     }
 
+    const finalMerged = [];
     allFinalEvents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).forEach(ev => {
-      const duplicate = finalMerged.find(m => 
-        m.city === ev.city && 
-        m.category === ev.category &&
-        Math.abs((m.createdAt || 0) - (ev.createdAt || 0)) < TIME_THRESHOLD &&
-        (getSimilarity(ev.title, m.title) > SIMILARITY_THRESHOLD || getSimilarity(ev.content, m.content) > SIMILARITY_THRESHOLD)
-      );
-
-      if (duplicate) {
-        // 合併來源
-        if (ev.sources && Array.isArray(ev.sources)) {
-          duplicate.sources = duplicate.sources || [];
-          ev.sources.forEach(s => {
-            if (!duplicate.sources.find(ds => ds.url === s.url)) duplicate.sources.push(s);
-          });
+        if (!isDuplicateEvent(ev, finalMerged)) {
+            finalMerged.push(ev);
+        } else {
+            // 如果是重複的，嘗試將來源合併到已存在的事件中
+            const existing = finalMerged.find(m => 
+                (m.title || "").replace(/\s+/g, "").slice(0, 15) === (ev.title || "").replace(/\s+/g, "").slice(0, 15)
+            );
+            if (existing && ev.sources) {
+                existing.sources = existing.sources || [];
+                ev.sources.forEach(s => {
+                    if (!existing.sources.find(ds => ds.url === s.url)) existing.sources.push(s);
+                });
+            }
         }
-        // 如果新事件標題更長，更新標題
-        if ((ev.title || "").length > (duplicate.title || "").length) duplicate.title = ev.title;
-      } else {
-        finalMerged.push(ev);
-      }
     });
 
     await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
