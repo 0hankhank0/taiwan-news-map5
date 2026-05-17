@@ -715,6 +715,32 @@ function isEmptyConstructionEvent(summary, eventTypeName, locationOther = "") {
 const THREADS_USER_ID = process.env.THREADS_USER_ID;
 const THREADS_TOKEN   = process.env.THREADS_ACCESS_TOKEN;
 
+const THREADS_POST_PROMPT = `
+你是台灣高中生，正在經營即時事件地圖 @nowmap_tw。
+
+根據以下事件發一則 Threads 貼文。
+
+嚴格規定：
+- 全文不超過 30 字（不含網址）
+- 只講一件事，不要同時提多個事件
+- 不要有標題、不要條列、不要說「更新」
+- 直接講重點，像朋友傳訊息的感覺
+- 結尾一個 emoji 就好
+
+好的範例：
+「高雄左營剛發生車禍，現場還在處理 🚨
+taiwan-news-map.vercel.app」
+
+「彰化兒童公園半夜失火，縱火犯被抓了 🔥
+taiwan-news-map.vercel.app」
+
+不好的範例：
+「🗺️ 地圖更新！今日發生以下事件：1. xxx 2. yyy」
+
+事件資料：
+{events}
+`;
+
 function shouldPost(event) {
   const title = (event.title || event.text || "").toLowerCase();
   const cat   = event.category || "";
@@ -756,7 +782,28 @@ async function postToThreads(event) {
     return;
   }
   try {
-    const text = buildPostText(event);
+    let text = "";
+    try {
+      // 優先使用 AI 生成貼文內容
+      const aiPrompt = THREADS_POST_PROMPT.replace("{events}", JSON.stringify({
+        title: event.title,
+        city: event.city,
+        category: event.category,
+        content: event.content
+      }));
+      const aiResponse = await callAzureAI(aiPrompt);
+      text = aiResponse.trim();
+      
+      // 確保包含網址
+      if (text && !text.includes("taiwan-news-map")) {
+        text += `\n${SITE_URL}`;
+      }
+    } catch (e) {
+      console.error("⚠️ [Threads] AI 生成貼文失敗，使用備用格式:", e.message);
+      text = buildPostText(event);
+    }
+
+    if (!text) return;
 
     // Step 1: 建立媒體容器
     const createRes = await fetch(
@@ -795,7 +842,6 @@ async function postToThreads(event) {
       console.log(`✅ [Threads] 發文成功，發文 ID：${postId}`);
 
       // Step 3: 建立留言內容（相關報導連結）
-      console.log('相關報導：', event.sources);
       const replyText = event.sources?.length 
         ? `📰 相關報導：\n` + event.sources.slice(0, 3).map((s, i) => `${i + 1}. ${s.outlet}：${s.title}\n${s.url}`).join("\n\n") 
         : null;
@@ -818,7 +864,7 @@ async function postToThreads(event) {
         const replyContainerData = await replyContainerRes.json();
         
         if (replyContainerData.id) {
-          await delay(2000);
+          await delay(500); // 縮短延遲以增加發文速度
           await fetch(
             `https://graph.threads.net/v1.0/${THREADS_USER_ID}/threads_publish`,
             {
@@ -862,7 +908,7 @@ async function runThreadsAutoPost(newEvents) {
   for (const event of toPost) {
     await postToThreads(event);
     postedIds.push(event.id);
-    await delay(3000); // 避免 API 限速
+    await delay(1000); // 縮短延遲以增加觸及率，同時避免 API 限速
   }
 
   // 只保留最近 500 筆已發 id
