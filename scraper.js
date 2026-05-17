@@ -376,7 +376,7 @@ async function fetchNews() {
       const xml = await res.text();
       const items = parseRSS(xml);
       items.forEach((item, i) => {
-        allArticles.push({ ...item, id: `NEWS_${source.name}_${i}`, source: source.name });
+        allArticles.push({ ...item, id: `NEWS_${source.name}_${i}`, source: "RSS" });
       });
       console.log(`✅ [${source.name}] 抓到 ${items.length} 則`);
     } catch (e) {
@@ -423,7 +423,7 @@ async function fetchNews() {
             title: ai.title,
             content: ai.sources[0]?.title || "",
             category: ai.category || "other",
-            source: ai.sources[0]?.outlet || "news",
+            source: "news",
             url: ai.sources[0]?.url || "",
             lat: coords.lat,
             lng: coords.lng,
@@ -462,7 +462,7 @@ async function fetchNews() {
       title: e.title,
       content: `【GDELT 地理事件】${e.title}`,
       category: "news",
-      source: "GDELT",
+      source: "news",
       url: e.url,
       lat: e.lat,
       lng: e.lng,
@@ -507,7 +507,7 @@ async function fetchGDELT() {
           description: a.title,
           url: a.url,
           link: a.url,
-          source: a.domain || "GDELT",
+          source: "news",
           lat: null,
           lng: null,
           publishedAt: a.seendate,
@@ -542,7 +542,7 @@ async function fetchGDELTGeo() {
         title: f.properties.name,
         description: f.properties.name,
         url: f.properties.url || "",
-        source: "GDELT",
+        source: "news",
         lat: f.geometry.coordinates[1],  // GeoJSON 是 [lng, lat]
         lng: f.geometry.coordinates[0],
         city: f.properties.countryname || "台灣",
@@ -640,6 +640,7 @@ async function fetchPBS(token) {
         text: `【警廣播報】${summary}${timeInfo}`,
         lat: jittered.lat, lng: jittered.lng,
         city: t.cityName, // ✅ 修復：使用正確的完整縣市名，避免 geocode 定位到市政府
+        source: "TDX CMS",
       });
       added++;
     });
