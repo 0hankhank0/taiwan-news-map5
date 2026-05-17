@@ -995,6 +995,40 @@ async function main() {
     // --- 內部寫入 KV 前加強去重 (同一事件只保留一筆) ---
     console.log("🔍 開始進行內部去重檢查...");
     
+    async function deduplicateWithAI(newEvents, existingEvents) {
+        if (newEvents.length === 0) return [];
+        // 限制現有事件數量，只取最近 30 筆進行比對，避免 prompt 過長
+        const compareBase = existingEvents.slice(0, 30);
+        
+        const prompt = `
+你是新聞去重專家。以下是「現有事件」和「新抓到的事件」。
+
+現有事件：
+${JSON.stringify(compareBase.map(e => ({ id: e.id, title: e.title, city: e.city, category: e.category })), null, 2)}
+
+新事件：
+${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e.category, content: e.content })), null, 2)}
+
+任務：判斷每一筆新事件是否與現有事件描述同一件事。
+判斷標準：同一起事件 = 相同的人/地點/行為，不管標題怎麼寫。
+
+回傳 JSON 格式（只回傳 JSON，不要其他文字）：
+{
+  "unique": [新事件的 title 陣列，只包含不重複的]
+}
+`;
+
+        try {
+            const response = await callAzureAI(prompt);
+            const result = JSON.parse(response.replace(/```json|```/g, "").trim());
+            return newEvents.filter(ev => (result.unique || []).includes(ev.title));
+        } catch (e) {
+            console.error("❌ AI 去重失敗，退回到基本比對:", e.message);
+            // 失敗時回傳原陣列，由後續的 isDuplicateEvent 做基本過濾
+            return newEvents;
+        }
+    }
+
     function isDuplicateEvent(newEvent, existingEvents) {
         const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
         const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
@@ -1021,8 +1055,14 @@ async function main() {
         });
     }
 
+    const initialEvents = [...finalEvents, ...newsCacheList];
+    const sortedEvents = initialEvents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    
+    // 先用 AI 進行大範圍去重
+    const aiFiltered = await deduplicateWithAI(sortedEvents, []); // 這裡可以傳入已存在 KV 的資料，但為了效能先處理當前批次
+    
     const finalMerged = [];
-    allFinalEvents.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).forEach(ev => {
+    aiFiltered.forEach(ev => {
         if (!isDuplicateEvent(ev, finalMerged)) {
             finalMerged.push(ev);
         } else {
@@ -1040,7 +1080,7 @@ async function main() {
     });
 
     await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
-    console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${allFinalEvents.length} 筆)`);
+    console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
