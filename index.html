@@ -1518,6 +1518,32 @@
         { id:"m6", title:"新竹縣竹北市 水管破裂搶修",   category:"other",    city:"新竹", lat:24.83, lng:121.01, source:"news",    content:"光明六路發生自來水管破裂，施工人員緊急搶修中。" }
     ];
 
+    function deduplicateEvents(events) {
+        const seen = [];
+        return events.filter(ev => {
+            const title = (ev.title || "").replace(/\s+/g, "").replace(/[，。！？、：；「」【】]/g, "");
+            
+            // 跟已收錄的每一筆比對
+            const isDuplicate = seen.some(s => {
+                // 完全一樣
+                if (s.title === title) return true;
+                // 其中一個包含另一個（標題前20字）
+                const short = Math.min(title.length, s.title.length, 20);
+                if (title.slice(0, short) === s.title.slice(0, short)) return true;
+                // 同地點 + 內容高度相似
+                if (ev.city === s.city && s.content && ev.content) {
+                    const c1 = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
+                    const c2 = (s.content || "").replace(/\s+/g, "").slice(0, 30);
+                    if (c1 === c2) return true;
+                }
+                return false;
+            });
+            
+            if (!isDuplicate) seen.push({ title, city: ev.city, content: ev.content });
+            return !isDuplicate;
+        });
+    }
+
     // ── FETCH ────────────────────────────────────────────────
     async function syncNewsAndRender(){
         setStatus("正在抓取事件資料...");
@@ -1526,11 +1552,12 @@
             const raw = await res.text();
             if(!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = tryParseJson(raw,[]);
-            parsedEvents = Array.isArray(data)?data:[];
+            const list = Array.isArray(data)?data:[];
+            parsedEvents = deduplicateEvents(list);
             renderCategoryButtons(); renderEvents();
         }catch(e){
             console.warn("API無法連線，使用展示資料",e);
-            parsedEvents=MOCK_EVENTS;
+            parsedEvents=deduplicateEvents(MOCK_EVENTS);
             renderCategoryButtons(); renderEvents();
             setStatus("展示模式：顯示範例資料");
         }
