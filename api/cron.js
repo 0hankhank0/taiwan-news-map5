@@ -504,6 +504,7 @@ async function extractAiEvents(newsItems) {
 
   const systemPrompt = [
     "Extract only real-world Taiwan events from the provided news.",
+    "你是台灣新聞地點解析專家，從內文中擷取精確地點。優先抽取：路名、地標、建築物、公園名稱；次要：區名；最後：縣市名。格式：縣市+區+詳細地點。",
     "Return strict JSON with an events array.",
     "Keep only items with a physical place in Taiwan.",
     "Use one category from the allowed enum.",
@@ -511,6 +512,7 @@ async function extractAiEvents(newsItems) {
     "Same event criteria: Same location + Same time + Same nature.",
     "Generate a unique 'eventFingerprint' (format: city_type_keyword) for each event; multiple reports of the same event must have the SAME fingerprint.",
     "Use the provided city fallback coordinates when exact coordinates are unknown.",
+    "If no Taiwan location is found, return null for that event or omit it.",
     'Set source to "news".',
   ].join(" ");
 
