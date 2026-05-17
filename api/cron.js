@@ -633,40 +633,53 @@ module.exports = async (req, res) => {
       [...tdxEvents, ...constructionEvents, ...aiEvents, ...ruleBasedEvents]
     );
 
-    // --- 相似度比對與合併邏輯 (24小時內, 同地點同類型, 相似度 > 60%) ---
+    // --- 內部寫入 KV 前加強去重 (同一事件只保留一筆) ---
     // 獲取現有資料進行比對
     const existingEvents = (await kv.get("taiwan_traffic_events")) || [];
-    const SIMILARITY_THRESHOLD = 0.6;
-    const TIME_THRESHOLD = 24 * 60 * 60 * 1000;
 
-    function getSimilarity(s1, s2) {
-      if (!s1 || !s2) return 0;
-      const set1 = new Set(s1.replace(/\s+/g, "").split(""));
-      const set2 = new Set(s2.replace(/\s+/g, "").split(""));
-      const intersection = new Set([...set1].filter(x => set2.has(x)));
-      return intersection.size / Math.max(set1.size, set2.size);
+    function isDuplicateEvent(newEvent, existingEventsList) {
+        const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
+        const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
+        
+        return existingEventsList.some(ev => {
+            const existTitle = (ev.title || "").replace(/\s+/g, "").slice(0, 15);
+            const existContent = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
+            
+            // 標題前15字相同
+            if (newTitle === existTitle) return true;
+            
+            // 內容前30字相同
+            if (newContent === existContent && newContent.length > 10) return true;
+            
+            // 同城市 + 同類別 + 標題有5個以上相同字
+            if (ev.city === newEvent.city && ev.category === newEvent.category) {
+                let sameCount = 0;
+                for (const char of newTitle) {
+                    if (existTitle.includes(char)) sameCount++;
+                }
+                if (sameCount >= 5) return true;
+            }
+            return false;
+        });
     }
 
     const mergedEvents = [...existingEvents];
     finalEvents.forEach(newEv => {
-      const duplicate = mergedEvents.find(m => 
-        m.city === newEv.city && 
-        m.category === newEv.category &&
-        Math.abs(Date.now() - (m.createdAt || Date.now())) < TIME_THRESHOLD &&
-        (getSimilarity(newEv.title, m.title) > SIMILARITY_THRESHOLD || getSimilarity(newEv.content, m.content) > SIMILARITY_THRESHOLD)
-      );
-
-      if (duplicate) {
-        // 更新標題為較長者
-        if ((newEv.title || "").length > (duplicate.title || "").length) duplicate.title = newEv.title;
-        // 更新內容為較長者
-        if ((newEv.content || "").length > (duplicate.content || "").length) duplicate.content = newEv.content;
-      } else {
-        mergedEvents.push({ ...newEv, createdAt: Date.now() });
-      }
+        if (!isDuplicateEvent(newEv, mergedEvents)) {
+            mergedEvents.push({ ...newEv, createdAt: Date.now() });
+        } else {
+            // 如果是重複的，嘗試更新現有事件的內容或標題
+            const existing = mergedEvents.find(m => 
+                (m.title || "").replace(/\s+/g, "").slice(0, 15) === (newEv.title || "").replace(/\s+/g, "").slice(0, 15)
+            );
+            if (existing) {
+                if ((newEv.title || "").length > (existing.title || "").length) existing.title = newEv.title;
+                if ((newEv.content || "").length > (existing.content || "").length) existing.content = newEv.content;
+            }
+        }
     });
 
-    // 過濾掉過期事件 (例如 24 小時前)
+    // 過濾掉過期事件 (例如 48 小時前)
     const now = Date.now();
     const activeEvents = mergedEvents.filter(ev => (now - (ev.createdAt || 0)) < 48 * 60 * 60 * 1000);
 
