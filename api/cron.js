@@ -314,7 +314,7 @@ function normalizeCmsConstructionRecord(item, source) {
     lat,
     lng,
     city: source.city,
-    source: "TDX Construction",
+    source: "TDX CMS",
     url: "",
   };
 }
@@ -507,6 +507,8 @@ async function extractAiEvents(newsItems) {
     "Return strict JSON with an events array.",
     "Keep only items with a physical place in Taiwan.",
     "Use one category from the allowed enum.",
+    "Merge different news items if they describe the same real-world event.",
+    "Generate a unique 'eventFingerprint' (format: city_type_keyword) for each event; multiple reports of the same event must have the SAME fingerprint.",
     "Use the provided city fallback coordinates when exact coordinates are unknown.",
     'Set source to "news".',
   ].join(" ");
@@ -540,8 +542,9 @@ async function extractAiEvents(newsItems) {
                     lng: { type: "number" },
                     city: { type: "string" },
                     source: { type: "string" },
+                    eventFingerprint: { type: "string" },
                   },
-                  required: ["title", "content", "category", "url", "lat", "lng", "city", "source"],
+                  required: ["title", "content", "category", "url", "lat", "lng", "city", "source", "eventFingerprint"],
                   additionalProperties: false,
                 },
               },
@@ -574,13 +577,13 @@ function normalizeFinalEvents(events) {
       title: String(item.title || "").trim(),
       content: String(item.content || "").trim(),
       city: String(item.city || "Taiwan").trim(),
-      source: String(item.source || "unknown").trim(),
+      source: String(item.source || "news").trim(),
       url: String(item.url || "").trim(),
       lat: Number(item.lat),
       lng: Number(item.lng),
     }))
     .filter((item) => {
-      const key = `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
+      const key = item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
       if (dedupe.has(key)) return false;
       dedupe.add(key);
       return true;
