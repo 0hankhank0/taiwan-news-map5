@@ -507,7 +507,8 @@ async function extractAiEvents(newsItems) {
     "Return strict JSON with an events array.",
     "Keep only items with a physical place in Taiwan.",
     "Use one category from the allowed enum.",
-    "Merge different news items if they describe the same real-world event.",
+    "Deduplication Rule (CRITICAL): If multiple news items describe the same real-world event (even from different perspectives or follow-ups like 'suspect arrested'), output only ONE entry with the most complete title.",
+    "Same event criteria: Same location + Same time + Same nature.",
     "Generate a unique 'eventFingerprint' (format: city_type_keyword) for each event; multiple reports of the same event must have the SAME fingerprint.",
     "Use the provided city fallback coordinates when exact coordinates are unknown.",
     'Set source to "news".',
@@ -630,20 +631,46 @@ module.exports = async (req, res) => {
       [...tdxEvents, ...constructionEvents, ...aiEvents, ...ruleBasedEvents]
     );
 
-    console.log(
-      "[cron] rss=%d tdx=%d construction=%d ai=%d rule=%d final=%d totalMs=%d",
-      rssItems.length,
-      tdxEvents.length,
-      constructionEvents.length,
-      aiEvents.length,
-      ruleBasedEvents.length,
-      finalEvents.length,
-      Date.now() - startedAt
-    );
+    // --- 相似度比對與合併邏輯 (24小時內, 同地點同類型, 相似度 > 60%) ---
+    // 獲取現有資料進行比對
+    const existingEvents = (await kv.get("taiwan_traffic_events")) || [];
+    const SIMILARITY_THRESHOLD = 0.6;
+    const TIME_THRESHOLD = 24 * 60 * 60 * 1000;
 
-    await kv.set("taiwan_traffic_events", finalEvents, { ex: 600 });
+    function getSimilarity(s1, s2) {
+      if (!s1 || !s2) return 0;
+      const set1 = new Set(s1.replace(/\s+/g, "").split(""));
+      const set2 = new Set(s2.replace(/\s+/g, "").split(""));
+      const intersection = new Set([...set1].filter(x => set2.has(x)));
+      return intersection.size / Math.max(set1.size, set2.size);
+    }
 
-    return res.status(200).json({ success: true, count: finalEvents.length });
+    const mergedEvents = [...existingEvents];
+    finalEvents.forEach(newEv => {
+      const duplicate = mergedEvents.find(m => 
+        m.city === newEv.city && 
+        m.category === newEv.category &&
+        Math.abs(Date.now() - (m.createdAt || Date.now())) < TIME_THRESHOLD &&
+        (getSimilarity(newEv.title, m.title) > SIMILARITY_THRESHOLD || getSimilarity(newEv.content, m.content) > SIMILARITY_THRESHOLD)
+      );
+
+      if (duplicate) {
+        // 更新標題為較長者
+        if ((newEv.title || "").length > (duplicate.title || "").length) duplicate.title = newEv.title;
+        // 更新內容為較長者
+        if ((newEv.content || "").length > (duplicate.content || "").length) duplicate.content = newEv.content;
+      } else {
+        mergedEvents.push({ ...newEv, createdAt: Date.now() });
+      }
+    });
+
+    // 過濾掉過期事件 (例如 24 小時前)
+    const now = Date.now();
+    const activeEvents = mergedEvents.filter(ev => (now - (ev.createdAt || 0)) < 48 * 60 * 60 * 1000);
+
+    await kv.set("taiwan_traffic_events", activeEvents, { ex: 600 });
+
+    return res.status(200).json({ success: true, count: activeEvents.length });
   } catch (error) {
     console.error("[cron] Handler failed:", error.message);
     return res.status(500).json({ error: "Cron execution failed" });
