@@ -103,6 +103,19 @@ function sanitizeText(str) {
     .trim();
 }
 
+function cleanRSSContent(text) {
+  if (!text) return "";
+  return text
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
 async function getTDXToken() {
   const res = await fetch("https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token", {
     method: "POST",
@@ -332,7 +345,7 @@ async function geocode(locationText) {
       const lat = parseFloat(data[0].lat);
       const lng = parseFloat(data[0].lon);
       // 驗證座標在台灣範圍內，避免 Nominatim 亂猜到海外
-      if (lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123) {
+      if (isValidTaiwanCoord(lat, lng)) {
         return { lat, lng };
       }
     }
@@ -341,6 +354,25 @@ async function geocode(locationText) {
   }
   geocodeFailCache.set(locationText, true);
   return null;
+}
+
+function isValidTaiwanCoord(lat, lng) {
+  return lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123;
+}
+
+async function geocodeWithCity(address, city) {
+  if (!address) return null;
+  const fullAddress = address.includes(city) ? address : `${city}${address}`;
+  const coords = await geocode(fullAddress);
+  
+  if (coords && isValidTaiwanCoord(coords.lat, coords.lng)) {
+    return coords;
+  }
+  
+  // 失敗就用城市中心點
+  const cityCenter = TAIWAN_CITY_COORDS[city] || TAIWAN_CITY_COORDS["台北市"];
+  const jitter = () => (Math.random() - 0.5) * 0.02;
+  return { lat: cityCenter.lat + jitter(), lng: cityCenter.lng + jitter() };
 }
 
 async function fetchNews() {
@@ -417,17 +449,19 @@ async function fetchNews() {
     for (const ai of aiResults) {
       if (ai.importance > 0) {
         let coords = null;
-        if (ai.lat && ai.lng) {
+        if (ai.lat && ai.lng && isValidTaiwanCoord(ai.lat, ai.lng)) {
           coords = { lat: ai.lat, lng: ai.lng };
         } else if (ai.location) {
-          coords = await geocode(ai.location);
+          // 嘗試解析縣市名
+          const cityName = ai.location.slice(0, 3);
+          coords = await geocodeWithCity(ai.location, cityName);
         }
 
         if (coords) {
           newsEvents.push({
             id: ai.sources[0]?.id || `NEWS_${Math.random().toString(36).slice(2)}`,
-            title: ai.title,
-            content: ai.sources[0]?.title || "",
+            title: cleanRSSContent(ai.title),
+            content: cleanRSSContent(ai.sources[0]?.title || ""),
             category: ai.category || "other",
             source: "news",
             url: ai.sources[0]?.url || "",
@@ -465,8 +499,8 @@ async function fetchNews() {
   gdeltGeoEvents.forEach(e => {
     newsEvents.push({
       id: e.id,
-      title: e.title,
-      content: `【GDELT 地理事件】${e.title}`,
+      title: cleanRSSContent(e.title),
+      content: `【GDELT 地理事件】${cleanRSSContent(e.title)}`,
       category: "news",
       source: "news",
       url: e.url,
@@ -509,8 +543,8 @@ async function fetchGDELT() {
         .filter(a => a.title && a.url)
         .map(a => ({
           id: `GDELT_${Buffer.from(a.url).toString("base64").slice(0, 20)}`,
-          title: a.title,
-          description: a.title,
+          title: cleanRSSContent(a.title),
+          description: cleanRSSContent(a.title),
           url: a.url,
           link: a.url,
           source: "news",
@@ -761,7 +795,7 @@ function buildPostText(event) {
   const cat = event.category || "";
   const emoji = cat === "accident" ? "🚨" : cat === "disaster" ? "🔥" : "📣";
   const label = cat === "accident" ? "即時事故" : cat === "disaster" ? "即時災情" : "活動資訊";
-  const title = event.title || event.text || "";
+  const title = cleanRSSContent(event.title || event.text || "");
   const city  = event.city || "";
   const eventTime = event.pubDate 
     ? new Date(event.pubDate).toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Taipei" }) 
@@ -905,15 +939,23 @@ async function runThreadsAutoPost(newEvents) {
     return shouldPost(e) && !postedIds.includes(e.id);
   });
 
-  for (const event of toPost) {
-    await postToThreads(event);
-    postedIds.push(event.id);
-    await delay(1000); // 縮短延遲以增加觸及率，同時避免 API 限速
+  if (toPost.length > 0) {
+    // 依重要度排序（如有 importance），只發最重要的一筆，避免洗版
+    const sorted = toPost.sort((a, b) => (b.importance || 0) - (a.importance || 0));
+    const topEvent = sorted[0];
+    
+    console.log(`📣 [Threads] 準備發布最重要事件：${topEvent.title}`);
+    await postToThreads(topEvent);
+    postedIds.push(topEvent.id);
+    
+    // 其他標記為已發布，但不發文，避免下次重複偵測
+    toPost.slice(1).forEach(e => postedIds.push(e.id));
+    
+    console.log(`📣 [Threads] 本次發文 1 則，標記 ${toPost.length} 則為已處理`);
   }
 
   // 只保留最近 500 筆已發 id
   await kv.set("threads_posted_ids", JSON.stringify(postedIds.slice(-500)));
-  if (toPost.length > 0) console.log(`📣 [Threads] 本次發文 ${toPost.length} 則`);
 }
 
 async function main() {
@@ -1079,7 +1121,7 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
         const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
         const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
         
-        return existingEvents.some(ev => {
+        return existingEvents.find(ev => {
             const existTitle = (ev.title || "").replace(/\s+/g, "").slice(0, 15);
             const existContent = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
             
@@ -1109,17 +1151,21 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
     
     const finalMerged = [];
     aiFiltered.forEach(ev => {
-        if (!isDuplicateEvent(ev, finalMerged)) {
+        const dupe = isDuplicateEvent(ev, finalMerged);
+        if (!dupe) {
             finalMerged.push(ev);
         } else {
+            // 同一事件座標一旦寫入就鎖定
+            if (dupe.lat && dupe.lng) {
+                ev.lat = dupe.lat;
+                ev.lng = dupe.lng;
+            }
+
             // 如果是重複的，嘗試將來源合併到已存在的事件中
-            const existing = finalMerged.find(m => 
-                (m.title || "").replace(/\s+/g, "").slice(0, 15) === (ev.title || "").replace(/\s+/g, "").slice(0, 15)
-            );
-            if (existing && ev.sources) {
-                existing.sources = existing.sources || [];
+            if (ev.sources) {
+                dupe.sources = dupe.sources || [];
                 ev.sources.forEach(s => {
-                    if (!existing.sources.find(ds => ds.url === s.url)) existing.sources.push(s);
+                    if (!dupe.sources.find(ds => ds.url === s.url)) dupe.sources.push(s);
                 });
             }
         }
