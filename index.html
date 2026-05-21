@@ -1537,6 +1537,7 @@
     }
 
     function isMourningEvent(ev) {
+        if (ev.hasCasualty !== undefined) return ev.hasCasualty;
         const keywords = ["死亡", "罹難", "身亡", "喪生", "不治", "往生", "遇難"];
         const text = (ev.title + ev.content);
         return keywords.some(k => text.includes(k));
@@ -1606,13 +1607,16 @@
             const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
+            const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
+            const displayContent = (isOnline && ev.twOnlineContent) ? ev.twOnlineContent : (ev.content || "沒有摘要");
+
             const popupHtml=`
                 <div class="popup-inner">
                     <div class="popup-top">
-                        <div class="popup-title">${ev.title||"未命名事件"}</div>
+                        <div class="popup-title">${displayTitle}</div>
                         <div class="popup-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
                     </div>
-                    <div class="popup-summary">${ev.content||"沒有摘要"}</div>
+                    <div class="popup-summary">${displayContent}</div>
                     <div class="reaction-container" data-event-id="${ev.id}"></div>
                     <div class="popup-meta">
                         <span><i class="fa-solid fa-location-dot" style="margin-right:4px;color:var(--accent)"></i>${ev.city||"未知城市"}</span>
@@ -1620,7 +1624,7 @@
                     </div>
                     <div class="popup-actions">
                         ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn primary"><i class="fa-solid fa-arrow-up-right-from-square"></i>查看原文</a>`:""}
-                        <button type="button" class="popup-btn danger" onclick='openReportModal(decodeURIComponent("${encodeURIComponent(ev.title||"")}"))'>
+                        <button type="button" class="popup-btn danger" onclick='openReportModal(decodeURIComponent("${encodeURIComponent(displayTitle)}"))'>
                             <span style="display:inline-flex;width:12px;height:12px;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報資料
                         </button>
                     </div>
@@ -1683,8 +1687,8 @@
                     <div class="card-city"><i class="fa-solid fa-location-dot" style="margin-right:3px"></i>${normalizeText(ev.city)||"未知城市"}</div>
                     <div class="card-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
                 </div>
-                <div class="card-title">${ev.title||"未命名事件"}</div>
-                <div class="card-content">${ev.content||"沒有摘要"}</div>
+                <div class="card-title">${displayTitle}</div>
+                <div class="card-content">${displayContent}</div>
                 <div class="reaction-container" data-event-id="${ev.id}"></div>
                 <div class="card-footer">
                     ${ev.sources && ev.sources.length > 0 ? `
@@ -1698,7 +1702,7 @@
                     <div class="card-actions">
                         <div>${makeSourceBadge(ev.source)}</div>
                         <div class="card-action-group">
-                            <button class="card-action-btn report" data-report="${encodeURIComponent(ev.title||"")}"><span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報</button>
+                            <button class="card-action-btn report" data-report="${encodeURIComponent(displayTitle)}"><span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報</button>
                             ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>`:""}
                         </div>
                     </div>

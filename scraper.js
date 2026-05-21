@@ -979,6 +979,67 @@ async function runThreadsAutoPost(newEvents) {
   await kv.set("threads_posted_ids", JSON.stringify(postedIds.slice(-500)));
 }
 
+// ===== TW Online 文案改寫 =====
+async function rewriteToTWOnline(event) {
+  const hasCasualty = /死亡|罹難|身亡|喪生|不治|往生|遇難|重傷/.test(
+    (event.title || "") + (event.content || "") + (event.text || "")
+  );
+
+  const templates = {
+    traffic: hasCasualty
+      ? `[地點]發生嚴重衝突，已有玩家永久離線，GM 正在處理`
+      : `[地點]發生衝突，區域暫時封鎖，建議玩家繞行`,
+    accident: hasCasualty
+      ? `[地點]發生嚴重衝突，已有玩家永久離線，GM 正在處理`
+      : `[地點]發生 PK 事件，[X]名玩家受影響`,
+    construction: `[地點]進行伺服器維護，道路優化作業中，請玩家繞行`,
+    disaster: hasCasualty
+      ? `[地點]發生重大異常，已有玩家永久離線，請保持距離`
+      : `[地點]發生異常事件，GM 正在處理中，周邊玩家注意`,
+    activity: `[地點]開放限時任務，完成任務可獲得獎勵`,
+    other: `[地點]發出系統公告，請玩家注意`,
+  };
+
+  const template = templates[event.category] || templates.other;
+
+  const prompt = `
+你是「TW Online」遊戲的 GM 公告撰寫員。
+把以下新聞事件改寫成遊戲風格的公告文字。
+
+模板：${template}
+事件標題：${event.title || event.text}
+事件內容：${event.content || event.text}
+發生地點：${event.city}
+
+規則：
+- 把地點填入模板的[地點]
+- 語氣像遊戲系統公告，簡短有力
+- 字數不超過 50 字
+- ${hasCasualty ? "語氣嚴肅，不可輕浮，用「永久離線」代替死亡" : "可以輕鬆一點但不誇張"}
+- 只回傳改寫後的文字，不要其他說明
+
+回傳格式：
+{
+  "twOnlineTitle": "改寫後的標題",
+  "twOnlineContent": "改寫後的內容"
+}
+`;
+
+  try {
+    const response = await callAzureAI(prompt);
+    const result = JSON.parse(response.replace(/```json|```/g, "").trim());
+    return {
+      ...event,
+      twOnlineTitle: result.twOnlineTitle,
+      twOnlineContent: result.twOnlineContent,
+      hasCasualty: hasCasualty
+    };
+  } catch (e) {
+    console.error(`❌ [TW Online] 改寫失敗 [${event.title}]:`, e.message);
+    return { ...event, hasCasualty: hasCasualty };
+  }
+}
+
 async function main() {
   try {
     console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
@@ -1191,6 +1252,28 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
             }
         }
     });
+
+    // --- TW Online 文案改寫 (針對新事件或尚未改寫的事件) ---
+    console.log("📝 開始進行 TW Online 文案改寫...");
+    const oldEventsRaw = await kv.get("taiwan_traffic_events");
+    const oldEvents = oldEventsRaw ? (typeof oldEventsRaw === "string" ? JSON.parse(oldEventsRaw) : oldEventsRaw) : [];
+    
+    for (let i = 0; i < finalMerged.length; i++) {
+      const ev = finalMerged[i];
+      // 尋找舊資料中是否已有改寫過的
+      const oldEv = oldEvents.find(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
+      
+      if (oldEv && oldEv.twOnlineTitle) {
+        ev.twOnlineTitle = oldEv.twOnlineTitle;
+        ev.twOnlineContent = oldEv.twOnlineContent;
+        ev.hasCasualty = oldEv.hasCasualty;
+      } else {
+        console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
+        const enriched = await rewriteToTWOnline(ev);
+        finalMerged[i] = enriched;
+        await delay(500); // 避免 AI API 頻率限制
+      }
+    }
 
     await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
     console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
