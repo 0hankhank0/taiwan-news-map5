@@ -985,22 +985,69 @@ async function rewriteToTWOnline(event) {
     (event.title || "") + (event.content || "") + (event.text || "")
   );
 
-  const templates = {
-    traffic: hasCasualty
-      ? `[地點]發生嚴重衝突，已有玩家永久離線，GM 正在處理`
-      : `[地點]發生衝突，區域暫時封鎖，建議玩家繞行`,
-    accident: hasCasualty
-      ? `[地點]發生嚴重衝突，已有玩家永久離線，GM 正在處理`
-      : `[地點]發生 PK 事件，[X]名玩家受影響`,
-    construction: `[地點]進行伺服器維護，道路優化作業中，請玩家繞行`,
-    disaster: hasCasualty
-      ? `[地點]發生重大異常，已有玩家永久離線，請保持距離`
-      : `[地點]發生異常事件，GM 正在處理中，周邊玩家注意`,
-    activity: `[地點]開放限時任務，完成任務可獲得獎勵`,
-    other: `[地點]發出系統公告，請玩家注意`,
-  };
+  const templates = { 
+     traffic: hasCasualty ? [ 
+         `⚠️ 系統警告｜[地點]發生致命事故，該玩家已永久離線，GM 正在調查`, 
+         `🚨 緊急公告｜[地點]偵測到玩家生命值歸零，請周邊玩家迴備`, 
+     ] : [ 
+         `🚦 區域壅塞｜[地點]玩家密度爆表，伺服器延遲中，建議換路`, 
+         `⚡ 交通異常｜[地點]有大量玩家卡在同一格，正在重新分配`, 
+         `🗺️ 路線警告｜[地點]前方有狀況，NPC 正在清場中`, 
+         `😩 塞車警報｜[地點]玩家全都卡住了，建議開地圖找替代路線`, 
+         `🐢 移動速度 -90%｜[地點]嚴重塞車，徒步可能比較快`, 
+         `📡 系統偵測｜[地點]移動型玩家大量聚集，預計清場時間未知`, 
+     ], 
+     accident: hasCasualty ? [ 
+         `⚠️ 嚴重警報｜[地點]發生重大 PK，已有玩家永久離線，GM 介入中`, 
+         `🚨 緊急通報｜[地點]玩家生命值歸零，請保持距離等待 GM 處理`, 
+     ] : [ 
+         `⚔️ PK 事件｜[地點]偵測到玩家互毆，警察 NPC 已出動`, 
+         `💥 碰撞警報｜[地點]兩名玩家發生物理碰撞，裝備可能受損`, 
+         `🔴 戰鬥回報｜[地點]有玩家忘記這不是 PVP 區`, 
+         `😬 意外事件｜[地點]玩家操作失誤，GM 正在評估損害`, 
+         `🚑 急救任務觸發｜[地點]有玩家血量過低，醫療 NPC 趕赴現場`, 
+         `⚠️ 注意｜[地點]玩家車輛發生非預期碰撞，道路暫時封鎖`, 
+     ], 
+     construction: [ 
+         `🔧 伺服器維護中｜[地點]道路優化作業進行中，繞道通行`, 
+         `🏗️ 地圖更新中｜[地點]開發商正在施工，完成後將解鎖新區域`, 
+         `⛏️ 系統升級｜[地點]NPC 工程師正在修復地形 bug`, 
+         `🚧 區域封鎖｜[地點]該路段進行版本更新，暫時無法通行`, 
+         `📋 維護公告｜[地點]道路 DLC 安裝中，請耐心等候`, 
+         `😤 又在施工｜[地點]開發商再度對道路進行「優化」，繞行吧`, 
+     ], 
+     disaster: hasCasualty ? [ 
+         `🚨 重大災難｜[地點]發生高傷害範圍事件，已有玩家永久離線`, 
+         `☠️ 危險區域｜[地點]偵測到致命異常，請所有玩家立即撤離`, 
+     ] : [ 
+         `🌋 自然事件觸發｜[地點]發生大規模災害，GM 正在評估損失`, 
+         `⚠️ 危險區域警示｜[地點]環境異常，建議玩家暫時撤離`, 
+         `🆘 緊急任務啟動｜[地點]發生突發事件，救援 NPC 已出動`, 
+         `😱 伺服器異常｜[地點]偵測到不明事件，等待 GM 確認中`, 
+         `🔥 高危警報｜[地點]區域即將進入危險狀態，請玩家保持距離`, 
+         `📻 GM 廣播｜[地點]發生異常事件，請玩家配合疏散`, 
+     ], 
+     activity: [ 
+         `📋 限時任務開放｜[地點]新任務已上線，完成可獲得獎勵`, 
+         `🎉 活動觸發｜[地點]限時事件開始，趕快去參加`, 
+         `⏰ 任務倒數中｜[地點]活動即將截止，手腳要快`, 
+         `🗺️ 新地點解鎖｜[地點]特殊活動區域開放，限時進入`, 
+         `🏆 成就任務｜[地點]完成指定行動即可解鎖特殊稱號`, 
+         `🎊 伺服器慶典｜[地點]全服活動開跑，所有玩家歡迎參加`, 
+     ], 
+     other: [ 
+         `📢 系統公告｜[地點]有新消息，請玩家注意`, 
+         `📡 GM 廣播｜[地點]發生不明事件，持續監控中`, 
+         `🔔 伺服器通知｜[地點]偵測到異常活動，詳情調查中`, 
+         `📰 情報更新｜[地點]有新情報，建議玩家前往確認`, 
+         `🤔 奇怪的事｜[地點]發生了一些事，GM 也在查`, 
+         `💬 玩家回報｜[地點]收到玩家通報，NPC 正在處理`, 
+     ], 
+  }; 
 
-  const template = templates[event.category] || templates.other;
+  // 隨機選一個 
+  const pool = templates[event.category] || templates.other; 
+  const template = pool[Math.floor(Math.random() * pool.length)];
 
   const prompt = `
 你是「TW Online」遊戲的 GM 公告撰寫員。
@@ -1027,16 +1074,25 @@ async function rewriteToTWOnline(event) {
 
   try {
     const response = await callAzureAI(prompt);
-    const result = JSON.parse(response.replace(/```json|```/g, "").trim());
+    // 清掉可能的 markdown 格式
+    const clean = response.replace(/```json|```/g, "").trim();
+    const result = JSON.parse(clean);
+
     return {
       ...event,
-      twOnlineTitle: result.twOnlineTitle,
-      twOnlineContent: result.twOnlineContent,
+      twOnlineTitle: result.twOnlineTitle || event.title || event.text,
+      twOnlineContent: result.twOnlineContent || event.content || event.text,
       hasCasualty: hasCasualty
     };
   } catch (e) {
-    console.error(`❌ [TW Online] 改寫失敗 [${event.title}]:`, e.message);
-    return { ...event, hasCasualty: hasCasualty };
+    console.warn("❌ [TW Online] 改寫失敗，使用原始文案", e.message);
+    // 失敗就用原始文案，不影響主流程
+    return {
+      ...event,
+      twOnlineTitle: event.title || event.text,
+      twOnlineContent: event.content || event.text,
+      hasCasualty: hasCasualty
+    };
   }
 }
 
