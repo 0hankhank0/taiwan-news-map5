@@ -344,8 +344,8 @@ async function geocode(locationText) {
     if (data && data.length > 0) {
       const lat = parseFloat(data[0].lat);
       const lng = parseFloat(data[0].lon);
-      // 驗證座標在台灣範圍內，避免 Nominatim 亂猜到海外
-      if (isValidTaiwanCoord(lat, lng)) {
+      // 驗證座標在台灣陸地上
+      if (isOnTaiwanLand(lat, lng)) {
         return { lat, lng };
       }
     }
@@ -360,17 +360,38 @@ function isValidTaiwanCoord(lat, lng) {
   return lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123;
 }
 
+function isOnTaiwanLand(lat, lng) {
+  // 基本台灣陸地範圍（排除大部分海域）
+  const TAIWAN_BOUNDS = [
+    { minLat: 21.9, maxLat: 25.3, minLng: 120.0, maxLng: 122.0 }, // 本島
+    { minLat: 23.3, maxLat: 23.8, minLng: 119.3, maxLng: 119.8 }, // 澎湖
+    { minLat: 24.3, maxLat: 24.6, minLng: 118.2, maxLng: 118.5 }, // 金門
+    { minLat: 26.1, maxLat: 26.2, minLng: 119.9, maxLng: 120.0 }, // 馬祖
+  ];
+
+  return TAIWAN_BOUNDS.some(b =>
+    lat >= b.minLat && lat <= b.maxLat &&
+    lng >= b.minLng && lng <= b.maxLng
+  );
+}
+
 async function geocodeWithCity(address, city) {
   if (!address) return null;
   const fullAddress = address.includes(city) ? address : `${city}${address}`;
   const coords = await geocode(fullAddress);
   
-  if (coords && isValidTaiwanCoord(coords.lat, coords.lng)) {
+  // 如果座標在陸地上，直接回傳
+  if (coords && isOnTaiwanLand(coords.lat, coords.lng)) {
     return coords;
   }
   
   // 失敗就用城市中心點
-  const cityCenter = TAIWAN_CITY_COORDS[city] || TAIWAN_CITY_COORDS["台北市"];
+  const cityCenter = TAIWAN_CITY_COORDS[city];
+  if (!cityCenter) {
+    console.log(`⚠️ [Geocode] ${city} 無中心座標且地址解析失敗，跳過該事件`);
+    return null;
+  }
+
   const jitter = () => (Math.random() - 0.5) * 0.02;
   return { lat: cityCenter.lat + jitter(), lng: cityCenter.lng + jitter() };
 }
@@ -449,7 +470,7 @@ async function fetchNews() {
     for (const ai of aiResults) {
       if (ai.importance > 0) {
         let coords = null;
-        if (ai.lat && ai.lng && isValidTaiwanCoord(ai.lat, ai.lng)) {
+        if (ai.lat && ai.lng && isOnTaiwanLand(ai.lat, ai.lng)) {
           coords = { lat: ai.lat, lng: ai.lng };
         } else if (ai.location) {
           // 嘗試解析縣市名
@@ -576,7 +597,7 @@ async function fetchGDELTGeo() {
     console.log(`📦 [GDELT GKG] 地理事件筆數: ${features.length}`);
     
     return features
-      .filter(f => f.geometry?.coordinates && f.properties?.name)
+      .filter(f => f.geometry?.coordinates && f.properties?.name && isOnTaiwanLand(f.geometry.coordinates[1], f.geometry.coordinates[0]))
       .map(f => ({
         id: `GDELTGEO_${f.properties.url ? Buffer.from(f.properties.url).toString("base64").slice(0, 20) : Math.random().toString(36).slice(2)}`,
         title: f.properties.name,
