@@ -980,6 +980,27 @@ async function runThreadsAutoPost(newEvents) {
   await kv.set("threads_posted_ids", JSON.stringify(postedIds.slice(-500)));
 }
 
+// ===== 事件一致性驗證 =====
+async function validateEventConsistency(event) {
+  const prompt = `
+以下是一筆新聞事件的標題和內容，請判斷兩者是否描述同一件事。
+
+標題：${event.title || event.text}
+內容：${event.content || event.text}
+
+只回傳 JSON：
+{ "isConsistent": true 或 false }
+`;
+  try {
+    const result = await callAzureAI(prompt);
+    const parsed = JSON.parse(result.replace(/```json|```/g, "").trim());
+    return parsed.isConsistent;
+  } catch (e) {
+    console.error("❌ 一致性驗證失敗，預設通過:", e.message);
+    return true; // 驗證失敗就預設通過
+  }
+}
+
 // ===== TW Online 文案改寫 =====
 async function rewriteToTWOnline(event) {
   const eventText = (event.title || "") + (event.content || "") + (event.text || "");
@@ -1340,42 +1361,54 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
     });
 
     // --- TW Online 文案改寫 (針對新事件或尚未改寫的事件) ---
-    console.log("📝 開始進行 TW Online 文案改寫...");
+    console.log("📝 開始進行事件驗證與 TW Online 文案改寫...");
     const oldEventsRaw = await kv.get("taiwan_traffic_events");
     const oldEvents = oldEventsRaw ? (typeof oldEventsRaw === "string" ? JSON.parse(oldEventsRaw) : oldEventsRaw) : [];
     
+    const validatedMerged = [];
     for (let i = 0; i < finalMerged.length; i++) {
-       const ev = finalMerged[i];
-       // 尋找舊資料中是否已有改寫過的或座標
-       const oldEv = oldEvents.find(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
-       
-       if (oldEv) {
-         // 同一事件座標一旦寫入就鎖定
-         if (oldEv.lat && oldEv.lng) {
-           ev.lat = oldEv.lat;
-           ev.lng = oldEv.lng;
-         }
+        const ev = finalMerged[i];
+        
+        // 1. 一致性驗證 (僅對新事件)
+        const isExisting = oldEvents.some(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
+        if (!isExisting) {
+            const isConsistent = await validateEventConsistency(ev);
+            if (!isConsistent) {
+                console.warn("⚠️ 標題與內容不一致，跳過此事件:", ev.title || ev.text);
+                continue;
+            }
+        }
 
-         if (oldEv.twOnlineTitle) {
-           ev.twOnlineTitle = oldEv.twOnlineTitle;
-           ev.twOnlineContent = oldEv.twOnlineContent;
-           ev.hasCasualty = oldEv.hasCasualty;
-         } else {
-           console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
-           const enriched = await rewriteToTWOnline(ev);
-           finalMerged[i] = enriched;
-           await delay(500); // 避免 AI API 頻率限制
-         }
-       } else {
-         console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
-         const enriched = await rewriteToTWOnline(ev);
-         finalMerged[i] = enriched;
-         await delay(500); // 避免 AI API 頻率限制
-       }
-     }
+        // 2. 尋找舊資料中是否已有改寫過的或座標
+        const oldEv = oldEvents.find(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
+        
+        let enriched = ev;
+        if (oldEv) {
+          // 同一事件座標一旦寫入就鎖定
+          if (oldEv.lat && oldEv.lng) {
+            enriched.lat = oldEv.lat;
+            enriched.lng = oldEv.lng;
+          }
 
-    await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
-    console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
+          if (oldEv.twOnlineTitle) {
+            enriched.twOnlineTitle = oldEv.twOnlineTitle;
+            enriched.twOnlineContent = oldEv.twOnlineContent;
+            enriched.hasCasualty = oldEv.hasCasualty;
+          } else {
+            console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
+            enriched = await rewriteToTWOnline(ev);
+            await delay(500); 
+          }
+        } else {
+          console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
+          enriched = await rewriteToTWOnline(ev);
+          await delay(500); 
+        }
+        validatedMerged.push(enriched);
+      }
+  
+      await kv.set("taiwan_traffic_events", JSON.stringify(validatedMerged));
+      console.log(`💾 全部完工！最終合計: ${validatedMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
