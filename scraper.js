@@ -983,17 +983,21 @@ async function runThreadsAutoPost(newEvents) {
 // ===== TW Online 文案改寫 =====
 async function rewriteToTWOnline(event) {
   const eventText = (event.title || "") + (event.content || "") + (event.text || "");
-  const hasCasualty = /死亡|罹難|身亡|喪生|不治|往生|遇難|重傷/.test(eventText);
+  
+  // 死亡事件判定
+  const SUICIDE_KEYWORDS = ["輕生", "自殺", "跳軌", "跳橋", "燒炭", "自盡", "尋短"]; 
+  const CASUALTY_KEYWORDS = ["死亡", "罹難", "身亡", "喪生", "不治", "往生", "遇難"]; 
+  
+  const isSuicide = SUICIDE_KEYWORDS.some(k => eventText.includes(k)); 
+  const isCasualty = CASUALTY_KEYWORDS.some(k => eventText.includes(k)); 
+  const hasCasualty = isSuicide || isCasualty || /重傷/.test(eventText);
 
-  // 敏感事件判定
-  const SENSITIVE_KEYWORDS = ["輕生", "自殺", "跳軌", "跳橋", "燒炭", "自盡", "尋短"];
-  const isSensitive = SENSITIVE_KEYWORDS.some(k => eventText.includes(k));
-
-  const sensitiveTemplates = [
-    `🕯️ 系統公告｜[地點]有玩家選擇永久離線，願其安息`,
-    `🕯️ 伺服器通知｜[地點]偵測到玩家離線，GM 致上哀悼`,
-    `🕯️ 沉重公告｜[地點]有玩家永久離線，請周邊玩家保重`,
-  ];
+  // 死亡事件模板
+  const suicideTemplate = `🕯️ 系統公告｜[地點]有玩家選擇永久離線，願其安息`; 
+  const casualtyTemplates = [ 
+      `🕯️ 系統公告｜[地點]有玩家意外永久離線，願其安息`, 
+      `🕯️ 重大警報｜[地點]玩家生命值歸零，GM 正在處理現場`, 
+  ]; 
 
   const templates = { 
       traffic: hasCasualty ? [ 
@@ -1056,8 +1060,12 @@ async function rewriteToTWOnline(event) {
    }; 
  
    // 隨機選一個 
-   const pool = isSensitive ? sensitiveTemplates : (templates[event.category] || templates.other); 
-   const template = pool[Math.floor(Math.random() * pool.length)];
+   const pool = templates[event.category] || templates.other; 
+   const template = isSuicide 
+     ? suicideTemplate 
+     : isCasualty 
+     ? casualtyTemplates[Math.floor(Math.random() * casualtyTemplates.length)] 
+     : pool[Math.floor(Math.random() * pool.length)];
 
    const prompt = `
 你是「TW Online」遊戲的 GM 公告撰寫員。
@@ -1072,7 +1080,19 @@ async function rewriteToTWOnline(event) {
 - 把地點填入模板的[地點]
 - 語氣像遊戲系統公告，簡短有力
 - 字數不超過 50 字
-- ${isSensitive ? "語氣必須沉重嚴肅，不可有任何輕浮或幽默成分，用「選擇永久離線」代替輕生相關字眼，絕對不可以用 PK、衝突、碰撞等字眼。" : (hasCasualty ? "語氣嚴肅，不可輕浮，用「永久離線」代替死亡" : "可以輕鬆一點但不誇張")}
+- ${isSuicide ? "語氣必須沉重嚴肅，不可有任何輕浮或幽默成分，用「選擇永久離線」代替輕生相關字眼，絕對不可以用 PK、衝突、碰撞等字眼。" : (hasCasualty ? "語氣嚴肅，不可輕浮，用「永久離線」代替死亡" : "可以輕鬆一點但不誇張")}
+- 摘要改寫規則：
+  * 人/民眾/路人/騎士/駕駛 → 玩家
+  * 年齡（XX歲）→ LV.XX
+  * 警察/員警 → 執法 Mod
+  * 消防員 → 救援 NPC
+  * 政府/機關 → 官方 Mod 團隊
+  * 死亡/身亡/罹難 → 永久離線
+  * 受傷/受創 → 生命值下降
+  * 車輛/汽車/機車 → 載具
+  * 錢/費用 → 遊戲幣
+  * 醫院 → 復活點
+  * 公司/機構 → 公會
 - 只回傳改寫後的文字，不要其他說明
 
 回傳格式：
