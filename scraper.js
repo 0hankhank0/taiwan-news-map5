@@ -329,7 +329,7 @@ async function geocode(locationText) {
   if (geocodeFailCache.get(locationText)) return null;
 
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText + " 台灣")}&format=json&limit=1&countrycodes=tw`;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(locationText)}&format=json&limit=1&countrycodes=tw`;
     const res = await fetch(url, {
       headers: { "User-Agent": "TaiwanNewsMap/1.0 (https://github.com/0hankhank0/taiwan-news-map5)" }
     });
@@ -378,7 +378,8 @@ function isOnTaiwanLand(lat, lng) {
 async function geocodeWithCity(address, city) {
   if (!address) return null;
   const fullAddress = address.includes(city) ? address : `${city}${address}`;
-  const coords = await geocode(fullAddress);
+  const query = `${fullAddress} 台灣`;
+  const coords = await geocode(query);
   
   // 如果座標在陸地上，直接回傳
   if (coords && isOnTaiwanLand(coords.lat, coords.lng)) {
@@ -981,75 +982,84 @@ async function runThreadsAutoPost(newEvents) {
 
 // ===== TW Online 文案改寫 =====
 async function rewriteToTWOnline(event) {
-  const hasCasualty = /死亡|罹難|身亡|喪生|不治|往生|遇難|重傷/.test(
-    (event.title || "") + (event.content || "") + (event.text || "")
-  );
+  const eventText = (event.title || "") + (event.content || "") + (event.text || "");
+  const hasCasualty = /死亡|罹難|身亡|喪生|不治|往生|遇難|重傷/.test(eventText);
+
+  // 敏感事件判定
+  const SENSITIVE_KEYWORDS = ["輕生", "自殺", "跳軌", "跳橋", "燒炭", "自盡", "尋短"];
+  const isSensitive = SENSITIVE_KEYWORDS.some(k => eventText.includes(k));
+
+  const sensitiveTemplates = [
+    `🕯️ 系統公告｜[地點]有玩家選擇永久離線，願其安息`,
+    `🕯️ 伺服器通知｜[地點]偵測到玩家離線，GM 致上哀悼`,
+    `🕯️ 沉重公告｜[地點]有玩家永久離線，請周邊玩家保重`,
+  ];
 
   const templates = { 
-     traffic: hasCasualty ? [ 
-         `⚠️ 系統警告｜[地點]發生致命事故，該玩家已永久離線，GM 正在調查`, 
-         `🚨 緊急公告｜[地點]偵測到玩家生命值歸零，請周邊玩家迴備`, 
-     ] : [ 
-         `🚦 區域壅塞｜[地點]玩家密度爆表，伺服器延遲中，建議換路`, 
-         `⚡ 交通異常｜[地點]有大量玩家卡在同一格，正在重新分配`, 
-         `🗺️ 路線警告｜[地點]前方有狀況，NPC 正在清場中`, 
-         `😩 塞車警報｜[地點]玩家全都卡住了，建議開地圖找替代路線`, 
-         `🐢 移動速度 -90%｜[地點]嚴重塞車，徒步可能比較快`, 
-         `📡 系統偵測｜[地點]移動型玩家大量聚集，預計清場時間未知`, 
-     ], 
-     accident: hasCasualty ? [ 
-         `⚠️ 嚴重警報｜[地點]發生重大 PK，已有玩家永久離線，GM 介入中`, 
-         `🚨 緊急通報｜[地點]玩家生命值歸零，請保持距離等待 GM 處理`, 
-     ] : [ 
-         `⚔️ PK 事件｜[地點]偵測到玩家互毆，警察 NPC 已出動`, 
-         `💥 碰撞警報｜[地點]兩名玩家發生物理碰撞，裝備可能受損`, 
-         `🔴 戰鬥回報｜[地點]有玩家忘記這不是 PVP 區`, 
-         `😬 意外事件｜[地點]玩家操作失誤，GM 正在評估損害`, 
-         `🚑 急救任務觸發｜[地點]有玩家血量過低，醫療 NPC 趕赴現場`, 
-         `⚠️ 注意｜[地點]玩家車輛發生非預期碰撞，道路暫時封鎖`, 
-     ], 
-     construction: [ 
-         `🔧 伺服器維護中｜[地點]道路優化作業進行中，繞道通行`, 
-         `🏗️ 地圖更新中｜[地點]開發商正在施工，完成後將解鎖新區域`, 
-         `⛏️ 系統升級｜[地點]NPC 工程師正在修復地形 bug`, 
-         `🚧 區域封鎖｜[地點]該路段進行版本更新，暫時無法通行`, 
-         `📋 維護公告｜[地點]道路 DLC 安裝中，請耐心等候`, 
-         `😤 又在施工｜[地點]開發商再度對道路進行「優化」，繞行吧`, 
-     ], 
-     disaster: hasCasualty ? [ 
-         `🚨 重大災難｜[地點]發生高傷害範圍事件，已有玩家永久離線`, 
-         `☠️ 危險區域｜[地點]偵測到致命異常，請所有玩家立即撤離`, 
-     ] : [ 
-         `🌋 自然事件觸發｜[地點]發生大規模災害，GM 正在評估損失`, 
-         `⚠️ 危險區域警示｜[地點]環境異常，建議玩家暫時撤離`, 
-         `🆘 緊急任務啟動｜[地點]發生突發事件，救援 NPC 已出動`, 
-         `😱 伺服器異常｜[地點]偵測到不明事件，等待 GM 確認中`, 
-         `🔥 高危警報｜[地點]區域即將進入危險狀態，請玩家保持距離`, 
-         `📻 GM 廣播｜[地點]發生異常事件，請玩家配合疏散`, 
-     ], 
-     activity: [ 
-         `📋 限時任務開放｜[地點]新任務已上線，完成可獲得獎勵`, 
-         `🎉 活動觸發｜[地點]限時事件開始，趕快去參加`, 
-         `⏰ 任務倒數中｜[地點]活動即將截止，手腳要快`, 
-         `🗺️ 新地點解鎖｜[地點]特殊活動區域開放，限時進入`, 
-         `🏆 成就任務｜[地點]完成指定行動即可解鎖特殊稱號`, 
-         `🎊 伺服器慶典｜[地點]全服活動開跑，所有玩家歡迎參加`, 
-     ], 
-     other: [ 
-         `📢 系統公告｜[地點]有新消息，請玩家注意`, 
-         `📡 GM 廣播｜[地點]發生不明事件，持續監控中`, 
-         `🔔 伺服器通知｜[地點]偵測到異常活動，詳情調查中`, 
-         `📰 情報更新｜[地點]有新情報，建議玩家前往確認`, 
-         `🤔 奇怪的事｜[地點]發生了一些事，GM 也在查`, 
-         `💬 玩家回報｜[地點]收到玩家通報，NPC 正在處理`, 
-     ], 
-  }; 
+      traffic: hasCasualty ? [ 
+          `⚠️ 系統警告｜[地點]發生致命事故，該玩家已永久離線，GM 正在調查`, 
+          `🚨 緊急公告｜[地點]偵測到玩家生命值歸零，請周邊玩家迴備`, 
+      ] : [ 
+          `🚦 區域壅塞｜[地點]玩家密度爆表，伺服器延遲中，建議換路`, 
+          `⚡ 交通異常｜[地點]有大量玩家卡在同一格，正在重新分配`, 
+          `🗺️ 路線警告｜[地點]前方有狀況，NPC 正在清場中`, 
+          `😩 塞車警報｜[地點]玩家全都卡住了，建議開地圖找替代路線`, 
+          `🐢 移動速度 -90%｜[地點]嚴重塞車，徒步可能比較快`, 
+          `📡 系統偵測｜[地點]移動型玩家大量聚集，預計清場時間未知`, 
+      ], 
+      accident: hasCasualty ? [ 
+          `⚠️ 嚴重警報｜[地點]發生重大 PK，已有玩家永久離線，GM 介入中`, 
+          `🚨 緊急通報｜[地點]玩家生命值歸零，請保持距離等待 GM 處理`, 
+      ] : [ 
+          `⚔️ PK 事件｜[地點]偵測到玩家互毆，警察 NPC 已出動`, 
+          `💥 碰撞警報｜[地點]兩名玩家發生物理碰撞，裝備可能受損`, 
+          `🔴 戰鬥回報｜[地點]有玩家忘記這不是 PVP 區`, 
+          `😬 意外事件｜[地點]玩家操作失誤，GM 正在評估損害`, 
+          `🚑 急救任務觸發｜[地點]有玩家血量過低，醫療 NPC 趕赴現場`, 
+          `⚠️ 注意｜[地點]玩家車輛發生非預期碰撞，道路暫時封鎖`, 
+      ], 
+      construction: [ 
+          `🔧 伺服器維護中｜[地點]道路優化作業進行中，繞道通行`, 
+          `🏗️ 地圖更新中｜[地點]開發商正在施工，完成後將解鎖新區域`, 
+          `⛏️ 系統升級｜[地點]NPC 工程師正在修復地形 bug`, 
+          `🚧 區域封鎖｜[地點]該路段進行版本更新，暫時無法通行`, 
+          `📋 維護公告｜[地點]道路 DLC 安裝中，請耐心等候`, 
+          `😤 又在施工｜[地點]開發商再度對道路進行「優化」，繞行吧`, 
+      ], 
+      disaster: hasCasualty ? [ 
+          `🚨 重大災難｜[地點]發生高傷害範圍事件，已有玩家永久離線`, 
+          `☠️ 危險區域｜[地點]偵測到致命異常，請所有玩家立即撤離`, 
+      ] : [ 
+          `🌋 自然事件觸發｜[地點]發生大規模災害，GM 正在評估損失`, 
+          `⚠️ 危險區域警示｜[地點]環境異常，建議玩家暫時撤離`, 
+          `🆘 緊急任務啟動｜[地點]發生突發事件，救援 NPC 已出動`, 
+          `😱 伺服器異常｜[地點]偵測到不明事件，等待 GM 確認中`, 
+          `🔥 高危警報｜[地點]區域即將進入危險狀態，請玩家保持距離`, 
+          `📻 GM 廣播｜[地點]發生異常事件，請玩家配合疏散`, 
+      ], 
+      activity: [ 
+          `📋 限時任務開放｜[地點]新任務已上線，完成可獲得獎勵`, 
+          `🎉 活動觸發｜[地點]限時事件開始，趕快去參加`, 
+          `⏰ 任務倒數中｜[地點]活動即將截止，手腳要快`, 
+          `🗺️ 新地點解鎖｜[地點]特殊活動區域開放，限時進入`, 
+          `🏆 成就任務｜[地點]完成指定行動即可解鎖特殊稱號`, 
+          `🎊 伺服器慶典｜[地點]全服活動開跑，所有玩家歡迎參加`, 
+      ], 
+      other: [ 
+          `📢 系統公告｜[地點]有新消息，請玩家注意`, 
+          `📡 GM 廣播｜[地點]發生不明事件，持續監控中`, 
+          `🔔 伺服器通知｜[地點]偵測到異常活動，詳情調查中`, 
+          `📰 情報更新｜[地點]有新情報，建議玩家前往確認`, 
+          `🤔 奇怪的事｜[地點]發生了一些事，GM 也在查`, 
+          `💬 玩家回報｜[地點]收到玩家通報，NPC 正在處理`, 
+      ], 
+   }; 
+ 
+   // 隨機選一個 
+   const pool = isSensitive ? sensitiveTemplates : (templates[event.category] || templates.other); 
+   const template = pool[Math.floor(Math.random() * pool.length)];
 
-  // 隨機選一個 
-  const pool = templates[event.category] || templates.other; 
-  const template = pool[Math.floor(Math.random() * pool.length)];
-
-  const prompt = `
+   const prompt = `
 你是「TW Online」遊戲的 GM 公告撰寫員。
 把以下新聞事件改寫成遊戲風格的公告文字。
 
@@ -1062,7 +1072,7 @@ async function rewriteToTWOnline(event) {
 - 把地點填入模板的[地點]
 - 語氣像遊戲系統公告，簡短有力
 - 字數不超過 50 字
-- ${hasCasualty ? "語氣嚴肅，不可輕浮，用「永久離線」代替死亡" : "可以輕鬆一點但不誇張"}
+- ${isSensitive ? "語氣必須沉重嚴肅，不可有任何輕浮或幽默成分，用「選擇永久離線」代替輕生相關字眼，絕對不可以用 PK、衝突、碰撞等字眼。" : (hasCasualty ? "語氣嚴肅，不可輕浮，用「永久離線」代替死亡" : "可以輕鬆一點但不誇張")}
 - 只回傳改寫後的文字，不要其他說明
 
 回傳格式：
@@ -1315,21 +1325,34 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
     const oldEvents = oldEventsRaw ? (typeof oldEventsRaw === "string" ? JSON.parse(oldEventsRaw) : oldEventsRaw) : [];
     
     for (let i = 0; i < finalMerged.length; i++) {
-      const ev = finalMerged[i];
-      // 尋找舊資料中是否已有改寫過的
-      const oldEv = oldEvents.find(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
-      
-      if (oldEv && oldEv.twOnlineTitle) {
-        ev.twOnlineTitle = oldEv.twOnlineTitle;
-        ev.twOnlineContent = oldEv.twOnlineContent;
-        ev.hasCasualty = oldEv.hasCasualty;
-      } else {
-        console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
-        const enriched = await rewriteToTWOnline(ev);
-        finalMerged[i] = enriched;
-        await delay(500); // 避免 AI API 頻率限制
-      }
-    }
+       const ev = finalMerged[i];
+       // 尋找舊資料中是否已有改寫過的或座標
+       const oldEv = oldEvents.find(o => o.id === ev.id || (o.title === ev.title && o.city === ev.city));
+       
+       if (oldEv) {
+         // 同一事件座標一旦寫入就鎖定
+         if (oldEv.lat && oldEv.lng) {
+           ev.lat = oldEv.lat;
+           ev.lng = oldEv.lng;
+         }
+
+         if (oldEv.twOnlineTitle) {
+           ev.twOnlineTitle = oldEv.twOnlineTitle;
+           ev.twOnlineContent = oldEv.twOnlineContent;
+           ev.hasCasualty = oldEv.hasCasualty;
+         } else {
+           console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
+           const enriched = await rewriteToTWOnline(ev);
+           finalMerged[i] = enriched;
+           await delay(500); // 避免 AI API 頻率限制
+         }
+       } else {
+         console.log(`🤖 正在改寫: ${ev.title || ev.text}`);
+         const enriched = await rewriteToTWOnline(ev);
+         finalMerged[i] = enriched;
+         await delay(500); // 避免 AI API 頻率限制
+       }
+     }
 
     await kv.set("taiwan_traffic_events", JSON.stringify(finalMerged));
     console.log(`💾 全部完工！最終合計: ${finalMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
