@@ -227,13 +227,18 @@ async function aiFilterNews(articles) {
 3. 【地點】必須在台灣境內，且能定位到縣市層級以上。
 
 【地點解析規則】（非常重要）：
-你是台灣新聞地點解析專家，請從新聞內文中擷取事件發生的精確地點：
-- 優先抽取：路名、地標、建築物名稱、公園名稱。
-- 次要抽取：區名。
-- 最後才用：縣市名。
-- 格式：縣市 + 區 + 詳細地點（例如：台北市北投區大業路123號）。
-- 如果內文完全沒有台灣地點，importance 設為 0。
+你是台灣新聞地點解析專家，請從新聞的標題和內容中，找出事件發生的地點：
+- 優先從「標題」抓取地點，標題有地點就以標題為主。
+- 標題沒有地點時，才從內容（摘要）中抓取。
+- 只抓取事件的「發生地點」，絕對不是人物的來源地、目的地、戶籍地或就醫地點。
+- 格式：縣市 + 區 + 詳細地點（例如：台北市松山區台鐵松山火車站）。
+- 如果標題與內容完全找不到台灣具體地點，importance 務必設為 0。
+- 絕對不要混用兩筆不同新聞的地點，確保每則輸出的地點與其 sources 來源完全對應。
 - 絕對不要猜測或捏造地點。
+
+【一致性驗證】：
+- 在處理聚合時，必須確認標題和內容（摘要）描述的是同一件事。
+- 絕對不要將不同時間、不同地點或不同性質的兩筆新聞錯誤合併。
 
 【類別判斷加強說明】
 類別定義：
@@ -255,6 +260,7 @@ async function aiFilterNews(articles) {
 對每則新聞或聚合後的事件，請回傳 JSON 陣列，每個物件格式如下：
 {
   "title": "主標題（最詳細的版本，20字內）",
+  "content": "事件簡短摘要（30-50字，請將新聞描述轉換為通順的句子）",
   "category": "criminal" | "traffic" | "disaster" | "activity",
   "location": "精確地點（格式：縣市+區+詳細地點）",
   "lat": 緯度,
@@ -483,7 +489,7 @@ async function fetchNews() {
           newsEvents.push({
             id: ai.sources[0]?.id || `NEWS_${Math.random().toString(36).slice(2)}`,
             title: cleanRSSContent(ai.title),
-            content: cleanRSSContent(ai.sources[0]?.title || ""),
+            content: cleanRSSContent(ai.content || ai.sources[0]?.title || ""),
             category: ai.category || "other",
             source: "news",
             url: ai.sources[0]?.url || "",
