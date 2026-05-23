@@ -1118,6 +1118,11 @@ async function rewriteToTWOnline(event) {
   }
 }
 
+function extractRoadName(location) {
+    const match = (location || "").match(/([^\d\s]+路|[^\d\s]+街|[^\d\s]+大道)/);
+    return match ? match[0] : null;
+}
+
 async function main() {
   try {
     console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
@@ -1280,18 +1285,32 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
     function isDuplicateEvent(newEvent, existingEvents) {
         const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
         const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
+        const newRoad = extractRoadName(newEvent.location || newEvent.city);
         
         return existingEvents.find(ev => {
             const existTitle = (ev.title || "").replace(/\s+/g, "").slice(0, 15);
             const existContent = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
+            const existRoad = extractRoadName(ev.location || ev.city);
             
-            // 標題前15字相同
+            // 1. 標題前15字相同
             if (newTitle === existTitle) return true;
             
-            // 內容前30字相同
+            // 2. 內容前30字相同
             if (newContent === existContent && newContent.length > 10) return true;
             
-            // 同城市 + 同類別 + 標題有5個以上相同字
+            // 3. 同一條路 + 同類別 + 同縣市 = 合併 (加強去重)
+            if (ev.category === newEvent.category && ev.city && newEvent.city) {
+                // 檢查縣市是否相同（取前三字比對，如 "彰化市" vs "彰化縣"）
+                const city1 = ev.city.slice(0, 3);
+                const city2 = newEvent.city.slice(0, 3);
+                
+                if (city1 === city2 && newRoad && existRoad && newRoad === existRoad) {
+                    console.log(`📎 [去重] 偵測到同路段事件合併: ${newRoad} (${newTitle})`);
+                    return true;
+                }
+            }
+
+            // 4. 同城市 + 同類別 + 標題有5個以上相同字
             if (ev.city === newEvent.city && ev.category === newEvent.category) {
                 let sameCount = 0;
                 for (const char of newTitle) {
