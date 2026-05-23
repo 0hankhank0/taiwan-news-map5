@@ -1,4 +1,5 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+require("dotenv").config();
 
 const mode = process.argv.includes("--mode=news") ? "news" : 
              process.argv.includes("--mode=traffic") ? "traffic" : "all";
@@ -9,6 +10,19 @@ const kv = new Redis({
   url: process.env.KV_REST_API_URL,
   token: process.env.KV_REST_API_TOKEN,
 });
+
+// 新增清除指令
+if (process.argv.includes('--clear-cache')) {
+  (async () => {
+    await kv.del('taiwan_news_cache');
+    await kv.del('taiwan_traffic_cache');
+    await kv.del('taiwan_traffic_events');
+    await kv.del('events:news');
+    await kv.del('events:traffic');
+    console.log('✅ KV 快取已清除 (包含新聞、交通及合併事件)');
+    process.exit(0);
+  })();
+}
 
 const MAPBOX_TOKEN = process.env.MAPBOX_TOKEN;
 
