@@ -846,17 +846,20 @@ async function postToThreads(event) {
     try {
       // 優先使用 AI 生成貼文內容
       const aiPrompt = THREADS_POST_PROMPT.replace("{events}", JSON.stringify({
-        title: event.title,
+        title: cleanRSSContent(event.title),
         city: event.city,
         category: event.category,
-        content: event.content
+        content: cleanRSSContent(event.content)
       }));
       const aiResponse = await callAzureAI(aiPrompt);
       text = aiResponse.trim();
       
-      // 確保包含網址
-      if (text && !text.includes("taiwan-news-map")) {
-        text += `\n${SITE_URL}`;
+      // 確保包含網址與小建議
+      if (text) {
+        if (!text.includes("taiwan-news-map")) {
+          text += `\n${SITE_URL}`;
+        }
+        text += `\n\n💡 小建議：點右上角選單，以外部瀏覽器開啟效果更佳！`;
       }
     } catch (e) {
       console.error("⚠️ [Threads] AI 生成貼文失敗，使用備用格式:", e.message);
@@ -903,7 +906,7 @@ async function postToThreads(event) {
 
       // Step 3: 建立留言內容（相關報導連結）
       const replyText = event.sources?.length 
-        ? `📰 相關報導：\n` + event.sources.slice(0, 3).map((s, i) => `${i + 1}. ${s.outlet}：${s.title}\n${s.url}`).join("\n\n") 
+        ? `📰 相關報導：\n` + event.sources.slice(0, 3).map((s, i) => `${i + 1}. ${s.outlet}：${cleanRSSContent(s.title)}\n${s.url}`).join("\n\n") 
         : null;
 
       if (replyText) {
