@@ -974,7 +974,7 @@
         <select id="city-filter-mobile" class="mobile-city-select"></select>
         <div class="mobile-pill">
             <button id="btn-tw-mobile" class="mode-btn active">台灣</button>
-            <button id="btn-global-mobile" class="mode-btn">全球</button>
+            <button id="btn-global-mobile" class="mode-btn">統計</button>
         </div>
         <div class="theme-toggle" style="margin-left: 5px;">
             <button id="btn-dark-mobile" class="mode-btn active">🌙</button>
@@ -1001,7 +1001,7 @@
         <select id="city-filter" class="styled-select"></select>
         <div class="mode-toggle">
             <button id="btn-tw" class="mode-btn active">台灣模式</button>
-            <button id="btn-global" class="mode-btn">全球視角</button>
+            <button id="btn-global" class="mode-btn">統計</button>
         </div>
         <div class="theme-toggle">
             <button id="btn-dark" class="mode-btn active">🌙 深色</button>
@@ -1043,6 +1043,40 @@
             <div class="contact">聯絡作者：gsdsdfssdf@gmail.com</div>
         </div>
     </aside>
+
+    <!-- STATS -->
+    <div id="stats-view" style="display:none;flex:1;min-width:0;overflow-y:auto;background:var(--bg-deep);padding:20px;flex-direction:column;gap:16px;"> 
+    
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"> 
+        <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;"> 
+          <div style="font-size:16px;margin-bottom:6px;">🪘</div> 
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">木魚敲打</div> 
+          <div id="stat-muyu" style="font-size:26px;font-weight:500;color:var(--text-primary);">—</div> 
+        </div> 
+        <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;"> 
+          <div style="font-size:16px;margin-bottom:6px;">🕯️</div> 
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">蠟燭點燃</div> 
+          <div id="stat-candle" style="font-size:26px;font-weight:500;color:var(--text-primary);">—</div> 
+        </div> 
+        <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;"> 
+          <div style="font-size:16px;margin-bottom:6px;color:var(--accent);">📍</div> 
+          <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">當前事件</div> 
+          <div id="stat-total" style="font-size:26px;font-weight:500;color:var(--accent);">—</div> 
+        </div> 
+      </div> 
+    
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;"> 
+        <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;"> 
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">城市事件排行</div> 
+          <div id="city-bars"></div> 
+        </div> 
+        <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;"> 
+          <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">熱門事件（反應最多）</div> 
+          <div id="hot-events"></div> 
+        </div> 
+      </div> 
+    
+    </div> 
 
     <!-- MAP -->
     <section id="map"></section>
@@ -1815,19 +1849,139 @@
     }
 
     // ── MODE ─────────────────────────────────────────────────
-    function switchMode(mode){
-        isTaiwanMode=mode;
-        ["btn-tw","btn-tw-mobile"].forEach(id=>{
-            const b=document.getElementById(id);
-            if(b) b.classList.toggle("active",mode);
-        });
-        ["btn-global","btn-global-mobile"].forEach(id=>{
-            const b=document.getElementById(id);
-            if(b) b.classList.toggle("active",!mode);
-        });
-        flyToLatLng(mode?taiwanView.center:globalView.center, mode?taiwanView.zoom:globalView.zoom, 800);
-        renderEvents();
-    }
+    const BAR_COLORS = ['#4f8cff','#a78bfa','#34d399','#fb923c','#f05a5a','#fbbf24','#5eead4','#c4b5fd','#86efac','#fdba74']; 
+ 
+    const CAT_COLORS = { 
+      traffic:   { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
+      accident:  { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
+      disaster:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'災害事故' }, 
+      criminal:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'刑事案件' }, 
+      medical:   { bg:'rgba(251,146,60,0.15)',  color:'#fb923c',  text:'醫療緊急' }, 
+      construction:{ bg:'rgba(251,191,36,0.15)',color:'#fbbf24',  text:'施工管制' }, 
+      activity:  { bg:'rgba(52,211,153,0.15)',  color:'#34d399',  text:'活動'     }, 
+      other:     { bg:'rgba(107,114,128,0.15)', color:'#6b7280',  text:'其他'     }, 
+    }; 
+ 
+    function switchMode(mode){ 
+      isTaiwanMode = mode; 
+      const mapEl    = document.getElementById('map'); 
+      const statsEl  = document.getElementById('stats-view'); 
+ 
+      ['btn-tw','btn-tw-mobile'].forEach(id=>{ 
+        const b=document.getElementById(id); 
+        if(b) b.classList.toggle('active', mode); 
+      }); 
+      ['btn-global','btn-global-mobile'].forEach(id=>{ 
+        const b=document.getElementById(id); 
+        if(b) b.classList.toggle('active', !mode); 
+      }); 
+ 
+      if(mode){ 
+        mapEl.style.display   = ''; 
+        statsEl.style.display = 'none'; 
+        flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
+        renderEvents(); 
+      } else { 
+        mapEl.style.display   = 'none'; 
+        statsEl.style.display = 'flex'; 
+        renderStatsView(); 
+      } 
+    } 
+ 
+    async function renderStatsView(){ 
+      const events = parsedEvents.filter(ev=>{ 
+        const lat=Number(ev.lat), lng=Number(ev.lng); 
+        return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat,lng); 
+      }); 
+ 
+      // 總數 
+      const totalEl = document.getElementById('stat-total'); 
+      if(totalEl) totalEl.textContent = events.length; 
+ 
+      // 城市排行 
+      const cityMap = {}; 
+      events.forEach(ev=>{ 
+        if(!ev.city) return; 
+        const city = (ev.city||'').replace(/市$|縣$/,'').slice(0,3); 
+        if(!city) return; 
+        cityMap[city] = (cityMap[city]||0) + 1; 
+      }); 
+      const sorted = Object.entries(cityMap).sort((a,b)=>b[1]-a[1]).slice(0,8); 
+      const max = sorted[0]?.[1] || 1; 
+      const barsEl = document.getElementById('city-bars'); 
+      if(barsEl){ 
+        barsEl.innerHTML = sorted.map(([city,count],i)=>` 
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"> 
+            <span style="font-size:12px;color:var(--text-secondary);width:52px;text-align:right;flex-shrink:0;">${city}</span> 
+            <div style="flex:1;height:7px;background:rgba(99,120,180,0.1);border-radius:4px;overflow:hidden;"> 
+              <div style="height:100%;border-radius:4px;width:${Math.round(count/max*100)}%;background:${BAR_COLORS[i]};"></div> 
+            </div> 
+            <span style="font-size:11px;color:var(--text-muted);width:24px;">${count}</span> 
+          </div> 
+        `).join(''); 
+      } 
+ 
+      // Reaction 總數 
+      fetch('/api/reactions/total') 
+        .then(r=>r.json()) 
+        .then(data=>{ 
+          const m=document.getElementById('stat-muyu'); 
+          const c=document.getElementById('stat-candle'); 
+          if(m) m.textContent=(data.muyu||0).toLocaleString(); 
+          if(c) c.textContent=(data.candle||0).toLocaleString(); 
+        }) 
+        .catch(()=>{ 
+          const m=document.getElementById('stat-muyu'); 
+          const c=document.getElementById('stat-candle'); 
+          if(m) m.textContent='0'; 
+          if(c) c.textContent='0'; 
+        }); 
+ 
+      // 熱門事件：逐一抓 reaction，取前4 
+      const hotEl = document.getElementById('hot-events'); 
+      if(!hotEl) return; 
+      hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">載入中...</div>'; 
+ 
+      const withReactions = await Promise.all( 
+        events.map(async ev=>{ 
+          try{ 
+            const r = await fetch(`/api/reaction?eventId=${ev.id}`); 
+            const d = await r.json(); 
+            return { ...ev, muyu: d.muyu||0, candle: d.candle||0, total:(d.muyu||0)+(d.candle||0) }; 
+          }catch{ 
+            return { ...ev, muyu:0, candle:0, total:0 }; 
+          } 
+        }) 
+      ); 
+ 
+      const top4 = withReactions 
+        .filter(ev=>ev.total > 0) 
+        .sort((a,b)=>b.total-a.total) 
+        .slice(0,4); 
+ 
+      if(!top4.length){ 
+        hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">尚無反應資料</div>'; 
+        return; 
+      } 
+ 
+      hotEl.innerHTML = top4.map((ev,i)=>{ 
+        const cat = CAT_COLORS[ev.category] || CAT_COLORS.other; 
+        const title = ev.twOnlineTitle || ev.title || '未命名事件'; 
+        const city  = ev.city || ''; 
+        const border = i < top4.length-1 ? 'border-bottom:1px solid rgba(99,120,180,0.1);' : ''; 
+        return ` 
+          <div style="padding:10px 0;${border}"> 
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"> 
+              <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${cat.bg};color:${cat.color};">${cat.text}</span> 
+              <span style="font-size:11px;color:var(--text-secondary);">🪘 ${ev.muyu} &nbsp;🕯️ ${ev.candle}</span> 
+            </div> 
+            <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
+            <div style="font-size:11px;color:var(--text-muted);">📍 ${city}</div> 
+          </div> 
+        `; 
+      }).join(''); 
+    } 
+
 
     // ── SEARCH ───────────────────────────────────────────────
     function handleSearch(e){

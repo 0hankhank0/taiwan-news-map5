@@ -3,6 +3,10 @@
     {
       "source": "/api/events",
       "destination": "/api/events.js"
+    },
+    {
+      "source": "/api/reactions/total",
+      "destination": "/api/reactions-total.js"
     }
   ]
 }
