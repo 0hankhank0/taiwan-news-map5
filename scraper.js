@@ -239,12 +239,13 @@ async function aiAnalyzeSingleNews(article) {
 3. 【時效性】5小時前以上的舊新聞不發。
 
 【地點解析規則】（非常重要）：
-請從這則新聞的標題和內容中，找出事件發生的精確地點：
+請從這則新聞的標題 and 內容中，找出事件發生的精確地點：
 - 優先從「標題」抓取地點，標題有地點就以標題為主。
 - 標題沒有地點時，才從內容（摘要）中抓取。
 - 只抓取事件的「發生地點」，絕對不是人物的來源地、目的地、戶籍地或就醫地點。
+- 地點必須精確到街道或地標，禁止只填縣市名。
 - 格式：縣市 + 區 + 詳細地點（例如：台北市松山區台鐵松山火車站）。
-- 如果標題與內容完全找不到台灣具體地點，importance 務必設為 0。
+- 如果標題與內容完全找不到台灣具體地點，或只能確定到縣市，location 請填 null，不要亂猜，importance 務必設為 0。
 - 絕對不要猜測或捏造地點。
 
 【回傳格式】：
@@ -300,6 +301,15 @@ const TAIWAN_CITY_COORDS = {
 
 // geocode 失敗計數（同一地名連續失敗就跳過）
 const geocodeFailCache = new Map();
+
+function cleanLocationText(location) {
+  if (!location) return "";
+  return location
+    .replace(/（[^）]*）|\([^)]*\)/g, "") // 去掉括號說明文字
+    .split(/[，,]/)[0] // 遇到逗號只取第一段
+    .replace(/附近|一帶|週邊|路口/g, "") // 去掉模糊詞
+    .trim();
+}
 
 async function geocode(locationText) {
   if (!locationText) return null;
@@ -365,7 +375,17 @@ function isOnTaiwanLand(lat, lng) {
 
 async function geocodeWithCity(address, city) {
   if (!address) return null;
-  const fullAddress = address.includes(city) ? address : `${city}${address}`;
+  
+  const cleanedAddress = cleanLocationText(address);
+  const jitter = () => (Math.random() - 0.5) * 0.006; // 約 300 公尺偏移
+
+  // 如果清理後只剩縣市名，直接回傳城市中心點
+  if (TAIWAN_CITY_COORDS[cleanedAddress]) {
+    const coords = TAIWAN_CITY_COORDS[cleanedAddress];
+    return { lat: coords.lat + jitter(), lng: coords.lng + jitter() };
+  }
+
+  const fullAddress = cleanedAddress.includes(city) ? cleanedAddress : `${city}${cleanedAddress}`;
   const query = `${fullAddress} 台灣`;
   const coords = await geocode(query);
   
@@ -381,7 +401,6 @@ async function geocodeWithCity(address, city) {
     return null;
   }
 
-  const jitter = () => (Math.random() - 0.5) * 0.02;
   return { lat: cityCenter.lat + jitter(), lng: cityCenter.lng + jitter() };
 }
 
