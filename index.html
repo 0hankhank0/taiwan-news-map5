@@ -1959,27 +1959,7 @@
  body.tw-online-mode #map::after { 
      content: none; 
  }
-
-    
-        /* 修正：縮放時 marker 視覺定位漂移 + 縮小圖釘 */
-        .mapboxgl-marker .map-pin {
-            width: 34px !important;
-            height: 44px !important;
-            transform-origin: 50% 100% !important;
-        }
-        .mapboxgl-marker .map-pin-icon {
-            top: 38% !important;
-        }
-        .mapboxgl-marker .marker-svg-icon svg {
-            width: 14px !important;
-            height: 14px !important;
-        }
-        .mapboxgl-marker .pin-pulse {
-            width: 28px !important;
-            height: 28px !important;
-        }
-
-    </style>
+</style>
 </head>
 <body>
 
@@ -3095,7 +3075,7 @@
                 closeButton: true,
                 closeOnClick: false,
                 maxWidth: "328px",
-                offset: 22
+                offset: [0, -18]
             });
             enableSubpixelPositioning(popup);
             popup.setHTML(popupHtml);
@@ -3109,15 +3089,10 @@
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[ev.category] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
+                color: markerStyle.color,
+                scale: 0.65,
                 anchor: "bottom",
-  offset: [0, 0]
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
