@@ -49,7 +49,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
@@ -59,54 +59,90 @@
 
     <style>
         :root {
-            /* ── 台灣本土核心色 ── */
-            --bg-dark: #121214;
-            --bg-deep: #121214;
-            --bg-panel: #18181c;
-            --bg-card: #1e1e24;
-            --bg-card-hover: #26262e;
-            --bg-elevated: #2c2c36;
-            --border: rgba(120, 118, 140, 0.2);
-            --border-bright: rgba(160, 155, 180, 0.32);
-            --text-primary: #ece8e4;
-            --text-secondary: #9a9590;
-            --text-muted: #5c5854;
-            --accent: #5a8fd4;
-            --accent-glow: rgba(90, 143, 212, 0.22);
-            --accent-2: #9b8ec4;
-            /* 情感功能色 */
-            --incense-warm: #DDA853;
-            --incense-warm-soft: rgba(221, 168, 83, 0.18);
-            --candle-glow: #FF7A00;
-            --candle-glow-soft: rgba(255, 122, 0, 0.22);
-            /* 警示色系（高彩度、柔和暈染） */
-            --alert-traffic: #4A90E8;
-            --alert-traffic-glow: rgba(74, 144, 232, 0.42);
-            --alert-fire: #E87830;
-            --alert-fire-glow: rgba(255, 122, 0, 0.38);
-            --alert-arson: #D64545;
-            --alert-arson-glow: rgba(214, 69, 69, 0.4);
-            --alert-disaster: #C93535;
-            --alert-disaster-glow: rgba(201, 53, 53, 0.38);
-            --red: var(--alert-arson);
-            --orange: var(--alert-fire);
-            --green: #4db88a;
-            --yellow: #e8b84a;
+            /* ── VI 品牌色（taiwan-map-ui-design.html）── */
+            --brand-crimson: #C0392B;
+            --brand-crimson-deep: #922B21;
+            --brand-crimson-glow: rgba(192, 57, 43, 0.18);
+            --brand-incense: #D35400;
+            --brand-incense-light: rgba(211, 84, 0, 0.15);
+            --brand-candle: #E8A020;
+            --brand-candle-light: rgba(232, 160, 32, 0.15);
+            --brand-candle-flame: #F5C842;
+            --brand-muyu: #7D5A3C;
+            --brand-muyu-light: rgba(125, 90, 60, 0.15);
+
+            /* ── 背景色階 ── */
+            --bg-void: #060A14;
+            --bg-dark: #060A14;
+            --bg-deep: #0C1120;
+            --bg-panel: #101828;
+            --bg-card: #162035;
+            --bg-card-hover: #1C2A42;
+            --bg-elevated: #213050;
+
+            /* ── 文字 ── */
+            --text-primary: #E8EDF8;
+            --text-secondary: #8A9BB8;
+            --text-muted: #4A5878;
+            --text-ghost: #2A3450;
+
+            /* ── 邊框 ── */
+            --border: rgba(100, 130, 200, 0.12);
+            --border-bright: rgba(100, 130, 200, 0.28);
+            --border-accent: rgba(192, 57, 43, 0.35);
+
+            /* ── 事件類別色 ── */
+            --cat-disaster: #C0392B;
+            --cat-criminal: #8E44AD;
+            --cat-traffic: #2471A3;
+            --cat-medical: #D35400;
+            --cat-activity: #1E8449;
+            --cat-other: #4A5878;
+
+            /* ── 字體 ── */
+            --font-body: "Space Grotesk", "Noto Sans TC", sans-serif;
+            --font-display: "Noto Serif TC", serif;
+            --font-mono: "JetBrains Mono", "Space Mono", monospace;
+
+            /* ── 相容舊變數 ── */
+            --incense-warm: var(--brand-candle-flame);
+            --incense-warm-soft: var(--brand-muyu-light);
+            --candle-glow: var(--brand-candle);
+            --candle-glow-soft: var(--brand-candle-light);
+            --accent: var(--cat-traffic);
+            --accent-glow: var(--brand-crimson-glow);
+            --accent-2: var(--cat-criminal);
+            --alert-traffic: var(--cat-traffic);
+            --alert-traffic-glow: rgba(36, 113, 163, 0.42);
+            --alert-fire: var(--brand-incense);
+            --alert-fire-glow: var(--brand-incense-light);
+            --alert-arson: var(--brand-crimson);
+            --alert-arson-glow: var(--brand-crimson-glow);
+            --alert-disaster: var(--cat-disaster);
+            --alert-disaster-glow: var(--brand-crimson-glow);
+            --red: var(--brand-crimson);
+            --orange: var(--brand-incense);
+            --green: var(--cat-activity);
+            --yellow: var(--brand-candle-flame);
+
+            --radius-xs: 6px;
             --radius-sm: 10px;
             --radius-md: 16px;
             --radius-lg: 22px;
             --radius-xl: 28px;
+            --radius-full: 999px;
             color-scheme: dark;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: "Noto Sans TC", sans-serif;
-            background: var(--bg-deep);
+            font-family: var(--font-body);
+            background: var(--bg-void);
             color: var(--text-primary);
             overflow: hidden;
             height: 100vh;
+            -webkit-font-smoothing: antialiased;
         }
 
         /* ── HEADER ─────────────────────────────────────────── */
@@ -141,16 +177,18 @@
             flex-shrink: 0;
         }
         .brand-title {
+            font-family: var(--font-display);
             font-size: 15px;
             font-weight: 700;
-            letter-spacing: 0.04em;
+            letter-spacing: 0.02em;
             color: var(--text-primary);
         }
         .brand-sub {
             font-size: 10px;
             color: var(--text-muted);
-            font-family: "Space Mono", monospace;
-            letter-spacing: 0.06em;
+            font-family: var(--font-mono);
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
             margin-top: 1px;
         }
 
@@ -172,7 +210,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             font-size: 13px;
             font-weight: 500;
             padding: 7px 32px 7px 14px;
@@ -206,7 +244,7 @@
             border: none;
             cursor: pointer;
             transition: all 0.2s;
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
         }
         .mode-btn.active {
             background: var(--accent);
@@ -235,7 +273,7 @@
 
         /* ── STATUS PILL ────────────────────────────────────── */
         #status-text {
-            font-family: "Space Mono", monospace;
+            font-family: var(--font-mono);
             font-size: 11px;
             color: var(--text-muted);
             padding: 5px 12px;
@@ -249,18 +287,20 @@
         .donate-btn {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 7px 16px;
-            background: linear-gradient(135deg, #92400e, #b45309);
-            color: #fde68a;
+            gap: 8px;
+            padding: 9px 20px;
+            background: linear-gradient(135deg, #7D2D00, #B84000);
+            color: #FFD580;
             font-size: 12px;
-            font-weight: 800;
-            border: 1px solid rgba(251,191,36,0.3);
+            font-weight: 700;
+            border: 1px solid rgba(255, 180, 50, 0.25);
             border-radius: var(--radius-sm);
             cursor: pointer;
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
             transition: all 0.2s;
-            box-shadow: 0 2px 12px rgba(180,83,9,0.3);
+            box-shadow: 0 2px 12px rgba(180, 60, 0, 0.35);
             text-decoration: none;
         }
         .donate-btn:hover {
@@ -345,6 +385,7 @@
             margin-bottom: 12px;
         }
         .sidebar-title {
+            font-family: var(--font-display);
             font-size: 13px;
             font-weight: 700;
             color: var(--text-secondary);
@@ -352,12 +393,12 @@
             letter-spacing: 0.1em;
         }
         .count-pill {
-            font-family: "Space Mono", monospace;
+            font-family: var(--font-mono);
             font-size: 11px;
             font-weight: 700;
             color: var(--accent);
             background: var(--accent-glow);
-            border: 1px solid rgba(79,140,255,0.3);
+            border: 1px solid var(--border-bright);
             padding: 3px 10px;
             border-radius: 99px;
         }
@@ -381,7 +422,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             font-size: 13px;
             padding: 9px 14px 9px 36px;
             border-radius: var(--radius-sm);
@@ -390,55 +431,55 @@
         }
         .search-input::placeholder { color: var(--text-muted); }
         .search-input:focus {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
+            border-color: var(--brand-crimson);
+            box-shadow: 0 0 0 3px var(--brand-crimson-glow);
         }
 
-        /* ── FILTER CHIPS ────────────────────────────────────── */
+        /* ── FILTER CHIPS（VI v2）────────────────────────────── */
         #category-filters {
             display: flex;
             flex-wrap: wrap;
-            gap: 7px;
+            gap: 8px;
         }
         .filter-chip {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 8px 14px;
-            border-radius: 99px;
-            font-size: 12.5px;
-            font-weight: 800;
-            border: none;
+            gap: 7px;
+            padding: 7px 14px 7px 10px;
+            border-radius: var(--radius-full);
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.15s, filter 0.15s;
-            font-family: "Noto Sans TC", sans-serif;
-            color: #fff;
+            transition: all 0.15s;
+            font-family: var(--font-body);
             letter-spacing: 0.02em;
-            background: var(--chip-bg, #475569);
-            box-shadow: 0 3px 10px rgba(0,0,0,0.35);
-            filter: brightness(0.72) saturate(0.8);
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
         }
         .filter-chip:hover {
-            filter: brightness(0.88) saturate(1);
+            border-color: var(--border-bright);
+            color: var(--text-primary);
             transform: translateY(-1px);
-            box-shadow: 0 5px 14px rgba(0,0,0,0.4);
         }
         .filter-chip.active {
-            filter: brightness(1) saturate(1);
-            transform: translateY(-1px);
-            box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+            color: #fff;
+            border-color: transparent;
+            background: var(--chip-bg, var(--cat-other));
+            box-shadow: 0 4px 16px color-mix(in srgb, var(--chip-bg, #4A5878) 40%, transparent);
         }
         .chip-icon {
             display: inline-flex;
             align-items: center;
-            width: 15px;
-            height: 15px;
+            width: 13px;
+            height: 13px;
             flex-shrink: 0;
+            opacity: 0.9;
         }
         .chip-icon svg {
-            width: 15px;
-            height: 15px;
-            stroke-width: 2.2px;
+            width: 13px;
+            height: 13px;
+            stroke-width: 1.5px;
         }
 
         /* ── EVENT LIST ──────────────────────────────────────── */
@@ -451,13 +492,14 @@
         #event-list::-webkit-scrollbar-track { background: transparent; }
         #event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
-        /* ── EVENT CARD ──────────────────────────────────────── */
+        /* ── EVENT CARD（VI v2）──────────────────────────────── */
         .event-card {
-            padding: 14px 18px;
+            padding: 16px 20px;
             border-bottom: 1px solid var(--border);
             cursor: pointer;
             transition: background 0.15s;
             position: relative;
+            background: var(--bg-panel);
         }
         .event-card::before {
             content: "";
@@ -482,18 +524,20 @@
         .card-city {
             font-size: 10px;
             font-weight: 700;
-            letter-spacing: 0.1em;
+            letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: var(--accent);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
         }
         .card-badges { display: flex; align-items: center; gap: 5px; }
 
         .card-title {
-            font-size: 13px;
+            font-size: 13.5px;
             font-weight: 600;
-            line-height: 1.55;
+            line-height: 1.5;
             color: var(--text-primary);
-            margin-bottom: 5px;
+            margin-bottom: 6px;
+            letter-spacing: -0.01em;
         }
         .card-content {
             font-size: 11.5px;
@@ -549,7 +593,7 @@
             background: none;
             border: none;
             cursor: pointer;
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             transition: opacity 0.15s;
             padding: 0;
             text-decoration: none;
@@ -562,12 +606,12 @@
         .cat-badge {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
-            padding: 3px 8px;
-            border-radius: 99px;
+            gap: 5px;
+            padding: 3px 9px 3px 6px;
+            border-radius: var(--radius-full);
             font-size: 10px;
-            font-weight: 800;
-            color: #fff;
+            font-weight: 700;
+            letter-spacing: 0.04em;
         }
         .badge-svg-icon {
             display: inline-flex;
@@ -590,7 +634,7 @@
             border-radius: 99px;
             font-size: 10px;
             font-weight: 700;
-            font-family: "Space Mono", monospace;
+            font-family: var(--font-mono);
         }
 
         /* ── SIDEBAR FOOTER ─────────────────────────────────── */
@@ -632,7 +676,7 @@
             backdrop-filter: blur(12px);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             font-size: 13px;
             padding: 9px 14px;
             border-radius: var(--radius-md);
@@ -660,7 +704,7 @@
             backdrop-filter: blur(12px);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             font-size: 12px;
             font-weight: 600;
             padding: 8px 28px 8px 14px;
@@ -674,17 +718,29 @@
             flex-shrink: 0;
         }
 
-        /* ── POPUP ───────────────────────────────────────────── */
+        /* ── POPUP（VI v2）────────────────────────────────────── */
         .custom-popup.mapboxgl-popup {
-            max-width: 320px !important;
+            max-width: 328px !important;
         }
         .custom-popup .mapboxgl-popup-content {
+            position: relative;
+            overflow: hidden;
             background: var(--bg-panel);
             color: var(--text-primary);
             border-radius: var(--radius-lg);
-            box-shadow: 0 24px 48px rgba(0,0,0,0.55);
-            border: 1px solid var(--border);
-            padding: 20px 22px;
+            box-shadow: 0 28px 56px rgba(0, 0, 0, 0.6);
+            border: 1px solid var(--border-bright);
+            padding: 22px 24px 20px;
+        }
+        .custom-popup .mapboxgl-popup-content::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--popup-accent, var(--brand-crimson));
+            border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
         .custom-popup .mapboxgl-popup-close-button {
             color: var(--text-muted);
@@ -699,15 +755,20 @@
         .custom-popup .mapboxgl-popup-close-button:hover { color: var(--text-primary); }
         .custom-popup .mapboxgl-popup-tip { border-top-color: var(--bg-panel) !important; }
 
-        .popup-inner { display: flex; flex-direction: column; }
+        .popup-inner {
+            display: flex;
+            flex-direction: column;
+            padding-top: 4px;
+        }
         .popup-title {
+            font-family: var(--font-display);
             font-size: 14px;
             font-weight: 700;
             margin: 0;
             color: var(--text-primary);
             padding-right: 24px;
-            line-height: 1.5;
-            letter-spacing: 0.01em;
+            line-height: 1.45;
+            letter-spacing: -0.01em;
         }
         .popup-top {
             display: flex;
@@ -721,8 +782,8 @@
             font-size: 12px;
             font-weight: 400;
             color: var(--text-secondary);
-            line-height: 1.75;
-            margin-bottom: 16px;
+            line-height: 1.7;
+            margin-bottom: 18px;
         }
         .popup-meta {
             display: flex;
@@ -736,44 +797,82 @@
         .popup-reactions { margin-bottom: 16px; }
         .popup-actions { display: flex; gap: 10px; flex-wrap: wrap; }
         .popup-btn {
-            display: inline-flex; align-items: center; gap: 5px;
-            padding: 6px 13px;
-            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 7px 14px;
+            border-radius: var(--radius-xs);
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
-            font-family: "Noto Sans TC", sans-serif;
-            border: none;
+            font-family: var(--font-body);
+            border: 1px solid;
             transition: all 0.15s;
             text-decoration: none;
+            letter-spacing: 0.04em;
         }
-        .popup-btn.primary { background: rgba(79,140,255,0.15); color: var(--accent); border: 1px solid rgba(79,140,255,0.3); }
-        .popup-btn.primary:hover { background: rgba(79,140,255,0.25); }
-        .popup-btn.danger { background: rgba(240,90,90,0.12); color: var(--red); border: 1px solid rgba(240,90,90,0.25); }
-        .popup-btn.danger:hover { background: rgba(240,90,90,0.2); }
+        .popup-btn svg { width: 11px; height: 11px; }
+        .popup-btn.primary {
+            background: var(--brand-crimson-glow);
+            color: #E8856A;
+            border-color: rgba(192, 57, 43, 0.4);
+        }
+        .popup-btn.primary:hover { background: rgba(192, 57, 43, 0.25); }
+        .popup-btn.danger {
+            background: rgba(100, 130, 200, 0.08);
+            color: var(--text-secondary);
+            border-color: var(--border-bright);
+        }
+        .popup-btn.danger:hover {
+            background: rgba(100, 130, 200, 0.15);
+            color: var(--text-primary);
+        }
 
-        /* ── MARKER ──────────────────────────────────────────── */
-        .custom-marker {
+        /* ── 地圖 Marker 淚滴 Pin（VI v2）────────────────────── */
+        .map-pin {
+            position: relative;
+            cursor: pointer;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+        .map-pin .pin-outer {
+            position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
+        }
+        .map-pin .pin-body {
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 1;
+        }
+        .map-pin .pin-icon {
+            transform: rotate(45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .map-pin .pin-pulse {
+            position: absolute;
             border-radius: 50%;
-            color: #fff;
-            font-size: 14px;
-            border: 2.5px solid rgba(255,255,255,0.22);
-            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+            opacity: 0.3;
+            animation: pulse-ring 2s ease-out infinite;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -58%);
+            z-index: 0;
         }
-        .custom-marker.marker-pulse {
-            animation: markerBreath 2.4s ease-in-out infinite;
+        @keyframes pulse-ring {
+            0%   { transform: translate(-50%, -58%) scale(0.75); opacity: 0.45; }
+            100% { transform: translate(-50%, -58%) scale(2.1); opacity: 0; }
         }
-        @keyframes markerBreath {
-            0%, 100% { filter: brightness(1); }
-            50% { filter: brightness(1.12); }
-        }
-        .custom-marker:hover .marker-svg-icon {
-            transform: scale(1.15);
+        .map-pin:hover .pin-icon .marker-svg-icon {
+            transform: scale(1.1);
         }
         .marker-svg-icon {
             display: inline-flex;
@@ -799,7 +898,7 @@
             color: var(--text-primary);
             padding: 6px 10px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.4);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
         }
         .custom-tooltip .mapboxgl-popup-tip {
             display: none;
@@ -810,72 +909,88 @@
             stroke: #fff;
             stroke-width: 1.5px;
         }
-        /* ── 情感互動（木魚 / 蠟燭）──────────────────────────── */
-        .reaction-buttons {
+        /* ── 情感互動 react-btn（VI v2）──────────────────────── */
+        .reaction-buttons,
+        .reaction-bar {
             display: flex;
-            gap: 12px;
+            align-items: center;
+            gap: 10px;
             flex-wrap: wrap;
         }
         .reaction-btn {
-            position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 8px 14px;
+            gap: 7px;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
             font-size: 12px;
             font-weight: 600;
-            color: var(--text-primary);
             cursor: pointer;
-            font-family: "Noto Sans TC", sans-serif;
-            transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
-            overflow: visible;
+            border: 1px solid;
+            transition: all 0.18s;
+            font-family: var(--font-body);
+            position: relative;
+            overflow: hidden;
+            letter-spacing: 0.02em;
         }
-        .reaction-btn:hover:not(:disabled) {
-            border-color: var(--border-bright);
+        .reaction-btn::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: currentColor;
+            opacity: 0;
+            transition: opacity 0.15s;
         }
-        .reaction-btn.muyu-btn:hover:not(:disabled) {
-            border-color: rgba(221, 168, 83, 0.45);
-            box-shadow: 0 0 12px var(--incense-warm-soft);
+        .reaction-btn:hover:not(:disabled)::after { opacity: 0.08; }
+        .reaction-btn:active:not(:disabled) { transform: scale(0.96); }
+        .reaction-btn.muyu-btn {
+            background: var(--brand-muyu-light);
+            border-color: rgba(125, 90, 60, 0.35);
+            color: #C4956B;
         }
-        .reaction-btn.candle-btn:hover:not(:disabled) {
-            border-color: rgba(255, 122, 0, 0.4);
-            box-shadow: 0 0 14px var(--candle-glow-soft);
+        .reaction-btn.candle-btn {
+            background: var(--brand-candle-light);
+            border-color: rgba(232, 160, 32, 0.35);
+            color: var(--brand-candle-flame);
         }
-        .reaction-btn.active.muyu-btn {
-            background: var(--incense-warm-soft);
-            border-color: rgba(221, 168, 83, 0.5);
-            color: var(--incense-warm);
+        .reaction-btn.muyu-btn.active {
+            background: var(--brand-muyu);
+            border-color: var(--brand-muyu);
+            color: #fff;
         }
-        .reaction-btn.active.candle-btn {
-            background: var(--candle-glow-soft);
-            border-color: rgba(255, 122, 0, 0.45);
-            color: var(--candle-glow);
+        .reaction-btn.candle-btn.active {
+            background: rgba(232, 160, 32, 0.8);
+            border-color: var(--brand-candle);
+            color: #2A1A00;
         }
-        .reaction-btn:disabled { cursor: default; opacity: 0.85; }
-        .reaction-btn.dimmed { opacity: 0.38; }
+        .reaction-btn .count {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            min-width: 18px;
+        }
+        .reaction-btn:disabled { cursor: default; opacity: 0.88; }
+        .reaction-btn.dimmed { opacity: 0.35; pointer-events: none; }
         .candle-flame {
-            display: inline-block;
+            display: inline-flex;
             transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1), filter 0.35s ease;
         }
         .reaction-btn.candle-lit .candle-flame {
             animation: candleBreath 2.2s ease-in-out infinite;
-            filter: drop-shadow(0 0 6px var(--candle-glow));
+            filter: drop-shadow(0 0 8px var(--brand-candle));
         }
         @keyframes candleBreath {
-            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px var(--candle-glow)); }
-            50% { transform: scale(1.18); filter: drop-shadow(0 0 10px var(--candle-glow)); }
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px var(--brand-candle)); }
+            50% { transform: scale(1.2); filter: drop-shadow(0 0 12px var(--brand-candle-flame)); }
         }
         .merit-float {
             position: fixed;
             pointer-events: none;
             z-index: 10050;
+            font-family: var(--font-display);
             font-size: 13px;
             font-weight: 700;
-            color: var(--incense-warm);
-            text-shadow: 0 0 12px rgba(221, 168, 83, 0.7);
+            color: var(--brand-candle-flame);
+            text-shadow: 0 0 14px rgba(232, 160, 32, 0.75);
             animation: meritRise 1.1s ease-out forwards;
             white-space: nowrap;
         }
@@ -891,7 +1006,7 @@
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            border: 2px solid rgba(221, 168, 83, 0.65);
+            border: 2px solid rgba(196, 149, 107, 0.7);
             animation: meritRipple 0.75s ease-out forwards;
         }
         @keyframes meritRipple {
@@ -966,7 +1081,7 @@
             background: var(--bg-card);
             border: 1px solid var(--border);
             color: var(--text-primary);
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             font-size: 13px;
             padding: 9px 13px;
             border-radius: var(--radius-sm);
@@ -985,7 +1100,7 @@
             border-radius: var(--radius-sm);
             font-size: 13px;
             font-weight: 700;
-            font-family: "Noto Sans TC", sans-serif;
+            font-family: var(--font-body);
             cursor: pointer;
             border: none;
             transition: all 0.2s;
@@ -1013,7 +1128,7 @@
             box-shadow: 0 0 40px var(--accent-glow);
         }
         .beta-title { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
-        .beta-subtitle { font-family: "Space Mono", monospace; font-size: 11px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 20px; }
+        .beta-subtitle { font-family: var(--font-mono); font-size: 11px; color: var(--accent); letter-spacing: 0.1em; margin-bottom: 20px; }
         .beta-desc { font-size: 13px; line-height: 1.8; color: var(--text-secondary); margin-bottom: 28px; }
         .btn-primary { background: linear-gradient(135deg, var(--accent), #6aa3ff); color: #fff; box-shadow: 0 4px 20px var(--accent-glow); }
         .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
@@ -1028,7 +1143,7 @@
         .empty-state p { font-size: 13px; }
 
         /* ── MAPBOX OVERRIDES ────────────────────────────────── */
-        .mapboxgl-map { background: var(--bg-dark); }
+        .mapboxgl-map { background: var(--bg-void); }
 
 /* ══ TW ONLINE MODE — Cyberpunk UI Overlay ══════════════════ */ 
  
@@ -1103,7 +1218,7 @@
      color: #00ffaa; 
      text-shadow: 0 0 10px rgba(0, 255, 170, 0.6); 
      letter-spacing: 0.15em; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .brand-sub { 
@@ -1128,7 +1243,7 @@
      background: rgba(0, 255, 170, 0.05); 
      border: 1px solid rgba(0, 255, 170, 0.25); 
      color: #00ffaa; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      text-shadow: 0 0 6px rgba(0, 255, 170, 0.4); 
      animation: statusBlink 4s ease-in-out infinite; 
  } 
@@ -1152,7 +1267,7 @@
  body.tw-online-mode .sidebar-title { 
      color: #00ffaa; 
      text-shadow: 0 0 8px rgba(0, 255, 170, 0.5); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      letter-spacing: 0.2em; 
  } 
  
@@ -1173,7 +1288,7 @@
      background: rgba(0, 10, 15, 0.8); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
      color: #c8fff0; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .search-input::placeholder { color: rgba(0, 255, 170, 0.3); } 
@@ -1184,7 +1299,7 @@
  } 
  
  body.tw-online-mode .filter-chip { 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 10px; 
      letter-spacing: 0.08em; 
      border: 1px solid transparent; 
@@ -1220,7 +1335,7 @@
  
  body.tw-online-mode .card-city { 
      color: #00ffaa; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 9px; 
      letter-spacing: 0.15em; 
      text-shadow: 0 0 6px rgba(0, 255, 170, 0.5); 
@@ -1228,14 +1343,14 @@
  
  body.tw-online-mode .card-title { 
      color: #c8fff0; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 12px; 
      letter-spacing: 0.04em; 
  } 
  
  body.tw-online-mode .card-content { 
      color: rgba(90, 240, 192, 0.7); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 10.5px; 
  } 
  
@@ -1244,8 +1359,9 @@
      box-shadow: 0 0 8px var(--chip-color, #00ffaa); 
  } 
  
- body.tw-online-mode .custom-marker { 
-     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); 
+ body.tw-online-mode .map-pin .pin-body { 
+     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+     border-radius: 0;
      border: 1px solid rgba(0, 255, 102, 0.35);
      animation: markerHexPulse 3s ease-in-out infinite; 
  } 
@@ -1263,7 +1379,7 @@
          0 0 24px rgba(0, 255, 102, 0.12),
          0 0 48px rgba(0, 240, 255, 0.06),
          0 24px 48px rgba(0,0,0,0.85);
-     font-family: "Space Mono", monospace;
+     font-family: var(--font-mono);
      clip-path: polygon(
          0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px,
          100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px)
@@ -1334,7 +1450,7 @@
  
  body.tw-online-mode .popup-summary { 
      color: rgba(90, 240, 192, 0.8); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 11px; 
  } 
  
@@ -1342,7 +1458,7 @@
      background: rgba(0, 255, 170, 0.08); 
      color: #00ffaa; 
      border: 1px solid rgba(0, 255, 170, 0.3); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 10px; 
      letter-spacing: 0.08em; 
  } 
@@ -1356,7 +1472,7 @@
      background: rgba(255, 60, 60, 0.08); 
      color: #ff3c3c; 
      border: 1px solid rgba(255, 60, 60, 0.3); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 10px; 
  } 
  
@@ -1365,14 +1481,14 @@
  } 
  
  body.tw-online-mode .src-badge { 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 9px; 
      letter-spacing: 0.12em; 
      border: 1px solid currentColor; 
  } 
  
  body.tw-online-mode .cat-badge { 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 9px; 
      letter-spacing: 0.1em; 
  } 
@@ -1393,7 +1509,7 @@
      background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 255, 170, 0.05)); 
      color: #00ffaa; 
      border: 1px solid rgba(0, 255, 170, 0.4); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      letter-spacing: 0.06em; 
  } 
  
@@ -1403,7 +1519,7 @@
  } 
  
  body.tw-online-mode #tw-online-status { 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 10px; 
      letter-spacing: 0.08em; 
      color: #00ffaa; 
@@ -1412,7 +1528,7 @@
  
  body.tw-online-mode .empty-state { 
      color: rgba(0, 255, 170, 0.3); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode #event-list::-webkit-scrollbar-thumb { 
@@ -1437,7 +1553,7 @@
  
  body.tw-online-mode .modal-title { 
      color: #00ffaa; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      letter-spacing: 0.1em; 
  } 
  
@@ -1445,7 +1561,7 @@
      background: rgba(0, 10, 15, 0.8); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
      color: #c8fff0; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 12px; 
  } 
  
@@ -1458,7 +1574,7 @@
      background: rgba(0, 10, 15, 0.8); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
      color: rgba(0, 255, 170, 0.7); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .btn-primary { 
@@ -1466,7 +1582,7 @@
      color: #00ffaa; 
      border: 1px solid rgba(0, 255, 170, 0.4); 
      box-shadow: 0 0 15px rgba(0, 255, 170, 0.2); 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      letter-spacing: 0.08em; 
  } 
  
@@ -1474,7 +1590,7 @@
      background: rgba(3, 15, 21, 0.95); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
      color: #c8fff0; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .mobile-search::placeholder { color: rgba(0, 255, 170, 0.3); } 
@@ -1485,7 +1601,7 @@
      background: rgba(3, 15, 21, 0.95); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
      color: #c8fff0; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .handle-bar { 
@@ -1497,7 +1613,7 @@
      background: rgba(3, 15, 21, 0.97); 
      border: 1px solid rgba(0, 255, 170, 0.3); 
      color: #00ffaa; 
-     font-family: "Space Mono", monospace; 
+     font-family: var(--font-mono); 
      font-size: 11px; 
      box-shadow: 0 0 15px rgba(0, 255, 170, 0.2); 
  } 
@@ -1732,30 +1848,30 @@
 
     // SVG outline icons (stroke-based, clean line style)
     const CAT_SVG = {
-        all:          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/></svg>`,
-        traffic:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2l2-3h6l2 3h2a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2z"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg>`,
-        disaster:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-        criminal:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="10" rx="2"/><circle cx="7" cy="12" r="3"/><circle cx="17" cy="12" r="3"/><path d="M10 12h4"/></svg>`,
-        medical:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/><path d="M9 18h6"/><path d="M19 18h2a1 1 0 0 0 1-1v-5l-3-4h-3v7h6"/><line x1="13" y1="9" x2="16" y2="9"/></svg>`,
-        activity:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="7" r="2"/><circle cx="17" cy="7" r="2"/><path d="M3 21v-2a4 4 0 0 1 4-4h4"/><path d="M13 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 0 8H13z" stroke-dasharray="0"/><path d="M13 17h8"/></svg>`,
-        other:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+        all:          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><circle cx="3" cy="6" r="1"/><circle cx="3" cy="12" r="1"/><circle cx="3" cy="18" r="1"/></svg>`,
+        traffic:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h2l2-3h8l2 3h2a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/><line x1="10" y1="17.5" x2="14" y2="17.5"/></svg>`,
+        disaster:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+        criminal:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
+        medical:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
+        activity:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
+        other:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     };
 
     const CATEGORY_CONFIG = {
-        all:          { text: "全部",     icon: "fa-list",                color: "#5c5854" },
-        disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#C93535" },
-        criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#D64545" },
-        traffic:      { text: "交通事故", icon: "fa-car-burst",           color: "#4A90E8" },
-        medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#E87830" },
-        activity:     { text: "活動",     icon: "fa-users",               color: "#4db88a" },
-        other:        { text: "其他事件", icon: "fa-circle-info",         color: "#6b6b72" }
+        all:          { text: "全部",     icon: "fa-list",                color: "#4A5878" },
+        disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#C0392B" },
+        criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#8E44AD" },
+        traffic:      { text: "交通事故", icon: "fa-car-burst",           color: "#2471A3" },
+        medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#D35400" },
+        activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
+        other:        { text: "其他事件", icon: "fa-circle-info",         color: "#4A5878" }
     };
 
     const ALERT_COLOR_MAP = {
-        traffic:  { color: "#4A90E8", glow: "rgba(74, 144, 232, 0.45)" },
-        fire:     { color: "#E87830", glow: "rgba(255, 122, 0, 0.42)" },
-        arson:    { color: "#D64545", glow: "rgba(214, 69, 69, 0.45)" },
-        disaster: { color: "#C93535", glow: "rgba(201, 53, 53, 0.4)" },
+        traffic:  { color: "#2471A3", glow: "rgba(36, 113, 163, 0.45)" },
+        fire:     { color: "#D35400", glow: "rgba(211, 84, 0, 0.42)" },
+        arson:    { color: "#C0392B", glow: "rgba(192, 57, 43, 0.45)" },
+        disaster: { color: "#C0392B", glow: "rgba(192, 57, 43, 0.4)" },
     };
 
     function getEventAlertType(ev) {
@@ -2060,18 +2176,23 @@
         while(renderedMarkers.length) renderedMarkers.pop().remove();
     }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null){
-        const sizes = { 1: 30, 2: 34, 3: 38, 4: 42, 5: 46 };
-        const glowRadii = { 1: 8, 2: 12, 3: 18, 4: 26, 5: 34 };
-        const size = sizes[severity] || 34;
-        const glowR = glowRadii[severity] || 12;
+        const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
+        const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
+        const bodySize = pinSizes[severity] || 38;
+        const showPulse = severity >= 4;
         const g = glowColor || color;
+        const glowR = glowPx[severity] || 10;
+        const outerW = bodySize + 10;
+        const outerH = bodySize + 14;
         const wrapper = document.createElement("div");
-        wrapper.className = `custom-marker marker-severity-${severity}` + (severity >= 4 ? " marker-pulse" : "");
-        wrapper.style.width = `${size}px`;
-        wrapper.style.height = `${size}px`;
-        wrapper.style.background = `linear-gradient(135deg,${color},${color}cc)`;
-        wrapper.style.boxShadow = `0 4px 16px rgba(0,0,0,0.45), 0 0 ${glowR}px ${g}`;
-        wrapper.innerHTML = `<span class="marker-svg-icon">${svg}</span>`;
+        wrapper.className = `map-pin marker-severity-${severity}`;
+        wrapper.innerHTML = `
+            <div class="pin-outer" style="width:${outerW}px;height:${outerH}px;">
+                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
+                <div class="pin-body" style="width:${bodySize}px;height:${bodySize}px;background:${color};border:2px solid rgba(255,255,255,0.22);box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 ${glowR}px ${g}">
+                    <div class="pin-icon"><span class="marker-svg-icon">${svg}</span></div>
+                </div>
+            </div>`;
         return wrapper;
     }
 
@@ -2103,13 +2224,13 @@
                 id: "city-boundary-fill",
                 type: "fill",
                 source: "city-boundary",
-                paint: { "fill-color":"#4f8cff", "fill-opacity":0.06 }
+                paint: { "fill-color":"#2471A3", "fill-opacity":0.06 }
             });
             map.addLayer({
                 id: "city-boundary-line",
                 type: "line",
                 source: "city-boundary",
-                paint: { "line-color":"#4f8cff", "line-width":2.5, "line-opacity":0.7 }
+                paint: { "line-color":"#2471A3", "line-width":2.5, "line-opacity":0.7 }
             });
         }
     }
@@ -2187,7 +2308,7 @@
             const isActive = activeCategory===cat;
             const svg = CAT_SVG[cat]||CAT_SVG.other;
             return `<button class="filter-chip${isActive?" active":""}" data-category="${cat}"
-                style="--chip-bg:${c.color};background:${c.color};"
+                style="--chip-bg:${c.color};${isActive ? `background:${c.color};` : ""}"
             ><span class="chip-icon">${svg}</span>${c.text}</button>`;
         }).join("");
         catFilters.querySelectorAll("[data-category]").forEach(btn=>{
@@ -2289,7 +2410,7 @@
 
         container.className = "reaction-container popup-reactions";
         container.innerHTML = `
-            <div class="reaction-buttons">
+            <div class="reaction-bar reaction-buttons">
                 <button type="button" class="reaction-btn muyu-btn${reacted === "muyu" ? " active" : ""}${muyuDim}"
                     onclick="handleReaction(event, '${eventId}', 'muyu', this)"
                     ${reacted ? "disabled" : ""}>
@@ -2357,9 +2478,11 @@
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
             const displayContent = (isOnline && ev.twOnlineContent) ? ev.twOnlineContent : (ev.content || "沒有摘要");
+            const severity = getEventSeverity(ev);
+            const markerStyle = resolveMarkerStyle(ev, cat.color);
 
             const popupHtml=`
-                <div class="popup-inner">
+                <div class="popup-inner" style="--popup-accent:${markerStyle.color}">
                     <div class="popup-top">
                         <div class="popup-title">${displayTitle}</div>
                         <div class="popup-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
@@ -2367,38 +2490,37 @@
                     <div class="popup-summary">${displayContent}</div>
                     <div class="reaction-container popup-reactions" data-event-id="${ev.id}"></div>
                     <div class="popup-meta">
-                        <span><i class="fa-solid fa-location-dot" style="margin-right:4px;color:var(--accent)"></i>${ev.city||"未知城市"}</span>
+                        <span><i class="fa-solid fa-location-dot" style="margin-right:4px;color:var(--popup-accent)"></i>${ev.city||"未知城市"}</span>
                         ${makeSourceBadge(ev.source)}
                     </div>
                     <div class="popup-actions">
                         ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn primary"><i class="fa-solid fa-arrow-up-right-from-square"></i>查看原文</a>`:""}
                         <button type="button" class="popup-btn danger" onclick='openReportModal(decodeURIComponent("${encodeURIComponent(displayTitle)}"))'>
-                            <span style="display:inline-flex;width:12px;height:12px;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報資料
+                            <span style="display:inline-flex;width:12px;height:12px;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報資料
                         </button>
                     </div>
                 </div>
             `;
+
             const popup = new mapboxgl.Popup({
                 className: "custom-popup",
                 closeButton: true,
                 closeOnClick: false,
-                maxWidth: "300px",
-                offset: 18
+                maxWidth: "328px",
+                offset: 22
             }).setHTML(popupHtml);
-            popup.on("open", ()=>{ 
-                activePopup = popup; 
+            popup.on("open", () => {
+                activePopup = popup;
                 if (isMourningEvent(ev)) {
-                    const container = popup.getElement().querySelector('.reaction-container');
+                    const container = popup.getElement().querySelector(".reaction-container");
                     if (container) updateReactionUI(ev.id, container);
                 }
             });
-            popup.on("close", ()=>{ if(activePopup === popup) activePopup = null; });
+            popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
-            const severity = getEventSeverity(ev);
-            const markerStyle = resolveMarkerStyle(ev, cat.color);
             const marker = new mapboxgl.Marker({
                 element: makeMarkerElement(markerStyle.color, CAT_SVG[ev.category]||CAT_SVG.other, severity, markerStyle.glow),
-                anchor: "center"
+                anchor: "bottom"
             })
                 .setLngLat([latlng[1], latlng[0]])
                 .setPopup(popup)
