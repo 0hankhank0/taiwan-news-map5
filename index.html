@@ -2511,10 +2511,6 @@
     ];
 
     const taiwanView = { center:[23.6,120.9], zoom:7 };
-    const TAIWAN_BOUNDS = [
-        [119.2, 21.7],
-        [122.4, 25.5]
-    ];
     const globalView = { center:[20,0], zoom:2 };
     const EMPTY_GEOJSON = { type:"FeatureCollection", features:[] };
 
@@ -2574,22 +2570,10 @@
         container: "map",
         style: MAPBOX_STYLES.dark,
         center: [taiwanView.center[1], taiwanView.center[0]],
-        zoom: taiwanView.zoom,
-        projection: "mercator",
-        pitch: 0,
-        bearing: 0,
-        maxBounds: TAIWAN_BOUNDS,
-        renderWorldCopies: false
+        zoom: taiwanView.zoom
     });
 
     map.on('style.load', () => {
-        if (typeof map.setProjection === "function") map.setProjection("mercator");
-        if (typeof map.setFog === "function") map.setFog(null);
-        map.setPitch(0);
-        map.setBearing(0);
-        map.setMaxBounds(TAIWAN_BOUNDS);
-        if (typeof map.setMinZoom === "function") map.setMinZoom(6.2);
-        if (typeof map.setMaxZoom === "function") map.setMaxZoom(10.5);
         setMapLanguageToChinese();
     });
 
@@ -2606,7 +2590,6 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
         }).addTo(fallbackMap);
-        fallbackMap.setMaxBounds([[21.7, 119.2], [25.5, 122.4]]);
         window._fallbackMap = fallbackMap;
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
@@ -2625,9 +2608,6 @@
     }
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
-    if (typeof map.dragRotate?.disable === "function") map.dragRotate.disable();
-    if (typeof map.touchZoomRotate?.disableRotation === "function") map.touchZoomRotate.disableRotation();
-    if (typeof map.touchPitch?.disable === "function") map.touchPitch.disable();
     map.on("load", async () => {
         console.log("🚀 地圖載入完成，執行初始化...");
         
@@ -2740,30 +2720,6 @@
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function flyToLatLng(latlng, zoom, duration=800){
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
-    }
-    function getTaiwanViewportPadding() {
-        const isMobile = window.innerWidth < 768;
-        if (isMobile) {
-            return { top: 88, right: 20, bottom: 28, left: 20 };
-        }
-        const sidebarWidth = newsSidebar?.offsetWidth || 360;
-        return { top: 96, right: 48, bottom: 44, left: sidebarWidth + 72 };
-    }
-    function focusTaiwanView(duration = 800) {
-        const padding = getTaiwanViewportPadding();
-        if (map && typeof map.fitBounds === "function") {
-            map.fitBounds(TAIWAN_BOUNDS, {
-                padding,
-                duration,
-                essential: true
-            });
-        }
-        if (window._fallbackMap && typeof window._fallbackMap.fitBounds === "function") {
-            window._fallbackMap.fitBounds([[21.7, 119.2], [25.5, 122.4]], {
-                paddingTopLeft: [padding.left, padding.top],
-                paddingBottomRight: [padding.right, padding.bottom]
-            });
-        }
     }
     function closeActivePopup(){
         if(activePopup){
@@ -2932,9 +2888,6 @@
         requestAnimationFrame(resizeNow);
         setTimeout(resizeNow, 120);
         setTimeout(resizeNow, 360);
-        if (isTaiwanMode) {
-            setTimeout(() => focusTaiwanView(0), 180);
-        }
     }
 
     function removeMapOverlays() {
@@ -3255,7 +3208,7 @@
         };
         const match = Object.keys(centers).find(k=>k.startsWith(value)||value.startsWith(k));
         if(value==="all"){
-            focusTaiwanView(1500);
+            flyToLatLng([23.698,120.961],7,1500);
         } else if(match){
             flyToLatLng(centers[match],11,1500);
         }
@@ -3292,7 +3245,7 @@
       if(mode){ 
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
-        focusTaiwanView(800); 
+        flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
         renderEvents(); 
       } else { 
         mapEl.style.display   = 'none'; 
