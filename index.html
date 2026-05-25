@@ -49,7 +49,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
@@ -59,64 +59,75 @@
 
     <style>
         :root {
-            /* ── 品牌色 ─────────────────────────────────────────── */
-            --brand-crimson:       #C0392B;
-            --brand-crimson-deep:  #922B21;
-            --brand-crimson-glow:  rgba(192,57,43,0.18);
-            --brand-incense:       #D35400;
-            --brand-incense-light: rgba(211,84,0,0.14);
-            --brand-candle:        #E8A020;
-            --brand-candle-light:  rgba(232,160,32,0.14);
-            --brand-candle-flame:  #F5C842;
-            --brand-muyu:          #7D5A3C;
-            --brand-muyu-light:    rgba(125,90,60,0.14);
+            /* ── 核心品牌色 ─────────────────────────────────────────── */
+            --brand-crimson:        #C0392B;
+            --brand-crimson-deep:   #922B21;
+            --brand-crimson-glow:   rgba(192,57,43,0.18);
+            --brand-incense:        #D35400;
+            --brand-incense-light:  rgba(211,84,0,0.15);
+            --brand-candle:         #E8A020;
+            --brand-candle-light:   rgba(232,160,32,0.15);
+            --brand-candle-flame:   #F5C842;
+            --brand-muyu:           #7D5A3C;
+            --brand-muyu-light:     rgba(125,90,60,0.15);
 
-            /* ── 背景色階 ────────────────────────────────────────── */
-            --bg-deep:             #0C1120;
-            --bg-panel:            #101828;
-            --bg-card:             #162035;
-            --bg-card-hover:       #1C2A42;
-            --bg-elevated:         #213050;
+            /* ── 夜深藍背景色階 ────────────────────────────────────────── */
+            --bg-void:              #060A14;
+            --bg-deep:              #0C1120;
+            --bg-panel:             #101828;
+            --bg-card:              #162035;
+            --bg-card-hover:        #1C2A42;
+            --bg-elevated:          #213050;
 
-            /* ── 邊框 ────────────────────────────────────────────── */
-            --border:              rgba(100,130,200,0.12);
-            --border-bright:       rgba(100,130,200,0.28);
+            /* ── 文字色 ──────────────────────────────────────────────── */
+            --text-primary:         #E8EDF8;
+            --text-secondary:       #8A9BB8;
+            --text-muted:           #4A5878;
+            --text-ghost:           #2A3450;
 
-            /* ── 文字 ────────────────────────────────────────────── */
-            --text-primary:        #E8EDF8;
-            --text-secondary:      #8A9BB8;
-            --text-muted:          #4A5878;
+            /* ── 邊框 ─────────────────────────────────────────────── */
+            --border:               rgba(100,130,200,0.12);
+            --border-bright:        rgba(100,130,200,0.28);
+            --border-accent:        rgba(192,57,43,0.35);
 
-            /* ── 保留相容性（舊名稱對應新值）───────────────────── */
-            --accent:              var(--brand-crimson);
-            --accent-glow:         var(--brand-crimson-glow);
-            --accent-2:            #8E44AD;
-            --red:                 #C0392B;
-            --orange:              var(--brand-incense);
-            --green:               #1E8449;
-            --yellow:              var(--brand-candle);
+            /* ── 保留舊版相容性變數 ────────────────────────────────── */
+            --accent:               var(--brand-crimson);
+            --accent-glow:          var(--brand-crimson-glow);
+            --accent-2:             #8E44AD;
+            --red:                  var(--brand-crimson);
+            --orange:               var(--brand-incense);
+            --green:                #1E8449;
+            --yellow:               var(--brand-candle);
 
-            /* ── 事件類別色 ──────────────────────────────────────── */
-            --cat-disaster:        #C0392B;
-            --cat-criminal:        #8E44AD;
-            --cat-traffic:         #2471A3;
-            --cat-medical:         #D35400;
-            --cat-activity:        #1E8449;
-            --cat-other:           #4A5878;
+            /* ── 事件類別色 ─────────────────────────────────────────── */
+            --cat-disaster:         #C0392B;
+            --cat-criminal:         #8E44AD;
+            --cat-traffic:          #2471A3;
+            --cat-medical:          #D35400;
+            --cat-activity:         #1E8449;
+            --cat-other:            #4A5878;
 
-            /* ── 圓角 ────────────────────────────────────────────── */
+            /* ── 圓角 ──────────────────────────────────────────────── */
+            --radius-xs:  6px;
             --radius-sm:  10px;
             --radius-md:  16px;
             --radius-lg:  22px;
             --radius-xl:  28px;
+            --radius-full: 999px;
+
+            /* ── 字體 ──────────────────────────────────────────────── */
+            --font-body:    "Space Grotesk", sans-serif;
+            --font-display: "Noto Serif TC", serif;
+            --font-mono:    "JetBrains Mono", monospace;
+
             color-scheme: dark;
         }
 
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-            font-family: "DM Sans", "Noto Serif TC", sans-serif;
-            background: var(--bg-deep);
+            font-family: var(--font-body);
+            background: var(--bg-void);
             color: var(--text-primary);
             overflow: hidden;
             height: 100vh;
@@ -159,12 +170,12 @@
             font-weight: 700;
             letter-spacing: -0.01em;
             color: var(--text-primary);
-            font-family: "Noto Serif TC", serif;
+            font-family: var(--font-display);
         }
         .brand-sub {
             font-size: 10px;
             color: var(--text-muted);
-            font-family: "JetBrains Mono", monospace;
+            font-family: var(--font-mono);
             letter-spacing: 0.08em;
             margin-top: 1px;
             text-transform: uppercase;
@@ -1019,6 +1030,57 @@
             pointer-events: none;
         }
 
+        /* ✅ 步驟 4：新增「祈福/木魚」的情感互動樣式 */
+        .reaction-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px dashed var(--border);
+        }
+        .react-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid;
+            transition: all 0.18s;
+            font-family: var(--font-body);
+            position: relative;
+            overflow: hidden;
+            letter-spacing: 0.02em;
+        }
+        .react-btn.muyu {
+            background: var(--brand-muyu-light);
+            border-color: rgba(125,90,60,0.35);
+            color: #C4956B;
+        }
+        .react-btn.candle {
+            background: var(--brand-candle-light);
+            border-color: rgba(232,160,32,0.35);
+            color: var(--brand-candle-flame);
+        }
+        .react-btn.muyu.active {
+            background: var(--brand-muyu);
+            border-color: var(--brand-muyu);
+            color: #fff;
+        }
+        .react-btn.candle.active {
+            background: rgba(232,160,32,0.8);
+            border-color: var(--brand-candle);
+            color: #2A1A00;
+        }
+        .react-count {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            min-width: 16px;
+        }
+
     </style>
 </head>
 <body>
@@ -1208,6 +1270,33 @@
 </div>
 
 <script>
+        // ✅ 步驟 5：新增互動按鈕的 JavaScript 邏輯
+        function toggleReact(btn, group) {
+            // 防止重複點擊
+            if (btn.classList.contains('active')) return;
+            
+            btn.classList.add('active');
+            
+            // 數字加 1
+            const countEl = btn.querySelector('.react-count');
+            if (countEl) {
+                const n = parseInt(countEl.textContent.replace('✓ ', '')) || 0;
+                countEl.textContent = '✓ ' + (n + 1);
+            }
+            
+            // 禁用同一列的其他按鈕
+            const bar = btn.closest('.reaction-bar');
+            if (bar) {
+                const siblings = bar.querySelectorAll('.react-btn');
+                siblings.forEach(s => {
+                    if (s !== btn) {
+                        s.disabled = true;
+                        s.style.opacity = '0.35';
+                        s.style.cursor = 'not-allowed';
+                    }
+                });
+            }
+        }
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = "pk.eyJ1IjoiaGFua2hhbmsiLCJhIjoiY21wNWhmNHNiMDJxMzJycjB4a3FmNDY0biJ9.FK_qTU4xvkvvYq1Ze8WC4g"; 
     
