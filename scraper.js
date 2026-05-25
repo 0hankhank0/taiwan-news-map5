@@ -164,6 +164,261 @@ async function fetchTDX(url, token, label, retries = 3) {
   return null;
 }
 
+const PBS_REQUEST_TIMEOUT_MS = 15000;
+const TDX_REQUEST_TIMEOUT_MS = 5000;
+const TDX_PUBLIC_SOURCE_LIMIT = 2;
+const TDX_CMS_SOURCES = [
+  { type: "Freeway", path: "Freeway", city: "Freeway", lat: 23.8, lng: 120.9 },
+  { type: "Highway", path: "Highway", city: "Highway", lat: 23.8, lng: 120.9 },
+  { type: "City", path: "Taipei", city: "Taipei", lat: 25.033, lng: 121.5654 },
+  { type: "City", path: "NewTaipei", city: "New Taipei", lat: 25.0169, lng: 121.4628 },
+  { type: "City", path: "Taoyuan", city: "Taoyuan", lat: 24.9937, lng: 121.3009 },
+  { type: "City", path: "Taichung", city: "Taichung", lat: 24.1477, lng: 120.6736 },
+  { type: "City", path: "Tainan", city: "Tainan", lat: 22.9997, lng: 120.227 },
+  { type: "City", path: "Kaohsiung", city: "Kaohsiung", lat: 22.6273, lng: 120.3014 },
+];
+const TDX_PRIORITY_SOURCE_KEYS = new Set([
+  "Freeway:Freeway",
+  "Highway:Highway",
+  "City:Taipei",
+  "City:NewTaipei",
+  "City:Taichung",
+  "City:Kaohsiung",
+]);
+
+function createTrafficSourceSummary() {
+  return {
+    status: "not_run",
+    liveSource: null,
+    liveCount: 0,
+    cacheCount: 0,
+    usedCache: false,
+    pbs: {
+      attempted: false,
+      success: false,
+      count: 0,
+      failures: [],
+    },
+    tdx: {
+      attempted: false,
+      success: false,
+      count: 0,
+      failures: [],
+      usedCredentials: Boolean(process.env.TDX_CLIENT_ID && process.env.TDX_CLIENT_SECRET),
+    },
+  };
+}
+
+function classifyFetchError(error) {
+  const message = String(error?.message || error || "");
+  if (error?.name === "AbortError" || message.includes("aborted")) return "timeout";
+  if (message.startsWith("HTTP ")) return "http";
+  if (message.includes("fetch failed") || message.includes("ECONN") || message.includes("ENOTFOUND")) return "connect";
+  return "unknown";
+}
+
+function formatFetchError(error) {
+  const kind = classifyFetchError(error);
+  const message = String(error?.message || error || "unknown error");
+  return { kind, message };
+}
+
+async function fetchJsonWithRetry(url, options, label, retries = 2, waitMs = 1200) {
+  let lastError;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (error) {
+      lastError = error;
+      const { kind, message } = formatFetchError(error);
+      console.warn(`⚠️ [${label}] 第 ${attempt}/${retries} 次失敗 (${kind}): ${message}`);
+      if (attempt < retries) await delay(waitMs);
+    }
+  }
+  throw lastError;
+}
+
+function getTdxHeaders(token = "") {
+  const headers = {
+    "User-Agent": "TaiwanNewsMap/1.0",
+    "Accept": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function buildTdxCmsUrl(source, isLive = false) {
+  const basePath = isLive
+    ? ["api", "basic", "v2", "Road", "Traffic", "Live", "CMS"]
+    : ["api", "basic", "v2", "Road", "Traffic", "CMS"];
+  if (source.type === "City") basePath.push("City", encodeURIComponent(source.path));
+  else if (source.type === "Highway" || source.type === "Freeway") basePath.push(source.type);
+  else throw new Error(`Unsupported TDX source: ${source.type}`);
+  return `https://tdx.transportdata.tw/${basePath.join("/")}?$format=JSON`;
+}
+
+function getSelectedTdxSources(hasCredentials) {
+  const selected = TDX_CMS_SOURCES.filter((source) =>
+    TDX_PRIORITY_SOURCE_KEYS.has(`${source.type}:${source.path}`)
+  );
+  return hasCredentials ? selected : selected.slice(0, TDX_PUBLIC_SOURCE_LIMIT);
+}
+
+function extractArrayFromTdxPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  for (const key of Object.keys(payload)) {
+    if (Array.isArray(payload[key])) return payload[key];
+  }
+  return [];
+}
+
+function getCmsKey(item) {
+  return String(item.CMSID || item.CmsID || item.cmsId || item.CMSId || item.DeviceID || item.id || "").trim();
+}
+
+function normalizeCmsStaticRecord(item, source) {
+  const cmsId = getCmsKey(item);
+  const lng = Number(item.PositionLon ?? item.positionLon ?? item.px ?? item.Location?.PositionLon ?? item.LocationPt?.PositionLon);
+  const lat = Number(item.PositionLat ?? item.positionLat ?? item.py ?? item.Location?.PositionLat ?? item.LocationPt?.PositionLat);
+  if (!cmsId || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return {
+    cmsId,
+    city: source.city,
+    lat,
+    lng,
+    roadName: String(item.RoadName || item.roadName || item.LinkName || "").trim(),
+    location: String(item.LocationDescription || item.locationDescription || "").trim(),
+  };
+}
+
+function normalizeCmsLiveRecord(item, source, staticLookup) {
+  const cmsId = getCmsKey(item);
+  const staticInfo = cmsId ? staticLookup.get(cmsId) : null;
+  const lng = Number(item.PositionLon ?? item.positionLon ?? item.LocationPt?.PositionLon ?? staticInfo?.lng ?? source.lng);
+  const lat = Number(item.PositionLat ?? item.positionLat ?? item.LocationPt?.PositionLat ?? staticInfo?.lat ?? source.lat);
+  const messageStatus = Number(item.MessageStatus ?? item.messageStatus ?? item.MsgStatus ?? item.msgStatus ?? 1);
+  const messages = Array.isArray(item.Messages) ? item.Messages : Array.isArray(item.messages) ? item.messages : [];
+  const joinedMessage = messages
+    .map((entry) => {
+      if (typeof entry === "string") return entry;
+      if (!entry || typeof entry !== "object") return "";
+      return String(entry.Text || entry.text || entry.Message || entry.message || entry.DisplayMessage || entry.displayMessage || entry.Msg || "").trim();
+    })
+    .filter(Boolean)
+    .join(" / ");
+  const message = String(joinedMessage || item.Text || item.text || item.Message || item.message || item.DisplayMessage || item.displayMessage || item.Msg || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (messageStatus === 0 || !message || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+  const roadName = staticInfo?.roadName || String(item.RoadName || item.roadName || item.LinkName || "").trim();
+  const location = staticInfo?.location || String(item.LocationDescription || item.locationDescription || "").trim();
+  const titleBase = roadName || location || `${source.city} CMS`;
+  const text = `${titleBase} ${message}`.trim();
+
+  return {
+    id: `TDX_${source.type}_${source.path}_${cmsId || Math.random().toString(36).slice(2)}`,
+    text: text.slice(0, 220),
+    title: `${titleBase} - CMS`.slice(0, 120),
+    content: message.slice(0, 220),
+    category: "traffic",
+    lat,
+    lng,
+    city: staticInfo?.city || source.city,
+    source: "TDX CMS",
+    isReal: true,
+  };
+}
+
+async function loadTdxStaticCmsLookup(token, summary) {
+  const bySource = new Map();
+  const headers = getTdxHeaders(token);
+  const sources = getSelectedTdxSources(Boolean(token));
+
+  for (const source of sources) {
+    const sourceKey = `${source.type}:${source.path}`;
+    try {
+      const data = await fetchJsonWithRetry(
+        buildTdxCmsUrl(source, false),
+        { headers, signal: AbortSignal.timeout(TDX_REQUEST_TIMEOUT_MS) },
+        `TDX-static-${source.path}`
+      );
+      const rawRecords = extractArrayFromTdxPayload(data);
+      const lookup = new Map(
+        rawRecords
+          .map((item) => normalizeCmsStaticRecord(item, source))
+          .filter(Boolean)
+          .map((item) => [item.cmsId, item])
+      );
+      bySource.set(sourceKey, lookup);
+    } catch (error) {
+      const detail = { source: sourceKey, ...formatFetchError(error) };
+      summary.tdx.failures.push(detail);
+      console.warn(`⚠️ [TDX-static-${source.path}] 失敗 (${detail.kind}): ${detail.message}`);
+      bySource.set(sourceKey, new Map());
+    }
+    await delay(400);
+  }
+
+  return bySource;
+}
+
+async function fetchTDXTrafficFallback(summary) {
+  console.log("⏳ [TDX 備援] 開始抓取 CMS 路況...");
+  summary.tdx.attempted = true;
+
+  let token = "";
+  if (summary.tdx.usedCredentials) {
+    try {
+      token = await getTDXToken();
+    } catch (error) {
+      const detail = { source: "token", ...formatFetchError(error) };
+      summary.tdx.failures.push(detail);
+      console.warn(`⚠️ [TDX 備援] Token 取得失敗 (${detail.kind}): ${detail.message}`);
+    }
+  }
+
+  const headers = getTdxHeaders(token);
+  const sources = getSelectedTdxSources(Boolean(token));
+  const staticLookup = await loadTdxStaticCmsLookup(token, summary);
+  const events = [];
+
+  for (const source of sources) {
+    const sourceKey = `${source.type}:${source.path}`;
+    try {
+      const data = await fetchJsonWithRetry(
+        buildTdxCmsUrl(source, true),
+        { headers, signal: AbortSignal.timeout(TDX_REQUEST_TIMEOUT_MS) },
+        `TDX-live-${source.path}`
+      );
+      const rawRecords = extractArrayFromTdxPayload(data);
+      const lookup = staticLookup.get(sourceKey) || new Map();
+      const normalized = rawRecords
+        .map((item) => normalizeCmsLiveRecord(item, source, lookup))
+        .filter(Boolean);
+      events.push(...normalized);
+      console.log(`✅ [TDX-${source.path}] ${normalized.length} 筆`);
+    } catch (error) {
+      const detail = { source: sourceKey, ...formatFetchError(error) };
+      summary.tdx.failures.push(detail);
+      console.warn(`⚠️ [TDX-${source.path}] 失敗 (${detail.kind}): ${detail.message}`);
+    }
+    await delay(400);
+  }
+
+  summary.tdx.count = events.length;
+  summary.tdx.success = events.length > 0;
+  if (summary.tdx.success) {
+    summary.liveSource = "tdx";
+    summary.liveCount = events.length;
+  }
+  return events;
+}
+
 async function aiFilterEvents(items) {
   if (items.length === 0) return [];
   const prompt = `你是台灣交通事件篩選器。今天日期是【${todayStr}】。
@@ -663,7 +918,7 @@ function pbsGuessCity(summary) {
   return null;
 }
 
-async function fetchPBS() {
+async function fetchPBS(summary = createTrafficSourceSummary()) {
   console.log("⏳ [警廣] 開始抓取內政部開放資料 API...");
 
   const BASE_URL = "https://od.moi.gov.tw/API/pbs/query/roadData";
@@ -820,6 +1075,174 @@ async function fetchPBSFallback() {
 // ==========================================
 // 外掛 API：台中市（已停用，改走 TDX）
 // ==========================================
+async function fetchPBSLegacyFallbackWithSummary(summary) {
+  console.log("⏳ [警廣備用] 嘗試舊版 API...");
+  try {
+    const url = "https://od.moi.gov.tw/api/v1/rest/datastore/A01010000C-000013-015";
+    const data = await fetchJsonWithRetry(
+      url,
+      {
+        headers: { "User-Agent": "TaiwanNewsMap/1.0" },
+        signal: AbortSignal.timeout(PBS_REQUEST_TIMEOUT_MS),
+      },
+      "警廣備用"
+    );
+    const records = data?.result?.records || [];
+    console.log(`📦 [警廣備用] 取得 ${records.length} 筆`);
+
+    const results = [];
+    for (const rec of records.slice(0, 200)) {
+      const summaryText = sanitizeText(rec.roadsection || rec.summary || "");
+      if (!summaryText || summaryText.includes("摰??")) continue;
+
+      const city = pbsGuessCity(summaryText);
+      if (!city) continue;
+      const coords = TAIWAN_CITY_COORDS[city];
+      if (!coords) continue;
+
+      const jitter = () => (Math.random() - 0.5) * 0.04;
+      results.push({
+        id: `PBSFB_${rec.srcId || Math.random().toString(36).slice(2)}`,
+        text: summaryText,
+        title: summaryText.slice(0, 30),
+        category: pbsGuessCategory(summaryText),
+        lat: coords.lat + jitter(),
+        lng: coords.lng + jitter(),
+        city,
+        source: "PBS",
+        isReal: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 3 * 60 * 60 * 1000,
+      });
+    }
+
+    console.log(`✅ [警廣備用] ${results.length} 筆`);
+    return results;
+  } catch (error) {
+    const detail = { source: "A01010000C-000013-015", ...formatFetchError(error) };
+    summary.pbs.failures.push(detail);
+    console.error(`❌ [警廣備用] 失敗 (${detail.kind}): ${detail.message}`);
+    return [];
+  }
+}
+
+async function fetchPBSWithSummary(summary) {
+  console.log("⏳ [警廣] 開始抓取內政部即時路況 API...");
+  summary.pbs.attempted = true;
+
+  const BASE_URL = "https://od.moi.gov.tw/API/pbs/query/roadData";
+  const regions = ["N", "M", "S", "E"];
+  const allItems = [];
+  const seenIds = new Set();
+
+  for (const region of regions) {
+    const label = `警廣-${region}`;
+    try {
+      const url = `${BASE_URL}?region=${region}`;
+      const data = await fetchJsonWithRetry(
+        url,
+        {
+          headers: {
+            "User-Agent": "TaiwanNewsMap/1.0",
+            "Accept": "application/json",
+          },
+          signal: AbortSignal.timeout(PBS_REQUEST_TIMEOUT_MS),
+        },
+        label
+      );
+      const records = data?.result?.records || data?.records || (Array.isArray(data) ? data : []);
+
+      let added = 0;
+      for (const rec of records) {
+        const id = rec.srcId || rec.id || rec.SrcId;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
+
+        const summaryText = sanitizeText(
+          rec.roadsection || rec.roadSection || rec.RoadSection ||
+          rec.summary || rec.Summary || rec.content || ""
+        );
+        if (!summaryText || summaryText.includes("摰??")) continue;
+
+        allItems.push({ id: `PBS_${id}`, summary: summaryText, region, raw: rec });
+        added++;
+      }
+      console.log(`✅ [${label}] ${added} 筆`);
+    } catch (error) {
+      const detail = { source: `${BASE_URL}?region=${region}`, ...formatFetchError(error) };
+      summary.pbs.failures.push(detail);
+      console.error(`❌ [${label}] 失敗 (${detail.kind}): ${detail.message}`);
+    }
+    await delay(800);
+  }
+
+  if (allItems.length === 0) {
+    console.warn("⚠️ [警廣] 主要區域端點都沒有拿到資料，改試舊版資料集...");
+    const fallbackItems = await fetchPBSLegacyFallbackWithSummary(summary);
+    summary.pbs.count = fallbackItems.length;
+    summary.pbs.success = fallbackItems.length > 0;
+    if (summary.pbs.success) {
+      summary.liveSource = "pbs";
+      summary.liveCount = fallbackItems.length;
+    }
+    return fallbackItems;
+  }
+
+  console.log(`🤖 [警廣] 共 ${allItems.length} 筆，送 AI 篩選...`);
+  const results = [];
+
+  for (let i = 0; i < allItems.length; i += 20) {
+    const batch = allItems.slice(i, i + 20);
+    const aiInput = batch.map((item) => ({ id: item.id, text: item.summary }));
+    const aiResults = await aiFilterEvents(aiInput);
+
+    for (const item of batch) {
+      const ai = aiResults.find((entry) => entry.id === item.id);
+      if (!ai?.isReal) continue;
+
+      const city = pbsGuessCity(item.summary);
+      if (!city) continue;
+
+      const coords = TAIWAN_CITY_COORDS[city];
+      if (!coords) continue;
+
+      let lat = coords.lat + (Math.random() - 0.5) * 0.04;
+      let lng = coords.lng + (Math.random() - 0.5) * 0.04;
+
+      const rawLat = parseFloat(item.raw?.px || item.raw?.lat || item.raw?.PositionLat || "");
+      const rawLng = parseFloat(item.raw?.py || item.raw?.lng || item.raw?.PositionLon || "");
+      if (Number.isFinite(rawLat) && Number.isFinite(rawLng) && isOnTaiwanLand(rawLat, rawLng)) {
+        lat = rawLat;
+        lng = rawLng;
+      }
+
+      results.push({
+        id: item.id,
+        text: item.summary,
+        title: ai.title || item.summary.slice(0, 30),
+        category: ai.category || pbsGuessCategory(item.summary),
+        lat,
+        lng,
+        city,
+        source: "PBS",
+        isReal: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + Math.min(ai.ttl_hours || 3, 8) * 60 * 60 * 1000,
+      });
+    }
+    await delay(500);
+  }
+
+  summary.pbs.count = results.length;
+  summary.pbs.success = results.length > 0;
+  if (summary.pbs.success) {
+    summary.liveSource = "pbs";
+    summary.liveCount = results.length;
+  }
+  console.log(`✅ [警廣] AI 篩選後 ${results.length} 筆有效路況`);
+  return results;
+}
+
 async function fetchTaichung() {
   console.log("ℹ️  台中市改由 TDX City/Taichung 統一抓取，此函式已退役");
   return [];
@@ -1265,6 +1688,9 @@ async function main() {
     let newsCacheList = [];
     let candidatesMap = new Map();
     let pbsCount = 0;
+    let tdxCount = 0;
+    let trafficSummary = createTrafficSourceSummary();
+    let trafficRefreshHealthy = true;
 
     // --- 交通資料抓取 (僅保留警廣 PBS) ---
     if (mode === "traffic" || mode === "all") {
@@ -1276,11 +1702,20 @@ async function main() {
       }
 
       console.log("\n⏳ 準備啟動警廣抓取...");
-      const pbsData = await fetchPBS();
+      console.log("\n⏳ 準備啟動交通抓取...");
+      const pbsData = await fetchPBSWithSummary(trafficSummary);
       pbsData.forEach(item => {
         candidatesMap.set(item.id, item);
         pbsCount++;
       });
+
+      if (pbsData.length === 0) {
+        const tdxData = await fetchTDXTrafficFallback(trafficSummary);
+        tdxData.forEach(item => {
+          candidatesMap.set(item.id, item);
+          tdxCount++;
+        });
+      }
 
       const candidates = Array.from(candidatesMap.values());
       let itemsForAI = [];
@@ -1319,8 +1754,25 @@ async function main() {
           }
         }
       });
+
+      trafficSummary.cacheCount = trafficCacheList.filter(item => item?.expiresAt > Date.now()).length;
+      trafficSummary.usedCache = trafficSummary.cacheCount > 0;
+      if (trafficSummary.liveSource === "pbs" && trafficSummary.pbs.success) {
+        trafficSummary.status = "pbs_ok";
+      } else if (trafficSummary.liveSource === "tdx" && trafficSummary.tdx.success) {
+        trafficSummary.status = "tdx_fallback_ok";
+      } else if (trafficSummary.usedCache) {
+        trafficSummary.status = "cache_only";
+        trafficRefreshHealthy = false;
+      } else {
+        trafficSummary.status = "traffic_failed";
+        trafficRefreshHealthy = false;
+      }
+
       await kv.set("taiwan_traffic_cache", JSON.stringify(trafficCacheList));
-      console.log(`✅ 交通處理完成，共 ${finalEvents.length} 筆 (警廣: ${pbsCount} 筆)`);
+      console.log(
+        `✅ 交通處理完成，共 ${finalEvents.length} 筆 (警廣: ${pbsCount} 筆, TDX: ${tdxCount} 筆, cache: ${trafficSummary.cacheCount} 筆, status: ${trafficSummary.status})`
+      );
     } else {
       // 非交通模式，載入現有交通快取以便合併
       const rawCache = await kv.get("taiwan_traffic_cache");
@@ -1525,10 +1977,17 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
       }
   
       await kv.set("taiwan_traffic_events", JSON.stringify(validatedMerged));
+      if ((mode === "traffic" || mode === "all") && !trafficRefreshHealthy) {
+        console.error(
+          `TRAFFIC_REFRESH_FAILED status=${trafficSummary.status} liveSource=${trafficSummary.liveSource || "none"} pbs=${trafficSummary.pbs.count} tdx=${trafficSummary.tdx.count} cache=${trafficSummary.cacheCount}`
+        );
+        process.exitCode = 1;
+      }
       console.log(`💾 全部完工！最終合計: ${validatedMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
+    process.exitCode = 1;
   }
 }
 
