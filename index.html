@@ -49,7 +49,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
@@ -207,25 +207,30 @@
             flex-shrink: 0;
         }
         .brand-title {
-            font-family: var(--font-display);
-            font-size: 17px;
+            font-family: "Source Han Sans TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+            font-size: 20px;
             font-weight: 700;
-            line-height: 1.2;
-            letter-spacing: 0.02em;
-            color: var(--text-primary);
+            line-height: 1.1;
+            letter-spacing: 0.04em;
+            color: #f2f5fb;
+            text-shadow: none;
         }
         .brand-sub {
             font-size: 10px;
-            color: var(--text-muted);
-            font-family: var(--font-mono);
-            letter-spacing: 0.12em;
+            color: #7f8ba5;
+            font-family: "Source Han Sans TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+            font-weight: 500;
+            letter-spacing: 0.18em;
             text-transform: uppercase;
-            margin-top: 1px;
+            margin-top: 4px;
         }
         .brand-note {
             font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
+            color: #93a0bb;
+            font-family: "Source Han Sans TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+            font-weight: 400;
+            letter-spacing: 0.01em;
+            margin-top: 6px;
         }
 
         .header-center {
@@ -411,42 +416,11 @@
             background:
                 linear-gradient(180deg, rgba(22, 32, 53, 0.88), rgba(12, 17, 32, 0.96));
         }
-        .sidebar-masthead {
-            margin-bottom: 14px;
-            padding: 16px;
-            border-radius: var(--radius-lg);
-            border: 1px solid rgba(232, 237, 248, 0.08);
-            background:
-                linear-gradient(145deg, rgba(192, 57, 43, 0.16), rgba(16, 24, 40, 0.92) 44%, rgba(36, 113, 163, 0.12));
-            box-shadow:
-                inset 0 1px 0 rgba(255,255,255,0.04),
-                0 18px 40px rgba(0,0,0,0.18);
-        }
-        .sidebar-masthead-label {
-            font-family: var(--font-mono);
-            font-size: 10px;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--brand-candle-flame);
-            margin-bottom: 10px;
-        }
-        .sidebar-masthead-title {
-            font-family: var(--font-display);
-            font-size: 22px;
-            line-height: 1.35;
-            letter-spacing: -0.02em;
-            margin-bottom: 8px;
-        }
-        .sidebar-masthead-copy {
-            color: var(--text-secondary);
-            font-size: 12px;
-            line-height: 1.7;
-            margin-bottom: 14px;
-        }
         .sidebar-kpis {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 8px;
+            margin-bottom: 14px;
         }
         .sidebar-kpi {
             padding: 10px 10px 9px;
@@ -552,6 +526,7 @@
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
+            margin-bottom: 14px;
         }
         .filter-chip,
         .filter-chip-v2 {
@@ -968,7 +943,7 @@
                 display: none;
             }
             .sidebar-kpis {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
             }
             .stats-hero {
                 padding: 18px;
@@ -1154,61 +1129,42 @@
         .map-pin {
             position: relative;
             cursor: pointer;
-            display: flex;
-            align-items: flex-end;
-            justify-content: center;
+            display: block;
             flex: 0 0 auto;
             transform: translateZ(0);
+            transform-origin: center bottom;
         }
         .mapboxgl-marker { will-change: transform; }
-        .map-pin .pin-outer {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .map-pin-svg {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: visible;
+            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 14px var(--pin-glow, rgba(90, 143, 212, 0.35)));
         }
-        .map-pin .pin-body {
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            display: flex;
+        .map-pin-shape {
+            fill: var(--pin-color, #2471A3);
+            stroke: rgba(255,255,255,0.2);
+            stroke-width: 1.5;
+        }
+        .map-pin-icon {
+            position: absolute;
+            left: 50%;
+            top: 39%;
+            transform: translate(-50%, -50%);
+            display: inline-flex;
             align-items: center;
             justify-content: center;
-            position: relative;
+            color: #fff;
             z-index: 1;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-        }
-        .pin-outer {
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .pin-body {
-            border-radius: 50% 50% 50% 0;
-            transform: rotate(-45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            position: relative;
-        }
-        .pin-icon {
-            transform: rotate(45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            transition: transform 0.15s;
+            pointer-events: none;
         }
         .pin-pulse {
             position: absolute;
             border-radius: 50%;
             opacity: 0.25;
             animation: pulse-ring 2s ease-out infinite;
-        }
-        .map-pin .pin-icon {
-            transform: rotate(45deg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
         .map-pin .pin-pulse {
             position: absolute;
@@ -1217,24 +1173,24 @@
             animation: pulse-ring 2s ease-out infinite;
             top: 50%;
             left: 50%;
-            transform: translate(-50%, -58%);
+            transform: translate(-50%, -50%);
             z-index: 0;
+            pointer-events: none;
         }
         @keyframes pulse-ring {
-            0%   { transform: translate(-50%, -58%) scale(0.75); opacity: 0.45; }
-            100% { transform: translate(-50%, -58%) scale(2.1); opacity: 0; }
+            0%   { transform: translate(-50%, -50%) scale(0.75); opacity: 0.45; }
+            100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
         }
-        .map-pin:hover .pin-icon .marker-svg-icon {
-            transform: scale(1.1);
+        .map-pin:hover .map-pin-icon {
+            transform: translate(-50%, -50%) scale(1.08);
         }
         .marker-svg-icon {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 18px;
-            height: 18px;
+            width: 100%;
+            height: 100%;
             color: #fff;
-            transition: transform 0.15s;
         }
         .marker-severity-5 { z-index: 5; }
         .marker-severity-4 { z-index: 4; }
@@ -1725,10 +1681,11 @@
      box-shadow: 0 0 8px var(--chip-color, #00ffaa); 
  } 
  
- body.tw-online-mode .map-pin .pin-body { 
-     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-     border-radius: 0;
-     border: 1px solid rgba(0, 255, 102, 0.35);
+ body.tw-online-mode .map-pin-svg {
+     filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 16px rgba(0, 255, 102, 0.32));
+ }
+ body.tw-online-mode .map-pin-shape {
+     stroke: rgba(0, 255, 102, 0.35);
      animation: markerHexPulse 3s ease-in-out infinite; 
  } 
  
@@ -1986,27 +1943,7 @@
  
  body.tw-online-mode #map::before, 
  body.tw-online-mode #map::after { 
-     content: ""; 
-     position: absolute; 
-     width: 60px; 
-     height: 60px; 
-     pointer-events: none; 
-     z-index: 5; 
-     opacity: 0.4; 
- } 
- 
- body.tw-online-mode #map::before { 
-     top: 12px; left: 12px; 
-     border-top: 2px solid var(--neon-green); 
-     border-left: 2px solid var(--neon-green); 
-     box-shadow: -2px -2px 12px rgba(0, 255, 102, 0.45); 
- } 
- 
- body.tw-online-mode #map::after { 
-     bottom: 50px; right: 12px; 
-     border-bottom: 2px solid var(--neon-cyan); 
-     border-right: 2px solid var(--neon-cyan); 
-     box-shadow: 2px 2px 12px rgba(0, 240, 255, 0.4); 
+     content: none; 
  }
 
     </style>
@@ -2105,6 +2042,7 @@
         <div>
             <div class="brand-title">台灣新聞事件地圖</div>
             <div class="brand-sub">REAL-TIME EVENT TRACKER</div>
+            <div class="brand-note">把即時事件資訊做成可閱讀、可感受、可判斷的公共介面。</div>
         </div>
     </div>
 
@@ -2144,11 +2082,27 @@
                 <div class="sidebar-title">事件清單</div>
                 <div class="count-pill" id="mobile-count">0 筆</div>
             </div>
+            <div class="sidebar-kpis">
+                <div class="sidebar-kpi">
+                    <div class="sidebar-kpi-label">目前事件</div>
+                    <div class="sidebar-kpi-value" id="sidebar-summary-count">0</div>
+                </div>
+                <div class="sidebar-kpi">
+                    <div class="sidebar-kpi-label">篩選狀態</div>
+                    <div class="sidebar-kpi-value" id="sidebar-mode-label">全部</div>
+                </div>
+                <div class="sidebar-kpi">
+                    <div class="sidebar-kpi-label">城市維度</div>
+                    <div class="sidebar-kpi-value" id="sidebar-summary-city">全台</div>
+                </div>
+            </div>
+            <div class="toolbar-caption">Event Categories</div>
+            <div id="category-filters"></div>
+            <div class="toolbar-caption">Search</div>
             <div class="search-wrap">
                 <i class="fa-solid fa-magnifying-glass"></i>
                 <input id="event-search" type="text" placeholder="搜尋標題、內容、城市" class="search-input" />
             </div>
-            <div id="category-filters"></div>
         </div>
 
         <div id="event-list"></div>
@@ -2161,7 +2115,12 @@
 
     <!-- STATS -->
     <div id="stats-view" style="display:none;flex:1;min-width:0;overflow-y:auto;background:var(--bg-deep);padding:20px;flex-direction:column;gap:16px;"> 
-    
+      <div class="stats-hero">
+        <div class="stats-hero-label">Data Story</div>
+        <div class="stats-hero-title">把事件量體轉成有節奏的觀察視圖。</div>
+        <div class="stats-hero-copy">從城市分布、群眾情感到熱門事件排行，讓統計頁不是備用頁，而是另一個理解台灣公共狀態的入口。現在共收錄 <span id="stats-hero-count">0</span> 筆事件，模式為 <span id="stats-hero-mode">台灣地圖</span>。</div>
+      </div>
+
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"> 
         <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;"> 
           <div style="font-size:16px;margin-bottom:6px;">🪘</div> 
@@ -2194,7 +2153,33 @@
     </div> 
 
     <!-- MAP -->
-    <section id="map"></section>
+    <section id="map-stage">
+        <div id="map"></div>
+        <div class="map-hero">
+            <div class="map-hero-label">Golden Pin Concept Edition</div>
+            <div class="map-hero-title">把新聞事件地圖，做成一個更有溫度的公共感知介面。</div>
+            <div class="map-hero-copy">不是單純標記事故，而是用視覺層級、即時分類與互動儀式感，讓使用者能快速掌握風險密度與社會情緒。</div>
+            <div class="map-hero-grid">
+                <div class="map-hero-stat">
+                    <span class="map-hero-stat-label">Events</span>
+                    <div class="map-hero-stat-value" id="hero-event-count">0</div>
+                </div>
+                <div class="map-hero-stat">
+                    <span class="map-hero-stat-label">Categories</span>
+                    <div class="map-hero-stat-value" id="hero-category-count">0</div>
+                </div>
+                <div class="map-hero-stat">
+                    <span class="map-hero-stat-label">Mode</span>
+                    <div class="map-hero-stat-value" id="hero-mode-copy">台灣</div>
+                </div>
+            </div>
+        </div>
+        <div class="map-orbital-card">
+            <div class="map-orbital-caption">Interface Intent</div>
+            <div class="map-orbital-title">即時，但不焦躁。</div>
+            <div class="map-orbital-copy" id="hero-status-copy">透過較低噪音的深色背景、策展式資訊卡與清楚的分類色，保留警示感，同時讓閱讀節奏更沉著。</div>
+        </div>
+    </section>
 </div>
 
 <script>
@@ -2630,6 +2615,7 @@
         drawCityBoundary(currentCityFilter());
         applyMapMode(currentMapMode); // 確保地圖載入後再次套用模式（包含底圖層）
         if(parsedEvents.length) renderEvents();
+        scheduleMapResize();
     });
 
     const statusText   = document.getElementById("status-text");
@@ -2706,8 +2692,15 @@
 
         renderCategoryButtons();
         renderEvents();
+        scheduleMapResize();
     }
-    function setStatus(t){ if(statusText) statusText.textContent = t; }
+    function setStatus(t){
+        if(statusText) statusText.textContent = t;
+        const heroStatus = document.getElementById("hero-status-copy");
+        if (heroStatus && (!heroStatus.textContent || heroStatus.textContent.includes("準備") || heroStatus.textContent.includes("載入"))) {
+            heroStatus.textContent = t;
+        }
+    }
     function normalizeText(v){ return String(v||"").trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function flyToLatLng(latlng, zoom, duration=800){
@@ -2723,25 +2716,57 @@
         closeActivePopup();
         while(renderedMarkers.length) renderedMarkers.pop().remove();
     }
+    function updateCurationMeta(events){
+        const cityValue = document.getElementById("city-filter")?.value || "all";
+        const cityLabel = cityValue === "all" ? "全台" : cityValue;
+        const modeLabel = isTaiwanMode ? "台灣" : "統計";
+        const activeCategory = selectedCategory === "all"
+            ? "全部"
+            : (getCategoryVisual(selectedCategory)?.text || selectedCategory);
+        const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
+        const categoryCount = new Set(events.map(ev => normalizeText(ev.category)).filter(Boolean)).size;
+
+        [
+            ["sidebar-summary-count", String(events.length)],
+            ["sidebar-mode-label", activeCategory],
+            ["sidebar-summary-city", cityLabel],
+            ["hero-event-count", String(events.length)],
+            ["hero-category-count", String(categoryCount)],
+            ["hero-mode-copy", modeLabel],
+            ["stats-hero-count", String(events.length)],
+            ["stats-hero-mode", modeLabel]
+        ].forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        });
+
+        const heroStatus = document.getElementById("hero-status-copy");
+        if (heroStatus) {
+            heroStatus.textContent = `目前涵蓋 ${cityCount} 個城市、${categoryCount} 種事件類別，模式為${modeLabel}視角。`;
+        }
+    }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
         const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
         const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
         const bodySize = pinSizes[severity] || 38;
         const g = glowColor || color;
         const glowR = glowPx[severity] || 10;
-        const outerW = bodySize + 12;
-        const outerH = bodySize + 16;
+        const outerW = Math.round(bodySize * 1.18);
+        const outerH = Math.round(bodySize * 1.7);
+        const iconSize = Math.round(bodySize * 0.42);
         const wrapper = document.createElement("div");
         wrapper.className = `map-pin marker-severity-${severity}`;
         wrapper.style.width = `${outerW}px`;
         wrapper.style.height = `${outerH}px`;
+        wrapper.style.setProperty("--pin-color", color);
+        wrapper.style.setProperty("--pin-glow", g);
         wrapper.innerHTML = `
-            <div class="pin-outer" style="width:${outerW}px;height:${outerH}px;">
-                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;top:50%;left:50%;transform:translate(-50%,-58%);"></div>` : ""}
-                <div class="pin-body" style="width:${bodySize}px;height:${bodySize}px;background:${color};border:2px solid rgba(255,255,255,0.2);box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 ${glowR}px ${g}">
-                    <div class="pin-icon"><span class="marker-svg-icon">${svg}</span></div>
-                </div>
-            </div>`;
+            ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
+            <svg class="map-pin-svg" viewBox="0 0 64 96" aria-hidden="true" style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});">
+                <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
+                <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.12)"></circle>
+            </svg>
+            <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>`;
         return wrapper;
     }
 
@@ -2836,6 +2861,18 @@
             instance.setSubpixelPositioning(true);
         }
         return instance;
+    }
+
+    function scheduleMapResize() {
+        const resizeNow = () => {
+            if (map && typeof map.resize === "function") map.resize();
+            if (window._fallbackMap && typeof window._fallbackMap.invalidateSize === "function") {
+                window._fallbackMap.invalidateSize(true);
+            }
+        };
+        requestAnimationFrame(resizeNow);
+        setTimeout(resizeNow, 120);
+        setTimeout(resizeNow, 360);
     }
 
     function populateCityFilters(){
@@ -2993,6 +3030,7 @@
 
         clearRenderedMarkers();
         eventList.innerHTML="";
+        updateCurationMeta(events);
 
         if(!events.length){
             const emptyText = isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的事件";
@@ -3202,6 +3240,7 @@
         const lat=Number(ev.lat), lng=Number(ev.lng); 
         return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat,lng); 
       }); 
+      updateCurationMeta(events);
  
       // 總數 
       const totalEl = document.getElementById('stat-total'); 
@@ -3300,7 +3339,10 @@
 
     // ── DRAWER ───────────────────────────────────────────────
     function toggleDrawer(){
-        if(window.innerWidth<768) newsSidebar.classList.toggle("drawer-collapsed");
+        if(window.innerWidth<768) {
+            newsSidebar.classList.toggle("drawer-collapsed");
+            scheduleMapResize();
+        }
     }
 
     // ── MOBILE GESTURES ──────────────────────────────────────
@@ -3347,14 +3389,17 @@
             sidebar.classList.remove("drawer-collapsed");
             sidebar.style.transform = "";
         }
+        scheduleMapResize();
     });
 
     // 點擊地圖收起抽屜
     map.on("click", () => {
         if (window.innerWidth < 768) {
             sidebar.classList.add("drawer-collapsed");
+            scheduleMapResize();
         }
     });
+    window.addEventListener("resize", scheduleMapResize);
     function openReportModal(title){
         document.getElementById("report-title").value=title;
         document.getElementById("report-type").value="資料錯誤";
