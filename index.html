@@ -369,10 +369,17 @@
             min-width: 0;
             position: relative;
             overflow: hidden;
+            min-height: 0;
         }
         #map {
             position: absolute;
             inset: 0;
+        }
+        #map .mapboxgl-canvas-container,
+        #map .mapboxgl-canvas,
+        #map .leaflet-container {
+            width: 100% !important;
+            height: 100% !important;
         }
 
         /* ── SIDEBAR ────────────────────────────────────────── */
@@ -2706,6 +2713,34 @@
     function flyToLatLng(latlng, zoom, duration=800){
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
     }
+    function getTaiwanViewportPadding() {
+        const isMobile = window.innerWidth < 768;
+        if (isMobile) {
+            return { top: 88, right: 20, bottom: 28, left: 20 };
+        }
+        const sidebarWidth = newsSidebar?.offsetWidth || 360;
+        return { top: 96, right: 48, bottom: 44, left: sidebarWidth + 72 };
+    }
+    function focusTaiwanView(duration = 800) {
+        const bounds = [
+            [119.2, 21.7],
+            [122.4, 25.5]
+        ];
+        const padding = getTaiwanViewportPadding();
+        if (map && typeof map.fitBounds === "function") {
+            map.fitBounds(bounds, {
+                padding,
+                duration,
+                essential: true
+            });
+        }
+        if (window._fallbackMap && typeof window._fallbackMap.fitBounds === "function") {
+            window._fallbackMap.fitBounds([[21.7, 119.2], [25.5, 122.4]], {
+                paddingTopLeft: [padding.left, padding.top],
+                paddingBottomRight: [padding.right, padding.bottom]
+            });
+        }
+    }
     function closeActivePopup(){
         if(activePopup){
             activePopup.remove();
@@ -2873,6 +2908,9 @@
         requestAnimationFrame(resizeNow);
         setTimeout(resizeNow, 120);
         setTimeout(resizeNow, 360);
+        if (isTaiwanMode) {
+            setTimeout(() => focusTaiwanView(0), 180);
+        }
     }
 
     function populateCityFilters(){
@@ -3189,7 +3227,7 @@
         };
         const match = Object.keys(centers).find(k=>k.startsWith(value)||value.startsWith(k));
         if(value==="all"){
-            flyToLatLng([23.698,120.961],7,1500);
+            focusTaiwanView(1500);
         } else if(match){
             flyToLatLng(centers[match],11,1500);
         }
@@ -3226,7 +3264,7 @@
       if(mode){ 
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
-        flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
+        focusTaiwanView(800); 
         renderEvents(); 
       } else { 
         mapEl.style.display   = 'none'; 
