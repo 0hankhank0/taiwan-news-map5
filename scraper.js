@@ -621,102 +621,199 @@ async function fetchGDELTGeo() {
 }
 
 // ==========================================
-// 外掛 API：v2 Road/Traffic/Live 路段即時壅塞
+// 警廣路況 — 內政部警政署開放資料 API（免費、無需 Token）
+// https://data.gov.tw/dataset/15221
 // ==========================================
-async function fetchPBS(token) {
-  console.log("⏳ [警廣] 開始抓取警廣路況播報...");
-  let results = [];
 
-  // 警廣涵蓋範圍：全台 + 國道 + 省道
-  const pbsTargets = [
-    { path: "Freeway",           name: "國道警廣",  cityName: "國道"   },
-    { path: "Highway",           name: "省道警廣",  cityName: "省道"   },
-    { path: "City/Taipei",       name: "台北警廣",  cityName: "台北市" },
-    { path: "City/NewTaipei",    name: "新北警廣",  cityName: "新北市" },
-    { path: "City/Taoyuan",      name: "桃園警廣",  cityName: "桃園市" }, // ✅ 修復：移除重複的桃園
-    { path: "City/Taichung",     name: "台中警廣",  cityName: "台中市" },
-    { path: "City/Tainan",       name: "台南警廣",  cityName: "台南市" },
-    { path: "City/Kaohsiung",    name: "高雄警廣",  cityName: "高雄市" },
-    { path: "City/Keelung",      name: "基隆警廣",  cityName: "基隆市" },
-    { path: "City/YilanCounty",  name: "宜蘭警廣",  cityName: "宜蘭縣" },
-  ];
+const PBS_CATEGORY_MAP = {
+  "車禍": "accident",
+  "事故": "accident",
+  "撞": "accident",
+  "翻車": "accident",
+  "追撞": "accident",
+  "拋錨": "traffic",
+  "拋錨停": "traffic",
+  "故障": "traffic",
+  "壅塞": "traffic",
+  "塞車": "traffic",
+  "施工": "construction",
+  "工程": "construction",
+  "封閉": "construction",
+  "管制": "construction",
+  "落石": "disaster",
+  "坍方": "disaster",
+  "淹水": "disaster",
+  "土石流": "disaster",
+};
 
-  for (const t of pbsTargets) {
-    const url = `https://tdx.transportdata.tw/api/basic/v1/Traffic/RoadEvent/LiveEvent/${t.path}?$format=JSON`;
-    const data = await fetchTDX(url, token, t.name);
-    if (!data) { await delay(3000); continue; }
+function pbsGuessCategory(summary) {
+  for (const [keyword, cat] of Object.entries(PBS_CATEGORY_MAP)) {
+    if (summary.includes(keyword)) return cat;
+  }
+  return "traffic";
+}
 
-    const events = data.LiveEvents || data.Events || data.value || (Array.isArray(data) ? data : []);
-    console.log(`📦 [${t.name}] 原始筆數: ${events.length}`);
+function pbsGuessCity(summary) {
+  for (const [city] of Object.entries(TAIWAN_CITY_COORDS)) {
+    const alt = city.replace("台", "臺");
+    if (summary.includes(city) || summary.includes(alt)) return city;
+  }
+  if (/國道|高速公路|中山高|北二高/.test(summary)) return "國道";
+  if (/省道|台\d+線|縣道/.test(summary)) return "省道";
+  return null;
+}
 
-    // debug：印出第一筆欄位
-    if (events.length > 0) {
-      const e0 = events[0];
-      console.log(`🔍 [${t.name}] 第一筆:`, JSON.stringify({
-        EventID: e0.EventID || e0.RoadEventID,
-        summary: (e0.EventTitle || e0.EventSummary || e0.Description || "").slice(0, 50),
-        PositionLat: e0.PositionLat,
-        PositionLon: e0.PositionLon,
-        EventPosition: e0.EventPosition,
-        Positions: typeof e0.Positions === "string" ? e0.Positions.slice(0, 80) : e0.Positions,
-      }));
-    }
+async function fetchPBS() {
+  console.log("⏳ [警廣] 開始抓取內政部開放資料 API...");
 
-    // 各城市警廣筆數上限
-    const PBS_CITY_LIMIT = 50;
-    let added = 0;
-    events.forEach(event => {
-      if (added >= PBS_CITY_LIMIT) return;
+  const BASE_URL = "https://od.moi.gov.tw/API/pbs/query/roadData";
+  const regions = ["N", "M", "S", "E"];
 
-      const eventId = event.EventID || event.RoadEventID;
-      const summary = event.EventTitle || event.EventSummary || event.Description || "";
-      if (!eventId || !summary) return;
+  const allItems = [];
+  const seenIds = new Set();
 
-      // 排除宣導
-      if (summary.includes("宣導")) return;
+  for (const region of regions) {
+    try {
+      const url = `${BASE_URL}?region=${region}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "TaiwanNewsMap/1.0",
+          "Accept": "application/json",
+        },
+        signal: AbortSignal.timeout(10000),
+      });
 
-      // 排除通用施工（重用既有函式）
-      if (isEmptyConstructionEvent(summary, event.EventTypeName, event.Location?.Other)) return;
-
-      // 過期過濾
-      const endTime = event.EndTime || event.EventEndTime;
-      if (endTime && new Date(endTime).getTime() < Date.now()) return;
-
-      // 座標解析
-      let lat, lng;
-      if (typeof event.Positions === "string" && event.Positions.includes("POINT")) {
-        const m = event.Positions.match(/POINT\s*\(([^\s]+)\s+([^)]+)\)/);
-        if (m) { lng = parseFloat(m[1]); lat = parseFloat(m[2]); }
-      } else {
-        lat = event.PositionLat || event.EventPosition?.PositionLat;
-        lng = event.PositionLon || event.EventPosition?.PositionLon;
+      if (!res.ok) {
+        console.warn(`⚠️ [警廣-${region}] HTTP ${res.status}`);
+        await delay(2000);
+        continue;
       }
 
-      if (!lat || !lng) return;
+      const data = await res.json();
+      const records = data?.result?.records || data?.records || (Array.isArray(data) ? data : []);
 
-      const startTime = event.StartTime || event.EventStartTime || "";
-      const timeInfo = (startTime || endTime)
-        ? ` (${startTime} ~ ${endTime || "未定"})`
-        : "";
+      let added = 0;
+      for (const rec of records) {
+        const id = rec.srcId || rec.id || rec.SrcId;
+        if (!id || seenIds.has(id)) continue;
+        seenIds.add(id);
 
-      // 同座標抖動
-      const jittered = jitterCoord(lat, lng, added);
-      results.push({
-        id: `PBS_${eventId}`,
-        text: `【警廣播報】${summary}${timeInfo}`,
-        lat: jittered.lat, lng: jittered.lng,
-        city: t.cityName, // ✅ 修復：使用正確的完整縣市名，避免 geocode 定位到市政府
-        source: "TDX CMS",
-      });
-      added++;
-    });
+        const summary = sanitizeText(
+          rec.roadsection || rec.roadSection || rec.RoadSection ||
+          rec.summary || rec.Summary || rec.content || ""
+        );
+        if (!summary || summary.includes("宣導")) continue;
 
-    console.log(`✅ [${t.name}] 有效筆數: ${added}`);
-    await delay(5000);
+        allItems.push({ id: `PBS_${id}`, summary, region, raw: rec });
+        added++;
+      }
+      console.log(`✅ [警廣-${region}] ${added} 筆`);
+    } catch (e) {
+      console.error(`❌ [警廣-${region}] 失敗:`, e.message);
+    }
+    await delay(1500);
   }
 
-  console.log(`✅ [警廣] 共整理 ${results.length} 筆！`);
+  if (allItems.length === 0) {
+    console.warn("⚠️ [警廣] 所有區域均無資料，嘗試備用 URL...");
+    return fetchPBSFallback();
+  }
+
+  console.log(`🤖 [警廣] 共 ${allItems.length} 筆，送 AI 篩選...`);
+  const results = [];
+
+  for (let i = 0; i < allItems.length; i += 20) {
+    const batch = allItems.slice(i, i + 20);
+    const aiInput = batch.map(item => ({ id: item.id, text: item.summary }));
+    const aiResults = await aiFilterEvents(aiInput);
+
+    for (const item of batch) {
+      const ai = aiResults.find(r => r.id === item.id);
+      if (!ai?.isReal) continue;
+
+      const city = pbsGuessCity(item.summary);
+      if (!city) continue;
+
+      const coords = TAIWAN_CITY_COORDS[city];
+      if (!coords) continue;
+
+      let lat = coords.lat + (Math.random() - 0.5) * 0.04;
+      let lng = coords.lng + (Math.random() - 0.5) * 0.04;
+
+      const rawLat = parseFloat(item.raw?.px || item.raw?.lat || item.raw?.PositionLat || "");
+      const rawLng = parseFloat(item.raw?.py || item.raw?.lng || item.raw?.PositionLon || "");
+      if (Number.isFinite(rawLat) && Number.isFinite(rawLng) && isOnTaiwanLand(rawLat, rawLng)) {
+        lat = rawLat;
+        lng = rawLng;
+      }
+
+      results.push({
+        id: item.id,
+        text: item.summary,
+        title: ai.title || item.summary.slice(0, 30),
+        category: ai.category || pbsGuessCategory(item.summary),
+        lat,
+        lng,
+        city,
+        source: "TDX CMS",
+        isReal: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + Math.min(ai.ttl_hours || 3, 8) * 60 * 60 * 1000,
+      });
+    }
+    await delay(500);
+  }
+
+  console.log(`✅ [警廣] AI 篩選後 ${results.length} 筆有效路況`);
   return results;
+}
+
+async function fetchPBSFallback() {
+  console.log("⏳ [警廣備用] 嘗試舊版 API...");
+  try {
+    const url = "https://od.moi.gov.tw/api/v1/rest/datastore/A01010000C-000013-015";
+    const res = await fetch(url, {
+      headers: { "User-Agent": "TaiwanNewsMap/1.0" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    const records = data?.result?.records || [];
+    console.log(`📦 [警廣備用] 取得 ${records.length} 筆`);
+
+    const results = [];
+    for (const rec of records.slice(0, 200)) {
+      const summary = sanitizeText(rec.roadsection || rec.summary || "");
+      if (!summary || summary.includes("宣導")) continue;
+
+      const city = pbsGuessCity(summary);
+      if (!city) continue;
+      const coords = TAIWAN_CITY_COORDS[city];
+      if (!coords) continue;
+
+      const jitter = () => (Math.random() - 0.5) * 0.04;
+      results.push({
+        id: `PBSFB_${rec.srcId || Math.random().toString(36).slice(2)}`,
+        text: summary,
+        title: summary.slice(0, 30),
+        category: pbsGuessCategory(summary),
+        lat: coords.lat + jitter(),
+        lng: coords.lng + jitter(),
+        city,
+        source: "TDX CMS",
+        isReal: true,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 3 * 60 * 60 * 1000,
+      });
+    }
+
+    console.log(`✅ [警廣備用] ${results.length} 筆`);
+    return results;
+  } catch (e) {
+    console.error("❌ [警廣備用] 失敗:", e.message);
+    return [];
+  }
 }
 
 
@@ -1163,12 +1260,6 @@ async function main() {
   try {
     console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
     
-    // 只有 traffic 或 all mode 才需要 TDX token
-    let token = null;
-    if (mode === "traffic" || mode === "all") {
-      token = await getTDXToken();
-    }
-
     let finalEvents = [];
     let trafficCacheList = [];
     let newsCacheList = [];
@@ -1185,7 +1276,7 @@ async function main() {
       }
 
       console.log("\n⏳ 準備啟動警廣抓取...");
-      const pbsData = await fetchPBS(token);
+      const pbsData = await fetchPBS();
       pbsData.forEach(item => {
         candidatesMap.set(item.id, item);
         pbsCount++;

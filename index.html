@@ -441,7 +441,8 @@
             flex-wrap: wrap;
             gap: 8px;
         }
-        .filter-chip {
+        .filter-chip,
+        .filter-chip-v2 {
             display: inline-flex;
             align-items: center;
             gap: 7px;
@@ -492,68 +493,115 @@
         #event-list::-webkit-scrollbar-track { background: transparent; }
         #event-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
-        /* ── EVENT CARD（VI v2）──────────────────────────────── */
-        .event-card {
-            padding: 16px 20px;
-            border-bottom: 1px solid var(--border);
-            cursor: pointer;
-            transition: background 0.15s;
+        /* ── EVENT CARD v2（設計稿 §04）──────────────────────── */
+        #event-list { background: var(--bg-deep); }
+        .event-card-v2 {
             position: relative;
+            padding: 16px 20px;
             background: var(--bg-panel);
+            transition: background 0.15s;
+            cursor: pointer;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 12px;
+            align-items: start;
+            border-bottom: 1px solid var(--border);
         }
-        .event-card::before {
-            content: "";
+        .event-card-v2:last-child { border-bottom: none; }
+        .event-card-v2:hover { background: var(--bg-card); }
+        .event-card-v2 .card-bar {
             position: absolute;
-            left: 0; top: 0; bottom: 0;
+            left: 0;
+            top: 0;
+            bottom: 0;
             width: 3px;
             border-radius: 0 2px 2px 0;
-            background: var(--chip-color, var(--accent));
+            background: var(--card-color, var(--cat-disaster));
             opacity: 0;
             transition: opacity 0.2s;
+            pointer-events: none;
         }
-        .event-card:hover { background: var(--bg-card-hover); }
-        .event-card:hover::before { opacity: 1; }
-
-        .card-top {
+        .event-card-v2:hover .card-bar { opacity: 1; }
+        .card-v2-left { min-width: 0; }
+        .card-v2-meta {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            margin-bottom: 6px;
             gap: 8px;
+            margin-bottom: 7px;
+            flex-wrap: wrap;
         }
-        .card-city {
+        .city-tag {
             font-size: 10px;
             font-weight: 700;
             letter-spacing: 0.12em;
             text-transform: uppercase;
             color: var(--text-muted);
-            font-family: var(--font-mono);
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
-        .card-badges { display: flex; align-items: center; gap: 5px; }
-
-        .card-title {
+        .cat-badge-v2 {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 9px 3px 6px;
+            border-radius: var(--radius-full);
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .cat-badge-v2 svg { width: 11px; height: 11px; flex-shrink: 0; }
+        .time-tag {
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+        .card-v2-title {
+            font-family: var(--font-display);
             font-size: 13.5px;
             font-weight: 600;
-            line-height: 1.5;
             color: var(--text-primary);
-            margin-bottom: 6px;
+            line-height: 1.5;
+            margin-bottom: 5px;
             letter-spacing: -0.01em;
         }
-        .card-content {
-            font-size: 11.5px;
-            line-height: 1.7;
+        .card-v2-content {
+            font-size: 12px;
             color: var(--text-secondary);
-            margin-bottom: 10px;
+            line-height: 1.65;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
+            margin-bottom: 10px;
+        }
+        .card-v2-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .src-badge-v2 {
+            font-size: 9px;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            padding: 3px 8px;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        .card-v2-extra {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
         }
         .card-footer {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin-top: 8px;
         }
         .card-sources-toggle {
             font-size: 11px;
@@ -718,10 +766,8 @@
             flex-shrink: 0;
         }
 
-        /* ── POPUP（VI v2）────────────────────────────────────── */
-        .custom-popup.mapboxgl-popup {
-            max-width: 328px !important;
-        }
+        /* ── POPUP demo（設計稿 §07）──────────────────────────── */
+        .custom-popup.mapboxgl-popup { max-width: 336px !important; }
         .custom-popup .mapboxgl-popup-content {
             position: relative;
             overflow: hidden;
@@ -730,7 +776,7 @@
             border-radius: var(--radius-lg);
             box-shadow: 0 28px 56px rgba(0, 0, 0, 0.6);
             border: 1px solid var(--border-bright);
-            padding: 22px 24px 20px;
+            padding: 20px 22px 18px;
         }
         .custom-popup .mapboxgl-popup-content::before {
             content: "";
@@ -739,64 +785,61 @@
             left: 0;
             right: 0;
             height: 3px;
-            background: var(--popup-accent, var(--brand-crimson));
+            background: var(--popup-color, var(--brand-crimson));
             border-radius: var(--radius-lg) var(--radius-lg) 0 0;
         }
         .custom-popup .mapboxgl-popup-close-button {
             color: var(--text-muted);
-            top: 10px;
-            right: 12px;
-            font-size: 20px;
-            line-height: 1;
-            padding: 0;
-            background: transparent;
-            border: none;
+            top: 12px;
+            right: 14px;
+            font-size: 18px;
+            z-index: 2;
         }
         .custom-popup .mapboxgl-popup-close-button:hover { color: var(--text-primary); }
         .custom-popup .mapboxgl-popup-tip { border-top-color: var(--bg-panel) !important; }
 
-        .popup-inner {
-            display: flex;
-            flex-direction: column;
-            padding-top: 4px;
-        }
-        .popup-title {
-            font-family: var(--font-display);
-            font-size: 14px;
-            font-weight: 700;
-            margin: 0;
-            color: var(--text-primary);
-            padding-right: 24px;
-            line-height: 1.45;
-            letter-spacing: -0.01em;
-        }
-        .popup-top {
+        .popup-demo-inner { padding-top: 6px; }
+        .popup-header {
             display: flex;
             align-items: flex-start;
             justify-content: space-between;
-            gap: 12px;
+            gap: 10px;
             margin-bottom: 14px;
         }
-        .popup-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
-        .popup-summary {
-            font-size: 12px;
-            font-weight: 400;
-            color: var(--text-secondary);
-            line-height: 1.7;
-            margin-bottom: 18px;
-        }
-        .popup-meta {
+        .popup-header-meta {
             display: flex;
+            gap: 6px;
             align-items: center;
-            justify-content: space-between;
-            margin-bottom: 16px;
-            padding-top: 2px;
-            font-size: 11px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .popup-title-v2 {
+            font-family: var(--font-display);
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.45;
+            letter-spacing: -0.01em;
+            padding-right: 8px;
+        }
+        .popup-location-tag {
+            font-size: 10px;
+            font-family: var(--font-mono);
             color: var(--text-muted);
         }
-        .popup-reactions { margin-bottom: 16px; }
-        .popup-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-        .popup-btn {
+        .popup-summary {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.7;
+            margin-bottom: 16px;
+        }
+        .popup-reactions-wrap { margin-bottom: 16px; }
+        .popup-footer {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .popup-btn-v2 {
             display: inline-flex;
             align-items: center;
             gap: 5px;
@@ -805,25 +848,26 @@
             font-size: 11px;
             font-weight: 700;
             cursor: pointer;
-            font-family: var(--font-body);
             border: 1px solid;
+            font-family: var(--font-body);
+            letter-spacing: 0.04em;
             transition: all 0.15s;
             text-decoration: none;
-            letter-spacing: 0.04em;
+            background: transparent;
         }
-        .popup-btn svg { width: 11px; height: 11px; }
-        .popup-btn.primary {
+        .popup-btn-v2 svg { width: 11px; height: 11px; }
+        .popup-btn-v2.primary {
             background: var(--brand-crimson-glow);
-            color: #E8856A;
             border-color: rgba(192, 57, 43, 0.4);
+            color: #E8856A;
         }
-        .popup-btn.primary:hover { background: rgba(192, 57, 43, 0.25); }
-        .popup-btn.danger {
+        .popup-btn-v2.primary:hover { background: rgba(192, 57, 43, 0.25); }
+        .popup-btn-v2.ghost {
             background: rgba(100, 130, 200, 0.08);
-            color: var(--text-secondary);
             border-color: var(--border-bright);
+            color: var(--text-secondary);
         }
-        .popup-btn.danger:hover {
+        .popup-btn-v2.ghost:hover {
             background: rgba(100, 130, 200, 0.15);
             color: var(--text-primary);
         }
@@ -850,6 +894,34 @@
             justify-content: center;
             position: relative;
             z-index: 1;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+        .pin-outer {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pin-body {
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+        .pin-icon {
+            transform: rotate(45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .pin-pulse {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.25;
+            animation: pulse-ring 2s ease-out infinite;
         }
         .map-pin .pin-icon {
             transform: rotate(45deg);
@@ -909,15 +981,14 @@
             stroke: #fff;
             stroke-width: 1.5px;
         }
-        /* ── 情感互動 react-btn（VI v2）──────────────────────── */
-        .reaction-buttons,
+        /* ── 情感互動 react-btn（設計稿 §05）──────────────────── */
         .reaction-bar {
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
         }
-        .reaction-btn {
+        .react-btn {
             display: inline-flex;
             align-items: center;
             gap: 7px;
@@ -932,8 +1003,11 @@
             position: relative;
             overflow: hidden;
             letter-spacing: 0.02em;
+            background: transparent;
         }
-        .reaction-btn::after {
+        .react-btn--compact { padding: 5px 11px; font-size: 11px; }
+        .react-btn--compact svg { width: 13px; height: 13px; }
+        .react-btn::after {
             content: "";
             position: absolute;
             inset: 0;
@@ -941,42 +1015,53 @@
             opacity: 0;
             transition: opacity 0.15s;
         }
-        .reaction-btn:hover:not(:disabled)::after { opacity: 0.08; }
-        .reaction-btn:active:not(:disabled) { transform: scale(0.96); }
-        .reaction-btn.muyu-btn {
+        .react-btn:hover:not(:disabled)::after { opacity: 0.08; }
+        .react-btn:active:not(:disabled) { transform: scale(0.96); }
+        .react-btn.muyu {
             background: var(--brand-muyu-light);
             border-color: rgba(125, 90, 60, 0.35);
             color: #C4956B;
         }
-        .reaction-btn.candle-btn {
+        .react-btn.candle {
             background: var(--brand-candle-light);
             border-color: rgba(232, 160, 32, 0.35);
             color: var(--brand-candle-flame);
         }
-        .reaction-btn.muyu-btn.active {
+        .react-btn.muyu.active {
             background: var(--brand-muyu);
             border-color: var(--brand-muyu);
             color: #fff;
         }
-        .reaction-btn.candle-btn.active {
+        .react-btn.candle.active {
             background: rgba(232, 160, 32, 0.8);
             border-color: var(--brand-candle);
             color: #2A1A00;
         }
-        .reaction-btn .count {
+        .react-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .react-count {
             font-family: var(--font-mono);
             font-size: 11px;
-            min-width: 18px;
+            min-width: 20px;
         }
-        .reaction-btn:disabled { cursor: default; opacity: 0.88; }
-        .reaction-btn.dimmed { opacity: 0.35; pointer-events: none; }
-        .candle-flame {
-            display: inline-flex;
-            transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1), filter 0.35s ease;
+        .react-divider {
+            width: 1px;
+            height: 24px;
+            background: var(--border);
+            margin: 0 2px;
         }
-        .reaction-btn.candle-lit .candle-flame {
+        .react-total {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            margin-left: 2px;
+        }
+        .react-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+        .react-btn.candle-lit svg {
             animation: candleBreath 2.2s ease-in-out infinite;
-            filter: drop-shadow(0 0 8px var(--brand-candle));
+            filter: drop-shadow(0 0 6px var(--brand-candle));
         }
         @keyframes candleBreath {
             0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px var(--brand-candle)); }
@@ -1311,12 +1396,12 @@
      text-shadow: 0 0 6px currentColor; 
  } 
  
- body.tw-online-mode .event-card { 
+ body.tw-online-mode .event-card-v2 { 
      background: rgba(5, 18, 24, 0.9); 
      border-bottom: 1px solid rgba(0, 255, 170, 0.08); 
  } 
  
- body.tw-online-mode .event-card::after { 
+ body.tw-online-mode .event-card-v2::after { 
      content: ""; 
      position: absolute; 
      top: 0; left: 0; right: 0; 
@@ -1326,12 +1411,12 @@
      transition: opacity 0.2s; 
  } 
  
- body.tw-online-mode .event-card:hover { 
+ body.tw-online-mode .event-card-v2:hover { 
      background: rgba(10, 30, 40, 0.95); 
      box-shadow: inset 3px 0 0 rgba(0, 255, 170, 0.5); 
  } 
  
- body.tw-online-mode .event-card:hover::after { opacity: 1; } 
+ body.tw-online-mode .event-card-v2:hover::after { opacity: 1; } 
  
  body.tw-online-mode .card-city { 
      color: #00ffaa; 
@@ -1354,7 +1439,7 @@
      font-size: 10.5px; 
  } 
  
- body.tw-online-mode .event-card:hover::before { 
+ body.tw-online-mode .event-card-v2:hover::before { 
      opacity: 1; 
      box-shadow: 0 0 8px var(--chip-color, #00ffaa); 
  } 
@@ -1408,7 +1493,7 @@
      padding-top: 14px;
  }
 
- body.tw-online-mode .event-card {
+ body.tw-online-mode .event-card-v2 {
      position: relative;
      clip-path: polygon(
          0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px,
@@ -1417,7 +1502,7 @@
      border-left: 2px solid rgba(0, 255, 102, 0.25);
  }
 
- body.tw-online-mode .event-card::before {
+ body.tw-online-mode .event-card-v2::before {
      left: 0;
      top: 0;
      bottom: 0;
@@ -1428,7 +1513,7 @@
      background: var(--neon-green);
      opacity: 0;
  }
- body.tw-online-mode .event-card::after {
+ body.tw-online-mode .event-card-v2::after {
      content: "";
      position: absolute;
      top: 6px;
@@ -1905,6 +1990,188 @@
         return { color: fallbackColor, glow: "rgba(90, 143, 212, 0.35)" };
     }
 
+    const CAT_META = {
+        disaster:     { rgba: "192,57,43",  tint: "#E8856A", cssVar: "--cat-disaster" },
+        criminal:     { rgba: "142,68,173", tint: "#BB8FCE", cssVar: "--cat-criminal" },
+        traffic:      { rgba: "36,113,163",  tint: "#7FB3D3", cssVar: "--cat-traffic" },
+        medical:      { rgba: "211,84,0",    tint: "#F0B27A", cssVar: "--cat-medical" },
+        activity:     { rgba: "30,132,73",   tint: "#58D68D", cssVar: "--cat-activity" },
+        other:        { rgba: "74,88,120",   tint: "#AEB6BF", cssVar: "--cat-other" },
+        accident:     { rgba: "142,68,173", tint: "#BB8FCE", cssVar: "--cat-criminal" },
+        construction: { rgba: "211,84,0",    tint: "#F0B27A", cssVar: "--cat-medical" },
+    };
+
+    const LOC_PIN_SVG = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>`;
+
+    const REACT_SVG = {
+        muyu: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="10" rx="7" ry="6"/><path d="M8 16c0 2.2 1.8 4 4 4s4-1.8 4-4"/><line x1="12" y1="4" x2="12" y2="2"/></svg>`,
+        candle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><path d="M8 10c0-2.2 1.8-4 4-4s4 1.8 4 4v8a4 4 0 01-8 0v-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>`,
+    };
+
+    function getCategoryVisual(category) {
+        const isOnline = currentMapMode === "online";
+        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
+        const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
+        const mappedCat = mapConfig[category] || category;
+        const c = config[mappedCat] || config.other;
+        const meta = CAT_META[mappedCat] || CAT_META.other;
+        return { ...c, mappedCat, meta, color: c.color };
+    }
+
+    function shouldPinPulse(ev, severity) {
+        return ev.category === "disaster" || severity >= 4 || getEventAlertType(ev) === "fire" || getEventAlertType(ev) === "arson";
+    }
+
+    function formatEventTime(ev) {
+        const raw = ev.updatedAt || ev.publishedAt || ev.time || ev.createdAt;
+        if (!raw) return "";
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
+    }
+
+    function makeCatBadgeV2(category) {
+        const { text, meta, mappedCat } = getCategoryVisual(category);
+        const svg = CAT_SVG[category] || CAT_SVG[mappedCat] || CAT_SVG.other;
+        return `<span class="cat-badge-v2" style="background:rgba(${meta.rgba},0.15);border:1px solid rgba(${meta.rgba},0.3);color:${meta.tint};"><span class="badge-svg-icon">${svg}</span>${text}</span>`;
+    }
+
+    function makeSrcBadgeV2(source) {
+        const normalized = normalizeSource(source);
+        const c = SOURCE_CONFIG[normalized] || SOURCE_CONFIG.default;
+        const t = c.shortText || c.text;
+        return `<span class="src-badge-v2" style="background:${c.bg};color:${c.color};border:1px solid ${c.color}33;">${t}</span>`;
+    }
+
+    function makeReactionBarHtml(eventId, data, reacted, compact = false) {
+        const isOnline = currentMapMode === "online";
+        const muyuActive = reacted === "muyu";
+        const candleActive = reacted === "candle";
+        const compactCls = compact ? " react-btn--compact" : "";
+        const muyuCount = muyuActive ? `✓ ${data.muyu}` : String(data.muyu || 0);
+        const candleCount = candleActive ? `✓ ${data.candle}` : String(data.candle || 0);
+        const total = (data.muyu || 0) + (data.candle || 0);
+        const totalLabel = reacted ? "已回應" : `${total.toLocaleString()} 人回應`;
+
+        return `
+            <div class="reaction-bar" data-event-id="${eventId}">
+                <button type="button" class="react-btn muyu${muyuActive ? " active" : ""}${compactCls}"
+                    onclick="handleReactClick(event, '${eventId}', 'muyu', this)"
+                    ${reacted && !muyuActive ? "disabled" : ""}>
+                    ${REACT_SVG.muyu}
+                    <span>${isOnline ? "致敬" : "敲木魚"}</span>
+                    <span class="react-count">${muyuCount}</span>
+                </button>
+                <div class="react-divider"></div>
+                <button type="button" class="react-btn candle${candleActive ? " active candle-lit" : ""}${compactCls}"
+                    onclick="handleReactClick(event, '${eventId}', 'candle', this)"
+                    ${reacted && !candleActive ? "disabled" : ""}>
+                    ${REACT_SVG.candle}
+                    <span>${isOnline ? "悼念" : "點蠟燭"}</span>
+                    <span class="react-count">${candleCount}</span>
+                </button>
+                <span class="react-total">${totalLabel}</span>
+            </div>`;
+    }
+
+    function buildPopupHtml(ev, displayTitle, displayContent, markerStyle) {
+        const city = ev.city || "未知城市";
+        const timeStr = formatEventTime(ev);
+        const timeHtml = timeStr ? `<span class="popup-location-tag">${timeStr}</span>` : "";
+        const reactionSlot = isMourningEvent(ev)
+            ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${ev.id}"></div>`
+            : "";
+        const reportArg = encodeURIComponent(displayTitle);
+
+        return `
+            <div class="popup-demo-inner" style="--popup-color:${markerStyle.color}">
+                <div class="popup-header">
+                    <div>
+                        <div class="popup-header-meta">
+                            ${makeCatBadgeV2(ev.category)}
+                            <span class="popup-location-tag">${city}</span>
+                            ${timeHtml}
+                        </div>
+                        <div class="popup-title-v2">${displayTitle}</div>
+                    </div>
+                </div>
+                <div class="popup-summary">${displayContent}</div>
+                ${reactionSlot}
+                <div class="popup-footer">
+                    ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn-v2 primary">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                        查看原文
+                    </a>` : ""}
+                    <button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"))'>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                        回報錯誤
+                    </button>
+                </div>
+            </div>`;
+    }
+
+    function buildEventCardHtml(ev, displayTitle, displayContent, catVisual) {
+        const city = normalizeText(ev.city) || "未知城市";
+        const timeStr = formatEventTime(ev);
+        const timeHtml = timeStr ? `<span class="time-tag">${timeStr}</span>` : "";
+        const sourcesHtml = ev.sources && ev.sources.length > 0 ? `
+            <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
+                <i class="fa-solid fa-newspaper"></i> ${ev.sources.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
+            </div>
+            <div class="card-sources-list">
+                ${ev.sources.map(s => `<a href="${s.url}" target="_blank" onclick="event.stopPropagation();">${s.outlet}：${s.title}</a>`).join("")}
+            </div>` : "";
+        const reactionSlot = isMourningEvent(ev)
+            ? `<div class="card-v2-extra"><div class="reaction-container" data-event-id="${ev.id}"></div></div>`
+            : "";
+        const reportArg = encodeURIComponent(displayTitle);
+
+        return `
+            <div class="card-bar" style="background:${catVisual.color};"></div>
+            <div class="card-v2-left">
+                <div class="card-v2-meta">
+                    <span class="city-tag">${LOC_PIN_SVG}${city}</span>
+                    ${makeCatBadgeV2(ev.category)}
+                    ${timeHtml}
+                </div>
+                <div class="card-v2-title">${displayTitle}</div>
+                <div class="card-v2-content">${displayContent}</div>
+            </div>
+            <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
+            ${reactionSlot}
+            <div class="card-v2-extra card-footer">
+                ${sourcesHtml}
+                <div class="card-actions">
+                    <div class="card-action-group">
+                        <button type="button" class="card-action-btn report" data-report="${reportArg}">
+                            <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
+                        </button>
+                        ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
+                    </div>
+                </div>
+            </div>`;
+    }
+
+    function toggleReact(btn) {
+        if (btn.classList.contains("active")) return;
+        btn.classList.add("active");
+        const countEl = btn.querySelector(".react-count");
+        if (countEl) {
+            const n = parseInt(countEl.textContent.replace(/\D/g, ""), 10) || 0;
+            countEl.textContent = "✓ " + (n + 1);
+        }
+        const bar = btn.closest(".reaction-bar");
+        if (bar) {
+            bar.querySelectorAll(".react-btn").forEach(s => {
+                if (s !== btn) {
+                    s.disabled = true;
+                }
+            });
+            const total = bar.querySelector(".react-total");
+            if (total) total.textContent = "已回應";
+        }
+    }
+
     const TW_ONLINE_TEXT = {
         // Header 
         siteTitle: "TW-01 伺服器",
@@ -2175,21 +2442,20 @@
         closeActivePopup();
         while(renderedMarkers.length) renderedMarkers.pop().remove();
     }
-    function makeMarkerElement(color, svg, severity = 2, glowColor = null){
+    function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
         const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
         const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
         const bodySize = pinSizes[severity] || 38;
-        const showPulse = severity >= 4;
         const g = glowColor || color;
         const glowR = glowPx[severity] || 10;
-        const outerW = bodySize + 10;
-        const outerH = bodySize + 14;
+        const outerW = bodySize + 12;
+        const outerH = bodySize + 16;
         const wrapper = document.createElement("div");
         wrapper.className = `map-pin marker-severity-${severity}`;
         wrapper.innerHTML = `
             <div class="pin-outer" style="width:${outerW}px;height:${outerH}px;">
-                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
-                <div class="pin-body" style="width:${bodySize}px;height:${bodySize}px;background:${color};border:2px solid rgba(255,255,255,0.22);box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 ${glowR}px ${g}">
+                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;top:50%;left:50%;transform:translate(-50%,-58%);"></div>` : ""}
+                <div class="pin-body" style="width:${bodySize}px;height:${bodySize}px;background:${color};border:2px solid rgba(255,255,255,0.2);box-shadow:0 4px 20px rgba(0,0,0,0.5),0 0 ${glowR}px ${g}">
                     <div class="pin-icon"><span class="marker-svg-icon">${svg}</span></div>
                 </div>
             </div>`;
@@ -2250,14 +2516,8 @@
         const t = compact ? c.shortText : c.text;
         return `<span class="src-badge" style="background:${c.bg};color:${c.color};">${t}</span>`;
     }
-    function makeCatBadge(category){
-        const isOnline = currentMapMode === "online";
-        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
-        const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
-        const mappedCat = mapConfig[category] || category;
-        const c = config[mappedCat] || config.other;
-        const svg = CAT_SVG[category]||CAT_SVG.other;
-        return `<span class="cat-badge" style="background:${c.color}20;color:${c.color};border:1px solid ${c.color}40"><span class="badge-svg-icon">${svg}</span>${c.text}</span>`;
+    function makeCatBadge(category) {
+        return makeCatBadgeV2(category);
     }
 
     // ── GEO ─────────────────────────────────────────────────
@@ -2307,7 +2567,7 @@
             const c = config[mappedCat]||config.other;
             const isActive = activeCategory===cat;
             const svg = CAT_SVG[cat]||CAT_SVG.other;
-            return `<button class="filter-chip${isActive?" active":""}" data-category="${cat}"
+            return `<button class="filter-chip filter-chip-v2${isActive?" active":""}" data-category="${cat}"
                 style="--chip-bg:${c.color};${isActive ? `background:${c.color};` : ""}"
             ><span class="chip-icon">${svg}</span>${c.text}</button>`;
         }).join("");
@@ -2401,53 +2661,32 @@
     }
 
     async function updateReactionUI(eventId, container) {
+        if (!container) return;
         const data = await getReactions(eventId);
         const reacted = localStorage.getItem(`reacted:${eventId}`);
-        const isOnline = currentMapMode === "online";
-        const muyuDim = reacted && reacted !== "muyu" ? " dimmed" : "";
-        const candleDim = reacted && reacted !== "candle" ? " dimmed" : "";
-        const candleLit = reacted === "candle" ? " candle-lit" : "";
-
-        container.className = "reaction-container popup-reactions";
-        container.innerHTML = `
-            <div class="reaction-bar reaction-buttons">
-                <button type="button" class="reaction-btn muyu-btn${reacted === "muyu" ? " active" : ""}${muyuDim}"
-                    onclick="handleReaction(event, '${eventId}', 'muyu', this)"
-                    ${reacted ? "disabled" : ""}>
-                    🪘 <span class="count">${data.muyu}</span> ${isOnline ? "致敬" : "敲木魚"}
-                </button>
-                <button type="button" class="reaction-btn candle-btn${reacted === "candle" ? " active" : ""}${candleDim}${candleLit}"
-                    onclick="handleReaction(event, '${eventId}', 'candle', this)"
-                    ${reacted ? "disabled" : ""}>
-                    <span class="candle-flame">🕯️</span> <span class="count">${data.candle}</span> ${isOnline ? "悼念" : "點蠟燭"}
-                </button>
-            </div>
-        `;
+        const compact = container.closest(".custom-popup") !== null;
+        container.innerHTML = makeReactionBarHtml(eventId, data, reacted, compact);
     }
 
-    window.handleReaction = async (e, eventId, type, btn) => {
+    window.handleReactClick = async (e, eventId, type, btn) => {
         e.stopPropagation();
-        if (localStorage.getItem(`reacted:${eventId}`)) return;
+        if (localStorage.getItem(`reacted:${eventId}`) || btn.classList.contains("active")) return;
 
-        btn.style.transform = "scale(0.94)";
-        setTimeout(() => { btn.style.transform = ""; }, 120);
-
+        toggleReact(btn);
         if (type === "muyu") spawnMeritEffect(btn);
-        if (type === "candle") {
-            btn.classList.add("candle-lit");
-            const flame = btn.querySelector(".candle-flame");
-            if (flame) {
-                flame.style.transform = "scale(1.35)";
-                setTimeout(() => { flame.style.transform = ""; }, 400);
-            }
-        }
+        if (type === "candle") btn.classList.add("candle-lit");
 
         const data = await sendReaction(eventId, type);
-        if (data) {
-            const container = btn.closest(".reaction-container");
-            updateReactionUI(eventId, container);
+        const container = btn.closest(".reaction-container") || btn.closest(".popup-reactions-wrap");
+        if (data && container) {
+            await updateReactionUI(eventId, container);
+        } else if (!data) {
+            localStorage.removeItem(`reacted:${eventId}`);
+            if (container) await updateReactionUI(eventId, container);
         }
     };
+
+    window.handleReaction = window.handleReactClick;
 
     // ── RENDER ──────────────────────────────────────────────
     function renderEvents(){
@@ -2481,26 +2720,9 @@
             const severity = getEventSeverity(ev);
             const markerStyle = resolveMarkerStyle(ev, cat.color);
 
-            const popupHtml=`
-                <div class="popup-inner" style="--popup-accent:${markerStyle.color}">
-                    <div class="popup-top">
-                        <div class="popup-title">${displayTitle}</div>
-                        <div class="popup-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
-                    </div>
-                    <div class="popup-summary">${displayContent}</div>
-                    <div class="reaction-container popup-reactions" data-event-id="${ev.id}"></div>
-                    <div class="popup-meta">
-                        <span><i class="fa-solid fa-location-dot" style="margin-right:4px;color:var(--popup-accent)"></i>${ev.city||"未知城市"}</span>
-                        ${makeSourceBadge(ev.source)}
-                    </div>
-                    <div class="popup-actions">
-                        ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn primary"><i class="fa-solid fa-arrow-up-right-from-square"></i>查看原文</a>`:""}
-                        <button type="button" class="popup-btn danger" onclick='openReportModal(decodeURIComponent("${encodeURIComponent(displayTitle)}"))'>
-                            <span style="display:inline-flex;width:12px;height:12px;align-items:center"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報資料
-                        </button>
-                    </div>
-                </div>
-            `;
+            const catVisual = getCategoryVisual(ev.category);
+            const pinPulse = shouldPinPulse(ev, severity);
+            const popupHtml = buildPopupHtml(ev, displayTitle, displayContent, markerStyle);
 
             const popup = new mapboxgl.Popup({
                 className: "custom-popup",
@@ -2512,14 +2734,20 @@
             popup.on("open", () => {
                 activePopup = popup;
                 if (isMourningEvent(ev)) {
-                    const container = popup.getElement().querySelector(".reaction-container");
+                    const container = popup.getElement().querySelector(".reaction-container, .popup-reactions-wrap");
                     if (container) updateReactionUI(ev.id, container);
                 }
             });
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(markerStyle.color, CAT_SVG[ev.category]||CAT_SVG.other, severity, markerStyle.glow),
+                element: makeMarkerElement(
+                    markerStyle.color,
+                    CAT_SVG[ev.category] || CAT_SVG.other,
+                    severity,
+                    markerStyle.glow,
+                    pinPulse
+                ),
                 anchor: "bottom"
             })
                 .setLngLat([latlng[1], latlng[0]])
@@ -2550,36 +2778,10 @@
 
             renderedMarkers.push(marker);
 
-            // Card
             const card = document.createElement("article");
-            card.className = "event-card";
-            card.style.setProperty("--chip-color", cat.color);
-            card.innerHTML=`
-                <div class="card-top">
-                    <div class="card-city"><i class="fa-solid fa-location-dot" style="margin-right:3px"></i>${normalizeText(ev.city)||"未知城市"}</div>
-                    <div class="card-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
-                </div>
-                <div class="card-title">${displayTitle}</div>
-                <div class="card-content">${displayContent}</div>
-                <div class="reaction-container" data-event-id="${ev.id}"></div>
-                <div class="card-footer">
-                    ${ev.sources && ev.sources.length > 0 ? `
-                        <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
-                            <i class="fa-solid fa-newspaper"></i> 📰 ${ev.sources.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
-                        </div>
-                        <div class="card-sources-list">
-                            ${ev.sources.map(s => `<a href="${s.url}" target="_blank" onclick="event.stopPropagation();">${s.outlet}：${s.title}</a>`).join("")}
-                        </div>
-                    ` : ""}
-                    <div class="card-actions">
-                        <div>${makeSourceBadge(ev.source)}</div>
-                        <div class="card-action-group">
-                            <button class="card-action-btn report" data-report="${encodeURIComponent(displayTitle)}"><span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報</button>
-                            ${ev.url?`<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>`:""}
-                        </div>
-                    </div>
-                </div>
-            `;
+            card.className = "event-card-v2";
+            card.style.setProperty("--card-color", catVisual.color);
+            card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
 
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
@@ -2615,32 +2817,6 @@
         { id:"m5", title:"高雄市左營區 路跑活動交通管制",category:"activity", city:"高雄", lat:22.68, lng:120.30, source:"RSS",     content:"左營大路周六上午舉辦路跑，部分路段暫停停車。" },
         { id:"m6", title:"新竹縣竹北市 水管破裂搶修",   category:"other",    city:"新竹", lat:24.83, lng:121.01, source:"news",    content:"光明六路發生自來水管破裂，施工人員緊急搶修中。" }
     ];
-
-    function deduplicateEvents(events) {
-        const seen = [];
-        return events.filter(ev => {
-            const title = (ev.title || "").replace(/\s+/g, "").replace(/[，。！？、：；「」【】]/g, "");
-            
-            // 跟已收錄的每一筆比對
-            const isDuplicate = seen.some(s => {
-                // 完全一樣
-                if (s.title === title) return true;
-                // 其中一個包含另一個（標題前20字）
-                const short = Math.min(title.length, s.title.length, 20);
-                if (title.slice(0, short) === s.title.slice(0, short)) return true;
-                // 同地點 + 內容高度相似
-                if (ev.city === s.city && s.content && ev.content) {
-                    const c1 = (ev.content || "").replace(/\s+/g, "").slice(0, 30);
-                    const c2 = (s.content || "").replace(/\s+/g, "").slice(0, 30);
-                    if (c1 === c2) return true;
-                }
-                return false;
-            });
-            
-            if (!isDuplicate) seen.push({ title, city: ev.city, content: ev.content });
-            return !isDuplicate;
-        });
-    }
 
     // ── FETCH ────────────────────────────────────────────────
     async function syncNewsAndRender(){
