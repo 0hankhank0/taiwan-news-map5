@@ -59,23 +59,39 @@
 
     <style>
         :root {
-            --bg-deep: #0a0e1a;
-            --bg-panel: #0f1525;
-            --bg-card: #141929;
-            --bg-card-hover: #1a2135;
-            --bg-elevated: #1e2840;
-            --border: rgba(99,120,180,0.18);
-            --border-bright: rgba(99,120,180,0.35);
-            --text-primary: #e8edf5;
-            --text-secondary: #8a9ab8;
-            --text-muted: #546280;
-            --accent: #4f8cff;
-            --accent-glow: rgba(79,140,255,0.25);
-            --accent-2: #a78bfa;
-            --red: #f05a5a;
-            --orange: #fb923c;
-            --green: #34d399;
-            --yellow: #fbbf24;
+            /* ── 台灣本土核心色 ── */
+            --bg-dark: #121214;
+            --bg-deep: #121214;
+            --bg-panel: #18181c;
+            --bg-card: #1e1e24;
+            --bg-card-hover: #26262e;
+            --bg-elevated: #2c2c36;
+            --border: rgba(120, 118, 140, 0.2);
+            --border-bright: rgba(160, 155, 180, 0.32);
+            --text-primary: #ece8e4;
+            --text-secondary: #9a9590;
+            --text-muted: #5c5854;
+            --accent: #5a8fd4;
+            --accent-glow: rgba(90, 143, 212, 0.22);
+            --accent-2: #9b8ec4;
+            /* 情感功能色 */
+            --incense-warm: #DDA853;
+            --incense-warm-soft: rgba(221, 168, 83, 0.18);
+            --candle-glow: #FF7A00;
+            --candle-glow-soft: rgba(255, 122, 0, 0.22);
+            /* 警示色系（高彩度、柔和暈染） */
+            --alert-traffic: #4A90E8;
+            --alert-traffic-glow: rgba(74, 144, 232, 0.42);
+            --alert-fire: #E87830;
+            --alert-fire-glow: rgba(255, 122, 0, 0.38);
+            --alert-arson: #D64545;
+            --alert-arson-glow: rgba(214, 69, 69, 0.4);
+            --alert-disaster: #C93535;
+            --alert-disaster-glow: rgba(201, 53, 53, 0.38);
+            --red: var(--alert-arson);
+            --orange: var(--alert-fire);
+            --green: #4db88a;
+            --yellow: #e8b84a;
             --radius-sm: 10px;
             --radius-md: 16px;
             --radius-lg: 22px;
@@ -564,7 +580,7 @@
             width: 12px;
             height: 12px;
             stroke: currentColor;
-            stroke-width: 2.5px;
+            stroke-width: 1.5px;
             fill: none;
         }
         .src-badge {
@@ -660,20 +676,20 @@
 
         /* ── POPUP ───────────────────────────────────────────── */
         .custom-popup.mapboxgl-popup {
-            max-width: 300px !important;
+            max-width: 320px !important;
         }
         .custom-popup .mapboxgl-popup-content {
             background: var(--bg-panel);
             color: var(--text-primary);
             border-radius: var(--radius-lg);
-            box-shadow: 0 24px 48px rgba(0,0,0,0.6);
+            box-shadow: 0 24px 48px rgba(0,0,0,0.55);
             border: 1px solid var(--border);
-            padding: 16px 18px;
+            padding: 20px 22px;
         }
         .custom-popup .mapboxgl-popup-close-button {
             color: var(--text-muted);
-            top: 8px;
-            right: 10px;
+            top: 10px;
+            right: 12px;
             font-size: 20px;
             line-height: 1;
             padding: 0;
@@ -683,19 +699,42 @@
         .custom-popup .mapboxgl-popup-close-button:hover { color: var(--text-primary); }
         .custom-popup .mapboxgl-popup-tip { border-top-color: var(--bg-panel) !important; }
 
-        .popup-inner {}
+        .popup-inner { display: flex; flex-direction: column; }
         .popup-title {
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 700;
-            margin-bottom: 8px;
+            margin: 0;
             color: var(--text-primary);
-            padding-right: 20px;
+            padding-right: 24px;
+            line-height: 1.5;
+            letter-spacing: 0.01em;
         }
-        .popup-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-        .popup-badges { display: flex; gap: 5px; flex-shrink: 0; }
-        .popup-summary { font-size: 12px; color: var(--text-secondary); line-height: 1.65; margin-bottom: 10px; }
-        .popup-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 11px; color: var(--text-muted); }
-        .popup-actions { display: flex; gap: 8px; }
+        .popup-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 14px;
+        }
+        .popup-badges { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+        .popup-summary {
+            font-size: 12px;
+            font-weight: 400;
+            color: var(--text-secondary);
+            line-height: 1.75;
+            margin-bottom: 16px;
+        }
+        .popup-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 16px;
+            padding-top: 2px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .popup-reactions { margin-bottom: 16px; }
+        .popup-actions { display: flex; gap: 10px; flex-wrap: wrap; }
         .popup-btn {
             display: inline-flex; align-items: center; gap: 5px;
             padding: 6px 13px;
@@ -723,12 +762,18 @@
             border-radius: 50%;
             color: #fff;
             font-size: 14px;
-            border: 2.5px solid rgba(255,255,255,0.2);
+            border: 2.5px solid rgba(255,255,255,0.22);
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-            /* Removed transition: transform to fix marker lag during map movement */
         }
-        .custom-marker:hover .marker-svg-icon { 
-            transform: scale(1.2); 
+        .custom-marker.marker-pulse {
+            animation: markerBreath 2.4s ease-in-out infinite;
+        }
+        @keyframes markerBreath {
+            0%, 100% { filter: brightness(1); }
+            50% { filter: brightness(1.12); }
+        }
+        .custom-marker:hover .marker-svg-icon {
+            transform: scale(1.15);
         }
         .marker-svg-icon {
             display: inline-flex;
@@ -737,8 +782,10 @@
             width: 18px;
             height: 18px;
             color: #fff;
-            transition: transform 0.15s; /* Safe to transition child element */
+            transition: transform 0.15s;
         }
+        .marker-severity-5 { z-index: 5; }
+        .marker-severity-4 { z-index: 4; }
 
         /* ── TOOLTIP ────────────────────────────────────────── */
         .custom-tooltip {
@@ -761,7 +808,95 @@
             width: 18px;
             height: 18px;
             stroke: #fff;
-            stroke-width: 2px;
+            stroke-width: 1.5px;
+        }
+        /* ── 情感互動（木魚 / 蠟燭）──────────────────────────── */
+        .reaction-buttons {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .reaction-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-family: "Noto Sans TC", sans-serif;
+            transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+            overflow: visible;
+        }
+        .reaction-btn:hover:not(:disabled) {
+            border-color: var(--border-bright);
+        }
+        .reaction-btn.muyu-btn:hover:not(:disabled) {
+            border-color: rgba(221, 168, 83, 0.45);
+            box-shadow: 0 0 12px var(--incense-warm-soft);
+        }
+        .reaction-btn.candle-btn:hover:not(:disabled) {
+            border-color: rgba(255, 122, 0, 0.4);
+            box-shadow: 0 0 14px var(--candle-glow-soft);
+        }
+        .reaction-btn.active.muyu-btn {
+            background: var(--incense-warm-soft);
+            border-color: rgba(221, 168, 83, 0.5);
+            color: var(--incense-warm);
+        }
+        .reaction-btn.active.candle-btn {
+            background: var(--candle-glow-soft);
+            border-color: rgba(255, 122, 0, 0.45);
+            color: var(--candle-glow);
+        }
+        .reaction-btn:disabled { cursor: default; opacity: 0.85; }
+        .reaction-btn.dimmed { opacity: 0.38; }
+        .candle-flame {
+            display: inline-block;
+            transition: transform 0.35s cubic-bezier(0.34, 1.4, 0.64, 1), filter 0.35s ease;
+        }
+        .reaction-btn.candle-lit .candle-flame {
+            animation: candleBreath 2.2s ease-in-out infinite;
+            filter: drop-shadow(0 0 6px var(--candle-glow));
+        }
+        @keyframes candleBreath {
+            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 4px var(--candle-glow)); }
+            50% { transform: scale(1.18); filter: drop-shadow(0 0 10px var(--candle-glow)); }
+        }
+        .merit-float {
+            position: fixed;
+            pointer-events: none;
+            z-index: 10050;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--incense-warm);
+            text-shadow: 0 0 12px rgba(221, 168, 83, 0.7);
+            animation: meritRise 1.1s ease-out forwards;
+            white-space: nowrap;
+        }
+        @keyframes meritRise {
+            0% { opacity: 1; transform: translateY(0) scale(0.85); }
+            70% { opacity: 0.9; transform: translateY(-36px) scale(1); }
+            100% { opacity: 0; transform: translateY(-56px) scale(0.95); }
+        }
+        .merit-ripple {
+            position: fixed;
+            pointer-events: none;
+            z-index: 10049;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            border: 2px solid rgba(221, 168, 83, 0.65);
+            animation: meritRipple 0.75s ease-out forwards;
+        }
+        @keyframes meritRipple {
+            0% { opacity: 0.9; transform: translate(-50%, -50%) scale(0.3); }
+            100% { opacity: 0; transform: translate(-50%, -50%) scale(4); }
         }
 
         .mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-group {
@@ -893,7 +1028,505 @@
         .empty-state p { font-size: 13px; }
 
         /* ── MAPBOX OVERRIDES ────────────────────────────────── */
-        .mapboxgl-map { background: #212933; }
+        .mapboxgl-map { background: var(--bg-dark); }
+
+/* ══ TW ONLINE MODE — Cyberpunk UI Overlay ══════════════════ */ 
+ 
+ body.tw-online-mode::before { 
+     content: ""; 
+     position: fixed; 
+     inset: 0; 
+     z-index: 9999; 
+     pointer-events: none; 
+     background: repeating-linear-gradient( 
+         0deg, 
+         transparent, 
+         transparent 2px, 
+         rgba(0, 255, 170, 0.015) 2px, 
+         rgba(0, 255, 170, 0.015) 4px 
+     ); 
+     animation: scanlines 8s linear infinite; 
+ } 
+ 
+ body.tw-online-mode::after { 
+     content: ""; 
+     position: fixed; 
+     inset: 0; 
+     z-index: 9998; 
+     pointer-events: none; 
+     background: radial-gradient(ellipse at center, transparent 60%, rgba(0, 255, 170, 0.04) 100%); 
+ } 
+ 
+ @keyframes scanlines { 
+     0% { background-position: 0 0; } 
+     100% { background-position: 0 100px; } 
+ } 
+ 
+ body.tw-online-mode { 
+     --neon-green: #00FF66;
+     --neon-cyan: #00F0FF;
+     --bg-deep: #010608; 
+     --bg-panel: #030a10; 
+     --bg-card: #051018; 
+     --bg-card-hover: #0a1a24; 
+     --bg-elevated: #0d2230; 
+     --border: rgba(0, 255, 102, 0.18); 
+     --border-bright: rgba(0, 240, 255, 0.45); 
+     --text-primary: #d8fff0; 
+     --text-secondary: rgba(0, 240, 255, 0.75); 
+     --text-muted: #1a5548; 
+     --accent: var(--neon-green); 
+     --accent-glow: rgba(0, 255, 102, 0.28); 
+     --accent-2: var(--neon-cyan); 
+     --red: #ff4466; 
+     --orange: #ffaa00; 
+     --green: var(--neon-green); 
+     --yellow: #ffe600; 
+     font-family: "Space Mono", "Noto Sans TC", monospace; 
+ }
+
+ body.tw-online-mode #map {
+     position: relative;
+     filter: saturate(1.25) contrast(1.08) brightness(0.92);
+     box-shadow:
+         inset 0 0 100px rgba(0, 255, 102, 0.05),
+         inset 0 0 160px rgba(0, 240, 255, 0.04);
+ } 
+ 
+ body.tw-online-mode #app-header { 
+     background: rgba(1, 10, 14, 0.95); 
+     border-bottom: 1px solid rgba(0, 255, 170, 0.3); 
+     box-shadow: 0 0 30px rgba(0, 255, 170, 0.08); 
+ } 
+ 
+ body.tw-online-mode .brand-title { 
+     color: #00ffaa; 
+     text-shadow: 0 0 10px rgba(0, 255, 170, 0.6); 
+     letter-spacing: 0.15em; 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode .brand-sub { 
+     color: #ff3cac; 
+     text-shadow: 0 0 8px rgba(255, 60, 172, 0.5); 
+     letter-spacing: 0.2em; 
+ } 
+ 
+ body.tw-online-mode .brand-icon { 
+     background: none; 
+     box-shadow: none; 
+     border: 1px solid rgba(0, 255, 170, 0.4); 
+     animation: borderPulse 3s ease-in-out infinite; 
+ } 
+ 
+ @keyframes borderPulse { 
+     0%, 100% { border-color: rgba(0, 255, 170, 0.4); box-shadow: 0 0 8px rgba(0, 255, 170, 0.2); } 
+     50% { border-color: rgba(0, 255, 170, 0.8); box-shadow: 0 0 20px rgba(0, 255, 170, 0.5); } 
+ } 
+ 
+ body.tw-online-mode #status-text { 
+     background: rgba(0, 255, 170, 0.05); 
+     border: 1px solid rgba(0, 255, 170, 0.25); 
+     color: #00ffaa; 
+     font-family: "Space Mono", monospace; 
+     text-shadow: 0 0 6px rgba(0, 255, 170, 0.4); 
+     animation: statusBlink 4s ease-in-out infinite; 
+ } 
+ 
+ @keyframes statusBlink { 
+     0%, 90%, 100% { opacity: 1; } 
+     95% { opacity: 0.6; } 
+ } 
+ 
+ body.tw-online-mode #news-sidebar { 
+     background: rgba(3, 15, 21, 0.97); 
+     border-right: 1px solid rgba(0, 255, 170, 0.2); 
+     box-shadow: 4px 0 30px rgba(0, 255, 170, 0.05); 
+ } 
+ 
+ body.tw-online-mode .sidebar-header { 
+     border-bottom: 1px solid rgba(0, 255, 170, 0.15); 
+     background: rgba(0, 255, 170, 0.02); 
+ } 
+ 
+ body.tw-online-mode .sidebar-title { 
+     color: #00ffaa; 
+     text-shadow: 0 0 8px rgba(0, 255, 170, 0.5); 
+     font-family: "Space Mono", monospace; 
+     letter-spacing: 0.2em; 
+ } 
+ 
+ body.tw-online-mode .count-pill { 
+     background: rgba(0, 255, 170, 0.08); 
+     border: 1px solid rgba(0, 255, 170, 0.4); 
+     color: #00ffaa; 
+     text-shadow: 0 0 6px rgba(0, 255, 170, 0.6); 
+     animation: countGlow 2s ease-in-out infinite alternate; 
+ } 
+ 
+ @keyframes countGlow { 
+     from { box-shadow: 0 0 4px rgba(0, 255, 170, 0.2); } 
+     to   { box-shadow: 0 0 12px rgba(0, 255, 170, 0.5); } 
+ } 
+ 
+ body.tw-online-mode .search-input { 
+     background: rgba(0, 10, 15, 0.8); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+     color: #c8fff0; 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode .search-input::placeholder { color: rgba(0, 255, 170, 0.3); } 
+ 
+ body.tw-online-mode .search-input:focus { 
+     border-color: #00ffaa; 
+     box-shadow: 0 0 0 3px rgba(0, 255, 170, 0.1), 0 0 15px rgba(0, 255, 170, 0.2); 
+ } 
+ 
+ body.tw-online-mode .filter-chip { 
+     font-family: "Space Mono", monospace; 
+     font-size: 10px; 
+     letter-spacing: 0.08em; 
+     border: 1px solid transparent; 
+ } 
+ 
+ body.tw-online-mode .filter-chip.active { 
+     border-color: rgba(255, 255, 255, 0.4); 
+     box-shadow: 0 0 15px currentColor; 
+     text-shadow: 0 0 6px currentColor; 
+ } 
+ 
+ body.tw-online-mode .event-card { 
+     background: rgba(5, 18, 24, 0.9); 
+     border-bottom: 1px solid rgba(0, 255, 170, 0.08); 
+ } 
+ 
+ body.tw-online-mode .event-card::after { 
+     content: ""; 
+     position: absolute; 
+     top: 0; left: 0; right: 0; 
+     height: 1px; 
+     background: linear-gradient(90deg, transparent, rgba(0, 255, 170, 0.2), transparent); 
+     opacity: 0; 
+     transition: opacity 0.2s; 
+ } 
+ 
+ body.tw-online-mode .event-card:hover { 
+     background: rgba(10, 30, 40, 0.95); 
+     box-shadow: inset 3px 0 0 rgba(0, 255, 170, 0.5); 
+ } 
+ 
+ body.tw-online-mode .event-card:hover::after { opacity: 1; } 
+ 
+ body.tw-online-mode .card-city { 
+     color: #00ffaa; 
+     font-family: "Space Mono", monospace; 
+     font-size: 9px; 
+     letter-spacing: 0.15em; 
+     text-shadow: 0 0 6px rgba(0, 255, 170, 0.5); 
+ } 
+ 
+ body.tw-online-mode .card-title { 
+     color: #c8fff0; 
+     font-family: "Space Mono", monospace; 
+     font-size: 12px; 
+     letter-spacing: 0.04em; 
+ } 
+ 
+ body.tw-online-mode .card-content { 
+     color: rgba(90, 240, 192, 0.7); 
+     font-family: "Space Mono", monospace; 
+     font-size: 10.5px; 
+ } 
+ 
+ body.tw-online-mode .event-card:hover::before { 
+     opacity: 1; 
+     box-shadow: 0 0 8px var(--chip-color, #00ffaa); 
+ } 
+ 
+ body.tw-online-mode .custom-marker { 
+     clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%); 
+     border: 1px solid rgba(0, 255, 102, 0.35);
+     animation: markerHexPulse 3s ease-in-out infinite; 
+ } 
+ 
+ @keyframes markerHexPulse { 
+     0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 102, 0.35), 0 0 20px rgba(0, 240, 255, 0.12); } 
+     50% { box-shadow: 0 0 22px rgba(0, 255, 102, 0.55), 0 0 40px rgba(0, 240, 255, 0.2); } 
+ } 
+ 
+ body.tw-online-mode .custom-popup .mapboxgl-popup-content { 
+     position: relative;
+     background: rgba(3, 12, 18, 0.97); 
+     border: 1px solid rgba(0, 255, 102, 0.35); 
+     box-shadow:
+         0 0 24px rgba(0, 255, 102, 0.12),
+         0 0 48px rgba(0, 240, 255, 0.06),
+         0 24px 48px rgba(0,0,0,0.85);
+     font-family: "Space Mono", monospace;
+     clip-path: polygon(
+         0 12px, 12px 0, calc(100% - 12px) 0, 100% 12px,
+         100% calc(100% - 12px), calc(100% - 12px) 100%, 12px 100%, 0 calc(100% - 12px)
+     );
+     background-image:
+         linear-gradient(rgba(0, 255, 102, 0.04) 1px, transparent 1px),
+         linear-gradient(90deg, rgba(0, 255, 102, 0.04) 1px, transparent 1px);
+     background-size: 14px 14px;
+ } 
+
+ body.tw-online-mode .custom-popup .mapboxgl-popup-content::before {
+     content: "◈ MISSION POINT";
+     position: absolute;
+     top: 8px;
+     left: 14px;
+     font-size: 8px;
+     font-weight: 700;
+     letter-spacing: 0.2em;
+     color: var(--neon-cyan);
+     text-shadow: 0 0 8px rgba(0, 240, 255, 0.6);
+     opacity: 0.85;
+     pointer-events: none;
+ }
+
+ body.tw-online-mode .custom-popup .popup-inner {
+     padding-top: 14px;
+ }
+
+ body.tw-online-mode .event-card {
+     position: relative;
+     clip-path: polygon(
+         0 8px, 8px 0, calc(100% - 8px) 0, 100% 8px,
+         100% 100%, 0 100%
+     );
+     border-left: 2px solid rgba(0, 255, 102, 0.25);
+ }
+
+ body.tw-online-mode .event-card::before {
+     left: 0;
+     top: 0;
+     bottom: 0;
+     width: 3px;
+     height: auto;
+     border-radius: 0;
+     border: none;
+     background: var(--neon-green);
+     opacity: 0;
+ }
+ body.tw-online-mode .event-card::after {
+     content: "";
+     position: absolute;
+     top: 6px;
+     right: 8px;
+     width: 20px;
+     height: 20px;
+     border-top: 1px solid var(--neon-cyan);
+     border-right: 1px solid var(--neon-cyan);
+     opacity: 0.5;
+     pointer-events: none;
+ }
+ 
+ body.tw-online-mode .popup-title { 
+     color: var(--neon-green); 
+     text-shadow: 0 0 10px rgba(0, 255, 102, 0.45); 
+     font-size: 13px; 
+     letter-spacing: 0.08em; 
+ } 
+ 
+ body.tw-online-mode .popup-summary { 
+     color: rgba(90, 240, 192, 0.8); 
+     font-family: "Space Mono", monospace; 
+     font-size: 11px; 
+ } 
+ 
+ body.tw-online-mode .popup-btn.primary { 
+     background: rgba(0, 255, 170, 0.08); 
+     color: #00ffaa; 
+     border: 1px solid rgba(0, 255, 170, 0.3); 
+     font-family: "Space Mono", monospace; 
+     font-size: 10px; 
+     letter-spacing: 0.08em; 
+ } 
+ 
+ body.tw-online-mode .popup-btn.primary:hover { 
+     background: rgba(0, 255, 170, 0.18); 
+     box-shadow: 0 0 12px rgba(0, 255, 170, 0.3); 
+ } 
+ 
+ body.tw-online-mode .popup-btn.danger { 
+     background: rgba(255, 60, 60, 0.08); 
+     color: #ff3c3c; 
+     border: 1px solid rgba(255, 60, 60, 0.3); 
+     font-family: "Space Mono", monospace; 
+     font-size: 10px; 
+ } 
+ 
+ body.tw-online-mode .custom-popup .mapboxgl-popup-tip { 
+     border-top-color: rgba(0, 255, 170, 0.3) !important; 
+ } 
+ 
+ body.tw-online-mode .src-badge { 
+     font-family: "Space Mono", monospace; 
+     font-size: 9px; 
+     letter-spacing: 0.12em; 
+     border: 1px solid currentColor; 
+ } 
+ 
+ body.tw-online-mode .cat-badge { 
+     font-family: "Space Mono", monospace; 
+     font-size: 9px; 
+     letter-spacing: 0.1em; 
+ } 
+ 
+ body.tw-online-mode .mode-toggle { 
+     background: rgba(0, 10, 15, 0.8); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+ } 
+ 
+ body.tw-online-mode .mode-btn.active { 
+     background: rgba(0, 255, 170, 0.15); 
+     color: #00ffaa; 
+     text-shadow: 0 0 6px rgba(0, 255, 170, 0.5); 
+     box-shadow: 0 0 12px rgba(0, 255, 170, 0.2); 
+ } 
+ 
+ body.tw-online-mode .donate-btn { 
+     background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 255, 170, 0.05)); 
+     color: #00ffaa; 
+     border: 1px solid rgba(0, 255, 170, 0.4); 
+     font-family: "Space Mono", monospace; 
+     letter-spacing: 0.06em; 
+ } 
+ 
+ body.tw-online-mode .donate-btn:hover { 
+     box-shadow: 0 0 20px rgba(0, 255, 170, 0.3); 
+     background: linear-gradient(135deg, rgba(0, 255, 170, 0.2), rgba(0, 255, 170, 0.1)); 
+ } 
+ 
+ body.tw-online-mode #tw-online-status { 
+     font-family: "Space Mono", monospace; 
+     font-size: 10px; 
+     letter-spacing: 0.08em; 
+     color: #00ffaa; 
+     text-shadow: 0 0 6px rgba(0, 255, 170, 0.4); 
+ } 
+ 
+ body.tw-online-mode .empty-state { 
+     color: rgba(0, 255, 170, 0.3); 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode #event-list::-webkit-scrollbar-thumb { 
+     background: rgba(0, 255, 170, 0.2); 
+ } 
+ 
+ body.tw-online-mode .mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-group { 
+     background: rgba(3, 15, 21, 0.95); 
+     border: 1px solid rgba(0, 255, 170, 0.25); 
+     box-shadow: 0 0 15px rgba(0, 255, 170, 0.1); 
+ } 
+ 
+ body.tw-online-mode .mapboxgl-ctrl-group button + button { 
+     border-top: 1px solid rgba(0, 255, 170, 0.15) !important; 
+ } 
+ 
+ body.tw-online-mode .modal-box { 
+     background: rgba(3, 15, 21, 0.98); 
+     border: 1px solid rgba(0, 255, 170, 0.25); 
+     box-shadow: 0 0 40px rgba(0, 255, 170, 0.1), 0 32px 64px rgba(0,0,0,0.9); 
+ } 
+ 
+ body.tw-online-mode .modal-title { 
+     color: #00ffaa; 
+     font-family: "Space Mono", monospace; 
+     letter-spacing: 0.1em; 
+ } 
+ 
+ body.tw-online-mode .form-control { 
+     background: rgba(0, 10, 15, 0.8); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+     color: #c8fff0; 
+     font-family: "Space Mono", monospace; 
+     font-size: 12px; 
+ } 
+ 
+ body.tw-online-mode .form-control:focus { 
+     border-color: #00ffaa; 
+     box-shadow: 0 0 0 3px rgba(0, 255, 170, 0.1); 
+ } 
+ 
+ body.tw-online-mode .btn-ghost { 
+     background: rgba(0, 10, 15, 0.8); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+     color: rgba(0, 255, 170, 0.7); 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode .btn-primary { 
+     background: linear-gradient(135deg, rgba(0, 255, 170, 0.2), rgba(0, 200, 130, 0.1)); 
+     color: #00ffaa; 
+     border: 1px solid rgba(0, 255, 170, 0.4); 
+     box-shadow: 0 0 15px rgba(0, 255, 170, 0.2); 
+     font-family: "Space Mono", monospace; 
+     letter-spacing: 0.08em; 
+ } 
+ 
+ body.tw-online-mode .mobile-search { 
+     background: rgba(3, 15, 21, 0.95); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+     color: #c8fff0; 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode .mobile-search::placeholder { color: rgba(0, 255, 170, 0.3); } 
+ 
+ body.tw-online-mode .mobile-pill, 
+ body.tw-online-mode .mobile-city-select, 
+ body.tw-online-mode .styled-select { 
+     background: rgba(3, 15, 21, 0.95); 
+     border: 1px solid rgba(0, 255, 170, 0.2); 
+     color: #c8fff0; 
+     font-family: "Space Mono", monospace; 
+ } 
+ 
+ body.tw-online-mode .handle-bar { 
+     background: rgba(0, 255, 170, 0.4); 
+     box-shadow: 0 0 6px rgba(0, 255, 170, 0.3); 
+ } 
+ 
+ body.tw-online-mode .custom-tooltip .mapboxgl-popup-content { 
+     background: rgba(3, 15, 21, 0.97); 
+     border: 1px solid rgba(0, 255, 170, 0.3); 
+     color: #00ffaa; 
+     font-family: "Space Mono", monospace; 
+     font-size: 11px; 
+     box-shadow: 0 0 15px rgba(0, 255, 170, 0.2); 
+ } 
+ 
+ body.tw-online-mode #map::before, 
+ body.tw-online-mode #map::after { 
+     content: ""; 
+     position: absolute; 
+     width: 60px; 
+     height: 60px; 
+     pointer-events: none; 
+     z-index: 5; 
+     opacity: 0.4; 
+ } 
+ 
+ body.tw-online-mode #map::before { 
+     top: 12px; left: 12px; 
+     border-top: 2px solid var(--neon-green); 
+     border-left: 2px solid var(--neon-green); 
+     box-shadow: -2px -2px 12px rgba(0, 255, 102, 0.45); 
+ } 
+ 
+ body.tw-online-mode #map::after { 
+     bottom: 50px; right: 12px; 
+     border-bottom: 2px solid var(--neon-cyan); 
+     border-right: 2px solid var(--neon-cyan); 
+     box-shadow: 2px 2px 12px rgba(0, 240, 255, 0.4); 
+ }
+
     </style>
 </head>
 <body>
@@ -1109,14 +1742,52 @@
     };
 
     const CATEGORY_CONFIG = {
-        all:          { text: "全部",     icon: "fa-list",                color: "#475569" },
-        disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#dc2626" },
-        criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#f05a5a" },
-        traffic:      { text: "交通事故", icon: "fa-car-burst",           color: "#4f8cff" },
-        medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#fb923c" },
-        activity:     { text: "活動",     icon: "fa-users",               color: "#34d399" },
-        other:        { text: "其他事件", icon: "fa-circle-info",         color: "#6b7280" }
+        all:          { text: "全部",     icon: "fa-list",                color: "#5c5854" },
+        disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#C93535" },
+        criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#D64545" },
+        traffic:      { text: "交通事故", icon: "fa-car-burst",           color: "#4A90E8" },
+        medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#E87830" },
+        activity:     { text: "活動",     icon: "fa-users",               color: "#4db88a" },
+        other:        { text: "其他事件", icon: "fa-circle-info",         color: "#6b6b72" }
     };
+
+    const ALERT_COLOR_MAP = {
+        traffic:  { color: "#4A90E8", glow: "rgba(74, 144, 232, 0.45)" },
+        fire:     { color: "#E87830", glow: "rgba(255, 122, 0, 0.42)" },
+        arson:    { color: "#D64545", glow: "rgba(214, 69, 69, 0.45)" },
+        disaster: { color: "#C93535", glow: "rgba(201, 53, 53, 0.4)" },
+    };
+
+    function getEventAlertType(ev) {
+        const text = (ev.title + " " + (ev.content || ""));
+        if (/縱火|放火|蓄意放火/.test(text)) return "arson";
+        if (/火災|火警|爆炸|氣爆|失火|燃燒|起火/.test(text)) return "fire";
+        if (ev.category === "traffic") return "traffic";
+        if (ev.category === "disaster") return "disaster";
+        return null;
+    }
+
+    function getEventSeverity(ev) {
+        let score = 2;
+        const alertType = getEventAlertType(ev);
+        if (alertType === "arson") score = 5;
+        else if (alertType === "fire") score = 4;
+        else if (alertType === "disaster" || ev.category === "disaster") score = 4;
+        else if (ev.category === "criminal") score = 3;
+        else if (ev.category === "traffic" || alertType === "traffic") score = 2;
+        else if (ev.category === "medical") score = 3;
+        else score = 1;
+        if (isMourningEvent(ev)) score = Math.max(score, 4);
+        const urgent = /重大|嚴重|多車|連環|傷亡|死亡|罹難/.test((ev.title || "") + (ev.content || ""));
+        if (urgent) score = Math.min(5, score + 1);
+        return Math.min(5, Math.max(1, score));
+    }
+
+    function resolveMarkerStyle(ev, fallbackColor) {
+        const alertType = getEventAlertType(ev);
+        if (alertType && ALERT_COLOR_MAP[alertType]) return ALERT_COLOR_MAP[alertType];
+        return { color: fallbackColor, glow: "rgba(90, 143, 212, 0.35)" };
+    }
 
     const TW_ONLINE_TEXT = {
         // Header 
@@ -1310,6 +1981,7 @@
     function applyMapMode(mode) {
         currentMapMode = mode;
         localStorage.setItem("map_mode", mode);
+        document.body.classList.toggle("tw-online-mode", mode === "online");
         document.getElementById("map-mode-select").value = mode;
 
         const isOnline = mode === "online";
@@ -1387,12 +2059,42 @@
         closeActivePopup();
         while(renderedMarkers.length) renderedMarkers.pop().remove();
     }
-    function makeMarkerElement(color, svg){
+    function makeMarkerElement(color, svg, severity = 2, glowColor = null){
+        const sizes = { 1: 30, 2: 34, 3: 38, 4: 42, 5: 46 };
+        const glowRadii = { 1: 8, 2: 12, 3: 18, 4: 26, 5: 34 };
+        const size = sizes[severity] || 34;
+        const glowR = glowRadii[severity] || 12;
+        const g = glowColor || color;
         const wrapper = document.createElement("div");
-        wrapper.className = "custom-marker";
+        wrapper.className = `custom-marker marker-severity-${severity}` + (severity >= 4 ? " marker-pulse" : "");
+        wrapper.style.width = `${size}px`;
+        wrapper.style.height = `${size}px`;
         wrapper.style.background = `linear-gradient(135deg,${color},${color}cc)`;
+        wrapper.style.boxShadow = `0 4px 16px rgba(0,0,0,0.45), 0 0 ${glowR}px ${g}`;
         wrapper.innerHTML = `<span class="marker-svg-icon">${svg}</span>`;
         return wrapper;
+    }
+
+    function spawnMeritEffect(btn) {
+        const rect = btn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top;
+        const float = document.createElement("div");
+        float.className = "merit-float";
+        float.textContent = "功德 +1";
+        float.style.left = `${cx}px`;
+        float.style.top = `${cy - 8}px`;
+        float.style.transform = "translateX(-50%)";
+        document.body.appendChild(float);
+        setTimeout(() => float.remove(), 1100);
+        for (let i = 0; i < 3; i++) {
+            const ripple = document.createElement("div");
+            ripple.className = "merit-ripple";
+            ripple.style.left = `${cx + (i - 1) * 14}px`;
+            ripple.style.top = `${rect.top + rect.height / 2}px`;
+            document.body.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 750);
+        }
     }
     function ensureBoundaryLayer(){
         if(!map.getSource("city-boundary")){
@@ -1581,20 +2283,22 @@
         const data = await getReactions(eventId);
         const reacted = localStorage.getItem(`reacted:${eventId}`);
         const isOnline = currentMapMode === "online";
-        
+        const muyuDim = reacted && reacted !== "muyu" ? " dimmed" : "";
+        const candleDim = reacted && reacted !== "candle" ? " dimmed" : "";
+        const candleLit = reacted === "candle" ? " candle-lit" : "";
+
+        container.className = "reaction-container popup-reactions";
         container.innerHTML = `
-            <div class="reaction-buttons" style="display:flex; gap:10px; margin-top:10px;">
-                <button class="reaction-btn ${reacted === 'muyu' ? 'active' : ''}" 
+            <div class="reaction-buttons">
+                <button type="button" class="reaction-btn muyu-btn${reacted === "muyu" ? " active" : ""}${muyuDim}"
                     onclick="handleReaction(event, '${eventId}', 'muyu', this)"
-                    ${reacted ? 'disabled' : ''}
-                    style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:5px 10px; cursor:${reacted ? 'default' : 'pointer'}; font-size:12px; transition:transform 0.1s; color:var(--text-primary); ${reacted && reacted !== 'muyu' ? 'opacity:0.4;' : ''}">
-                    🪘 <span class="count">${data.muyu}</span> ${isOnline ? '致敬' : '敲木魚'}
+                    ${reacted ? "disabled" : ""}>
+                    🪘 <span class="count">${data.muyu}</span> ${isOnline ? "致敬" : "敲木魚"}
                 </button>
-                <button class="reaction-btn ${reacted === 'candle' ? 'active' : ''}" 
+                <button type="button" class="reaction-btn candle-btn${reacted === "candle" ? " active" : ""}${candleDim}${candleLit}"
                     onclick="handleReaction(event, '${eventId}', 'candle', this)"
-                    ${reacted ? 'disabled' : ''}
-                    style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:5px 10px; cursor:${reacted ? 'default' : 'pointer'}; font-size:12px; transition:transform 0.1s; color:var(--text-primary); ${reacted && reacted !== 'candle' ? 'opacity:0.4;' : ''}">
-                    🕯️ <span class="count">${data.candle}</span> ${isOnline ? '悼念' : '點蠟燭'}
+                    ${reacted ? "disabled" : ""}>
+                    <span class="candle-flame">🕯️</span> <span class="count">${data.candle}</span> ${isOnline ? "悼念" : "點蠟燭"}
                 </button>
             </div>
         `;
@@ -1603,13 +2307,23 @@
     window.handleReaction = async (e, eventId, type, btn) => {
         e.stopPropagation();
         if (localStorage.getItem(`reacted:${eventId}`)) return;
-        
-        btn.style.transform = "scale(1.2)";
-        setTimeout(() => btn.style.transform = "scale(1)", 100);
-        
+
+        btn.style.transform = "scale(0.94)";
+        setTimeout(() => { btn.style.transform = ""; }, 120);
+
+        if (type === "muyu") spawnMeritEffect(btn);
+        if (type === "candle") {
+            btn.classList.add("candle-lit");
+            const flame = btn.querySelector(".candle-flame");
+            if (flame) {
+                flame.style.transform = "scale(1.35)";
+                setTimeout(() => { flame.style.transform = ""; }, 400);
+            }
+        }
+
         const data = await sendReaction(eventId, type);
         if (data) {
-            const container = btn.closest('.reaction-container');
+            const container = btn.closest(".reaction-container");
             updateReactionUI(eventId, container);
         }
     };
@@ -1651,7 +2365,7 @@
                         <div class="popup-badges">${makeSourceBadge(ev.source,true)} ${makeCatBadge(ev.category)}</div>
                     </div>
                     <div class="popup-summary">${displayContent}</div>
-                    <div class="reaction-container" data-event-id="${ev.id}"></div>
+                    <div class="reaction-container popup-reactions" data-event-id="${ev.id}"></div>
                     <div class="popup-meta">
                         <span><i class="fa-solid fa-location-dot" style="margin-right:4px;color:var(--accent)"></i>${ev.city||"未知城市"}</span>
                         ${makeSourceBadge(ev.source)}
@@ -1680,8 +2394,10 @@
             });
             popup.on("close", ()=>{ if(activePopup === popup) activePopup = null; });
 
+            const severity = getEventSeverity(ev);
+            const markerStyle = resolveMarkerStyle(ev, cat.color);
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(cat.color, CAT_SVG[ev.category]||CAT_SVG.other),
+                element: makeMarkerElement(markerStyle.color, CAT_SVG[ev.category]||CAT_SVG.other, severity, markerStyle.glow),
                 anchor: "center"
             })
                 .setLngLat([latlng[1], latlng[0]])
