@@ -381,6 +381,10 @@
             width: 100% !important;
             height: 100% !important;
         }
+        .map-hero,
+        .map-orbital-card {
+            display: none !important;
+        }
 
         /* ── SIDEBAR ────────────────────────────────────────── */
         #news-sidebar {
@@ -2632,6 +2636,7 @@
     const betaModal    = document.getElementById("beta-modal");
     const settingsModal = document.getElementById("settings-modal");
     const newsSidebar  = document.getElementById("news-sidebar");
+    const mapStage     = document.getElementById("map-stage");
 
     let currentMapMode = localStorage.getItem("map_mode") || "normal";
 
@@ -2911,6 +2916,10 @@
         if (isTaiwanMode) {
             setTimeout(() => focusTaiwanView(0), 180);
         }
+    }
+
+    function removeMapOverlays() {
+        document.querySelectorAll(".map-hero, .map-orbital-card").forEach(el => el.remove());
     }
 
     function populateCityFilters(){
@@ -3438,6 +3447,13 @@
         }
     });
     window.addEventListener("resize", scheduleMapResize);
+    if (typeof ResizeObserver !== "undefined") {
+        const layoutObserver = new ResizeObserver(() => {
+            scheduleMapResize();
+        });
+        if (mapStage) layoutObserver.observe(mapStage);
+        if (newsSidebar) layoutObserver.observe(newsSidebar);
+    }
     function openReportModal(title){
         document.getElementById("report-title").value=title;
         document.getElementById("report-type").value="資料錯誤";
@@ -3530,6 +3546,7 @@
 
     document.addEventListener("DOMContentLoaded",()=>{
         populateCityFilters();
+        removeMapOverlays();
         checkBetaModal();
         applyMapMode(currentMapMode); // 套用快取的模式
         syncNewsAndRender();
