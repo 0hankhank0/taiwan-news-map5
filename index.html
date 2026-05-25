@@ -2508,6 +2508,10 @@
     ];
 
     const taiwanView = { center:[23.6,120.9], zoom:7 };
+    const TAIWAN_BOUNDS = [
+        [119.2, 21.7],
+        [122.4, 25.5]
+    ];
     const globalView = { center:[20,0], zoom:2 };
     const EMPTY_GEOJSON = { type:"FeatureCollection", features:[] };
 
@@ -2567,10 +2571,20 @@
         container: "map",
         style: MAPBOX_STYLES.dark,
         center: [taiwanView.center[1], taiwanView.center[0]],
-        zoom: taiwanView.zoom
+        zoom: taiwanView.zoom,
+        projection: "mercator",
+        pitch: 0,
+        bearing: 0,
+        maxBounds: TAIWAN_BOUNDS,
+        renderWorldCopies: false
     });
 
     map.on('style.load', () => {
+        if (typeof map.setProjection === "function") map.setProjection("mercator");
+        if (typeof map.setFog === "function") map.setFog(null);
+        map.setPitch(0);
+        map.setBearing(0);
+        map.setMaxBounds(TAIWAN_BOUNDS);
         setMapLanguageToChinese();
     });
 
@@ -2587,6 +2601,7 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
         }).addTo(fallbackMap);
+        fallbackMap.setMaxBounds([[21.7, 119.2], [25.5, 122.4]]);
         window._fallbackMap = fallbackMap;
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
@@ -2727,13 +2742,9 @@
         return { top: 96, right: 48, bottom: 44, left: sidebarWidth + 72 };
     }
     function focusTaiwanView(duration = 800) {
-        const bounds = [
-            [119.2, 21.7],
-            [122.4, 25.5]
-        ];
         const padding = getTaiwanViewportPadding();
         if (map && typeof map.fitBounds === "function") {
-            map.fitBounds(bounds, {
+            map.fitBounds(TAIWAN_BOUNDS, {
                 padding,
                 duration,
                 essential: true
