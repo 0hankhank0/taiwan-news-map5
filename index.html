@@ -1539,12 +1539,10 @@
  }
 
  body.tw-online-mode #map {
-     position: relative;
-     filter: saturate(1.25) contrast(1.08) brightness(0.92);
-     box-shadow:
-         inset 0 0 100px rgba(0, 255, 102, 0.05),
-         inset 0 0 160px rgba(0, 240, 255, 0.04);
- } 
+      position: relative;
+      filter: none;
+      box-shadow: none;
+  } 
  
  body.tw-online-mode #app-header { 
      background: rgba(1, 10, 14, 0.95); 
@@ -3146,7 +3144,7 @@
                     markerStyle.glow,
                     pinPulse
                 ),
-                anchor: "bottom"
+                anchor: "center"
             });
             enableSubpixelPositioning(marker);
             marker
