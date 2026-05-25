@@ -2720,15 +2720,15 @@
         const cityValue = document.getElementById("city-filter")?.value || "all";
         const cityLabel = cityValue === "all" ? "全台" : cityValue;
         const modeLabel = isTaiwanMode ? "台灣" : "統計";
-        const activeCategory = selectedCategory === "all"
+        const categoryLabel = activeCategory === "all"
             ? "全部"
-            : (getCategoryVisual(selectedCategory)?.text || selectedCategory);
+            : (getCategoryVisual(activeCategory)?.text || activeCategory);
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
         const categoryCount = new Set(events.map(ev => normalizeText(ev.category)).filter(Boolean)).size;
 
         [
             ["sidebar-summary-count", String(events.length)],
-            ["sidebar-mode-label", activeCategory],
+            ["sidebar-mode-label", categoryLabel],
             ["sidebar-summary-city", cityLabel],
             ["hero-event-count", String(events.length)],
             ["hero-category-count", String(categoryCount)],
