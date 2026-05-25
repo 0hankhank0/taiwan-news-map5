@@ -367,13 +367,18 @@
         #map-stage {
             flex: 1;
             min-width: 0;
+            display: flex;
             position: relative;
             overflow: hidden;
             min-height: 0;
+            height: 100%;
         }
         #map {
-            position: absolute;
-            inset: 0;
+            flex: 1 1 auto;
+            min-width: 0;
+            min-height: 0;
+            height: 100%;
+            position: relative;
         }
         #map .mapboxgl-canvas-container,
         #map .mapboxgl-canvas,
@@ -2585,6 +2590,8 @@
         map.setPitch(0);
         map.setBearing(0);
         map.setMaxBounds(TAIWAN_BOUNDS);
+        if (typeof map.setMinZoom === "function") map.setMinZoom(6.2);
+        if (typeof map.setMaxZoom === "function") map.setMaxZoom(10.5);
         setMapLanguageToChinese();
     });
 
@@ -2620,6 +2627,9 @@
     }
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
+    if (typeof map.dragRotate?.disable === "function") map.dragRotate.disable();
+    if (typeof map.touchZoomRotate?.disableRotation === "function") map.touchZoomRotate.disableRotation();
+    if (typeof map.touchPitch?.disable === "function") map.touchPitch.disable();
     map.on("load", async () => {
         console.log("🚀 地圖載入完成，執行初始化...");
         
