@@ -1960,6 +1960,25 @@
      content: none; 
  }
 
+    
+        /* 修正：縮放時 marker 視覺定位漂移 + 縮小圖釘 */
+        .mapboxgl-marker .map-pin {
+            width: 34px !important;
+            height: 44px !important;
+            transform-origin: 50% 100% !important;
+        }
+        .mapboxgl-marker .map-pin-icon {
+            top: 38% !important;
+        }
+        .mapboxgl-marker .marker-svg-icon svg {
+            width: 14px !important;
+            height: 14px !important;
+        }
+        .mapboxgl-marker .pin-pulse {
+            width: 28px !important;
+            height: 28px !important;
+        }
+
     </style>
 </head>
 <body>
@@ -3528,7 +3547,6 @@
 </script>
 </body>
 </html>
-
 
 
 
