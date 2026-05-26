@@ -354,41 +354,6 @@
             box-shadow: 0 4px 20px rgba(180,83,9,0.5);
         }
 
-        .mobile-pill,
-        .theme-toggle {
-            transition: box-shadow 0.2s, border-color 0.2s;
-        }
-        .mode-btn,
-        .filter-chip,
-        .filter-chip-v2,
-        .mobile-city-select,
-        .donate-btn,
-        #settings-btn,
-        #settings-btn-mobile {
-            outline: none;
-        }
-        .mode-btn:focus,
-        .filter-chip:focus,
-        .filter-chip-v2:focus,
-        .mobile-city-select:focus,
-        .donate-btn:focus,
-        #settings-btn:focus,
-        #settings-btn-mobile:focus {
-            outline: none;
-            box-shadow: none;
-        }
-        .mode-btn:focus-visible,
-        .filter-chip:focus-visible,
-        .filter-chip-v2:focus-visible,
-        .mobile-city-select:focus-visible,
-        .donate-btn:focus-visible,
-        #settings-btn:focus-visible,
-        #settings-btn-mobile:focus-visible {
-            outline: none;
-            border-radius: inherit;
-            box-shadow: 0 0 0 3px rgba(79, 140, 255, 0.18), 0 0 18px rgba(79, 140, 255, 0.18);
-        }
-
         /* ── LAYOUT ─────────────────────────────────────────── */
         #app-body {
             display: flex;
@@ -448,14 +413,12 @@
                 max-width: 100%;
                 height: 72vh;
                 border-radius: 24px 24px 0 0;
-                z-index: 9990;
+                z-index: 9999;
                 border-right: none;
                 border-top: 1px solid var(--border);
                 transition: transform 0.3s cubic-bezier(0.32,0,0.15,1);
                 box-shadow: 0 -24px 60px rgba(0,0,0,0.5);
-                pointer-events: none;
             }
-            #news-sidebar > * { pointer-events: auto; }
             #news-sidebar.drawer-collapsed {
                 transform: translateY(calc(72vh - 120px));
             }
@@ -950,15 +913,6 @@
         #stats-view {
             position: relative;
         }
-        @media (max-width: 767px) {
-            #stats-view.mobile-stats-active {
-                padding-top: 88px !important;
-                padding-bottom: 32px !important;
-                min-height: 100vh;
-                overflow-y: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-        }
         .stats-hero {
             padding: 22px 22px 18px;
             border-radius: 26px;
@@ -1007,123 +961,6 @@
             .sidebar-kpis {
                 grid-template-columns: repeat(3, minmax(0, 1fr));
             }
-            .sidebar-header {
-                padding: 10px 12px 10px;
-            }
-            .drawer-handle {
-                padding: 10px 0 6px;
-            }
-            .handle-bar {
-                width: 40px;
-                height: 4px;
-            }
-            .sidebar-top-row {
-                margin-bottom: 8px;
-            }
-            .sidebar-title {
-                font-size: 12px;
-            }
-            .count-pill {
-                font-size: 10px;
-                padding: 2px 8px;
-            }
-            .sidebar-kpis {
-                gap: 6px;
-                margin-bottom: 10px;
-            }
-            .sidebar-kpi {
-                padding: 8px 8px 7px;
-                border-radius: 12px;
-            }
-            .sidebar-kpi-label {
-                font-size: 9px;
-                margin-bottom: 4px;
-            }
-            .sidebar-kpi-value {
-                font-size: 16px;
-            }
-            .toolbar-caption {
-                font-size: 9px;
-                margin-bottom: 6px;
-            }
-            .search-wrap {
-                margin-bottom: 8px;
-            }
-            .search-input {
-                font-size: 12px;
-                padding: 8px 12px 8px 34px;
-            }
-            #category-filters {
-                gap: 6px;
-                margin-bottom: 10px;
-                max-height: 82px;
-                overflow: visible;
-                transition: max-height 0.18s ease, opacity 0.18s ease;
-            }
-            #category-filters .filter-chip.active,
-            #category-filters .filter-chip-v2.active {
-                box-shadow:
-                    inset 0 0 14px rgba(255,255,255,0.16),
-                    0 0 10px rgba(0,255,170,0.18);
-            }
-            #category-filters.mobile-category-collapsed {
-                max-height: 34px;
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                overflow-y: hidden;
-                margin-bottom: 8px;
-                padding-bottom: 2px;
-                scrollbar-width: none;
-            }
-            #category-filters.mobile-category-collapsed::-webkit-scrollbar {
-                display: none;
-            }
-            #category-filters.mobile-category-collapsed .filter-chip {
-                white-space: nowrap;
-            }
-            .filter-chip,
-            .filter-chip-v2 {
-                gap: 6px;
-                padding: 6px 12px 6px 9px;
-                font-size: 11px;
-            }
-            .chip-icon {
-                width: 12px;
-                height: 12px;
-            }
-            .chip-icon svg {
-                width: 12px;
-                height: 12px;
-            }
-            #event-list {
-                padding: 6px 8px 12px;
-                gap: 8px;
-            }
-            .event-card-v2 {
-                padding: 12px 13px;
-                gap: 9px;
-                border-radius: 16px;
-            }
-            .card-v2-meta {
-                gap: 6px;
-                margin-bottom: 5px;
-            }
-            .card-v2-title {
-                font-size: 12.5px;
-                margin-bottom: 4px;
-            }
-            .card-v2-content {
-                font-size: 11px;
-                line-height: 1.55;
-                margin-bottom: 8px;
-            }
-            .card-v2-right {
-                gap: 6px;
-            }
-            .src-badge-v2 {
-                font-size: 8px;
-                padding: 3px 7px;
-            }
             .stats-hero {
                 padding: 18px;
                 border-radius: 20px;
@@ -1138,7 +975,7 @@
             display: none;
             position: fixed;
             top: 0; left: 0; right: 0;
-            z-index: 10010;
+            z-index: 1000;
             padding: 12px 14px 8px;
             gap: 8px;
             flex-direction: column;
@@ -1149,7 +986,6 @@
 
         .mobile-row1 { display: flex; gap: 8px; align-items: center; }
         .mobile-row2 { display: flex; gap: 8px; align-items: center; overflow-x: auto; }
-        .mobile-row2::-webkit-scrollbar { display: none; }
 
         .mobile-search {
             flex: 1;
@@ -1167,25 +1003,17 @@
         .mobile-search::placeholder { color: var(--text-muted); }
 
         .mobile-pill {
-            background: transparent;
-            backdrop-filter: none;
-            border: none;
+            background: rgba(15,21,37,0.92);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
             border-radius: var(--radius-md);
-            padding: 0;
+            padding: 6px 4px;
             display: flex;
-            gap: 4px;
-            box-shadow: none;
+            gap: 2px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
             flex-shrink: 0;
         }
-        .mobile-pill .mode-btn {
-            font-size: 11px;
-            padding: 0 12px;
-            min-width: 52px;
-            height: 32px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
+        .mobile-pill .mode-btn { font-size: 11px; padding: 5px 12px; }
 
         .mobile-city-select {
             appearance: none;
@@ -1204,28 +1032,6 @@
             background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a9ab8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
             background-repeat: no-repeat;
             background-position: right 8px center;
-            flex-shrink: 0;
-            height: 38px;
-        }
-        .mobile-row2 .theme-toggle {
-            margin-left: 0;
-            padding: 0;
-            gap: 4px;
-            border-radius: var(--radius-md);
-            background: transparent;
-            border: none;
-            backdrop-filter: none;
-            box-shadow: none;
-            flex-shrink: 0;
-        }
-        .mobile-row2 .theme-toggle .mode-btn,
-        #settings-btn-mobile {
-            width: 32px;
-            height: 32px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
             flex-shrink: 0;
         }
 
@@ -1362,32 +1168,37 @@
             left: 50%;
             top: 39%;
             transform: translate(-50%, -50%);
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
             color: #fff;
             z-index: 1;
+            transition: transform 0.15s;
             pointer-events: none;
-            transition: transform 0.15s, opacity 0.15s;
         }
         .pin-pulse {
             position: absolute;
             border-radius: 50%;
+            opacity: 0.25;
+            animation: pulse-ring 2s ease-out infinite;
+        }
+        .map-pin .pin-pulse {
+            position: absolute;
+            border-radius: 50%;
             opacity: 0.3;
             animation: pulse-ring 2s ease-out infinite;
+            top: 50%;
             left: 50%;
-            top: 37%;
-            transform: translate(-50%, -50%) scale(0.75);
-            transform-origin: center center;
-            pointer-events: none;
+            transform: translate(-50%, -50%);
             z-index: 0;
+            pointer-events: none;
         }
         @keyframes pulse-ring {
-            0%   { transform: translate(-50%, -50%) scale(0.75); opacity: 0.42; }
+            0%   { transform: translate(-50%, -50%) scale(0.75); opacity: 0.45; }
             100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
         }
         .map-pin:hover .map-pin-icon {
-            transform: translate(-50%, -50%) scale(1.06);
+            transform: translate(-50%, -50%) scale(1.08);
         }
         .marker-svg-icon {
             display: inline-flex;
@@ -1884,13 +1695,13 @@
      box-shadow: 0 0 8px var(--chip-color, #00ffaa); 
  } 
  
-body.tw-online-mode .map-pin-svg {
-    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 16px rgba(0, 255, 102, 0.32));
-}
-body.tw-online-mode .map-pin-shape {
-    stroke: rgba(0, 255, 102, 0.35);
-    animation: markerHexPulse 3s ease-in-out infinite; 
-} 
+ body.tw-online-mode .map-pin-svg {
+     filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 16px rgba(0, 255, 102, 0.32));
+ }
+ body.tw-online-mode .map-pin-shape {
+     stroke: rgba(0, 255, 102, 0.35);
+     animation: markerHexPulse 3s ease-in-out infinite; 
+ } 
  
  @keyframes markerHexPulse { 
      0%, 100% { box-shadow: 0 0 10px rgba(0, 255, 102, 0.35), 0 0 20px rgba(0, 240, 255, 0.12); } 
@@ -2121,8 +1932,8 @@ body.tw-online-mode .map-pin-shape {
  
  body.tw-online-mode .mobile-search::placeholder { color: rgba(0, 255, 170, 0.3); } 
  
+ body.tw-online-mode .mobile-pill, 
  body.tw-online-mode .mobile-city-select, 
- body.tw-online-mode #settings-btn-mobile,
  body.tw-online-mode .styled-select { 
      background: rgba(3, 15, 21, 0.95); 
      border: 1px solid rgba(0, 255, 170, 0.2); 
@@ -2148,8 +1959,7 @@ body.tw-online-mode .map-pin-shape {
  body.tw-online-mode #map::after { 
      content: none; 
  }
-
-    </style>
+</style>
 </head>
 <body>
 
@@ -2235,7 +2045,6 @@ body.tw-online-mode .map-pin-shape {
             <button id="btn-dark-mobile" class="mode-btn active">🌙</button>
             <button id="btn-light-mobile" class="mode-btn">☀️</button>
         </div>
-        <button id="settings-btn-mobile" class="mode-btn" style="margin-left: 5px;"><i class="fa-solid fa-gear"></i></button>
     </div>
 </div>
 
@@ -2707,9 +2516,7 @@ body.tw-online-mode .map-pin-shape {
     let parsedEvents = [];
     let activeCategory = "all";
     let searchKeyword = "";
-    let isMobileCategoryCollapsed = false;
     let isTaiwanMode = true;
-    let mobileDrawerStateBeforeStats = null;
     let twGeoJSON = null;
     let activePopup = null;
     const renderedMarkers = [];
@@ -2786,10 +2593,11 @@ body.tw-online-mode .map-pin-shape {
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
             parsedEvents.forEach(ev => {
-                const lngLat = getEventLngLat(ev);
-                if (!lngLat) return;
-                L.marker([lngLat[1], lngLat[0]]).addTo(fallbackMap)
-                    .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
+                const latlng = [Number(ev.lat), Number(ev.lng)];
+                if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
+                    L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)
+                        .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
+                }
             });
         }
     }
@@ -2909,28 +2717,8 @@ body.tw-online-mode .map-pin-shape {
     }
     function normalizeText(v){ return String(v||"").trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
-    function getEventLngLat(event) {
-        const lat = Number(event.lat ?? event.latitude);
-        const lng = Number(event.lng ?? event.lon ?? event.longitude);
-        const isTaiwan = (lngValue, latValue) =>
-            Number.isFinite(lngValue) &&
-            Number.isFinite(latValue) &&
-            lngValue >= 118 && lngValue <= 123.5 &&
-            latValue >= 21 && latValue <= 26.5;
-
-        if (isTaiwan(lng, lat)) return [lng, lat];
-        if (isTaiwan(lat, lng)) return [lat, lng];
-
-        console.warn("Invalid event coordinate", event.title, { lat, lng, event });
-        return null;
-    }
-    function flyToLatLng(lngLat, zoom, duration=800){
-        if(!Array.isArray(lngLat) || lngLat.length < 2) return;
-        const [a, b] = lngLat;
-        const eventLike = { lng: a, lat: b, longitude: a, latitude: b };
-        const normalized = getEventLngLat(eventLike) || getEventLngLat({ lng: b, lat: a, longitude: b, latitude: a });
-        if(!normalized) return;
-        map.flyTo({ center: normalized, zoom, duration, essential:true });
+    function flyToLatLng(latlng, zoom, duration=800){
+        map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
     }
     function closeActivePopup(){
         if(activePopup){
@@ -2940,15 +2728,7 @@ body.tw-online-mode .map-pin-shape {
     }
     function clearRenderedMarkers(){
         closeActivePopup();
-        while(renderedMarkers.length){
-            const marker = renderedMarkers.pop();
-            if (marker && typeof marker.remove === "function") marker.remove();
-        }
-        renderedMarkers.length = 0;
-        const mapContainer = map && typeof map.getContainer === "function" ? map.getContainer() : null;
-        if (mapContainer) {
-            mapContainer.querySelectorAll(".event-marker").forEach(el => el.closest(".mapboxgl-marker")?.remove());
-        }
+        while(renderedMarkers.length) renderedMarkers.pop().remove();
     }
     function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
@@ -2981,14 +2761,15 @@ body.tw-online-mode .map-pin-shape {
     }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
         const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
+        const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
         const bodySize = pinSizes[severity] || 38;
         const g = glowColor || color;
-        const glowR = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 }[severity] || 10;
+        const glowR = glowPx[severity] || 10;
         const outerW = Math.round(bodySize * 1.18);
-        const outerH = Math.round(outerW * 1.5);
+        const outerH = Math.round(bodySize * 1.7);
         const iconSize = Math.round(bodySize * 0.42);
         const wrapper = document.createElement("div");
-        wrapper.className = `map-pin event-marker marker-severity-${severity}`;
+        wrapper.className = `map-pin marker-severity-${severity}`;
         wrapper.style.width = `${outerW}px`;
         wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
@@ -3120,36 +2901,13 @@ body.tw-online-mode .map-pin-shape {
         d.innerHTML=html; m.innerHTML=html;
     }
 
-    function isMobileSidebarListMode() {
-        return window.innerWidth < 768 && isTaiwanMode && newsSidebar.style.display !== 'none';
-    }
-
-    function setMobileCategoryCollapsed(collapsed) {
-        const next = !!collapsed && isMobileSidebarListMode();
-        if (isMobileCategoryCollapsed === next) return;
-        isMobileCategoryCollapsed = next;
-        renderCategoryButtons();
-    }
-
-    function syncMobileCategoryCollapseState() {
-        if (!eventList) return;
-        if (!isMobileSidebarListMode()) {
-            setMobileCategoryCollapsed(false);
-            return;
-        }
-        setMobileCategoryCollapsed(eventList.scrollTop > 6);
-    }
-
     // ── FILTERS ─────────────────────────────────────────────
     function renderCategoryButtons(){
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
-        const showCollapsed = isMobileCategoryCollapsed && isMobileSidebarListMode();
-        const renderOrder = showCollapsed ? [activeCategory] : FIXED_CATEGORY_ORDER;
 
-        catFilters.classList.toggle("mobile-category-collapsed", showCollapsed);
-        catFilters.innerHTML = renderOrder.map(cat=>{
+        catFilters.innerHTML = FIXED_CATEGORY_ORDER.map(cat=>{
             const mappedCat = mapConfig[cat] || cat;
             const c = config[mappedCat]||config.other;
             const isActive = activeCategory===cat;
@@ -3160,12 +2918,7 @@ body.tw-online-mode .map-pin-shape {
         }).join("");
         catFilters.querySelectorAll("[data-category]").forEach(btn=>{
             btn.addEventListener("click",()=>{
-                if (showCollapsed) {
-                    setMobileCategoryCollapsed(false);
-                    return;
-                }
                 activeCategory=btn.dataset.category||"all";
-                if (isMobileSidebarListMode()) isMobileCategoryCollapsed = true;
                 renderCategoryButtons(); renderEvents();
             });
         });
@@ -3204,12 +2957,11 @@ body.tw-online-mode .map-pin-shape {
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const filtered = parsedEvents.filter(ev=>{
-            const lngLat = getEventLngLat(ev);
-            if(!lngLat) return false;
+            const lat=Number(ev.lat), lng=Number(ev.lng);
             
             // 座標無效或不在台灣直接排除
-            const [lng, lat] = lngLat;
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
+            if(!isValidTaiwanCoord(lat, lng)) return false;
 
             if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
             if(cityFilter!=="all"){
@@ -3306,8 +3058,7 @@ body.tw-online-mode .map-pin-shape {
         events.forEach(ev=>{
             const mappedCat = mapConfig[ev.category] || ev.category;
             const cat = config[mappedCat]||config.other;
-            const lngLat = getEventLngLat(ev);
-            if(!lngLat) return;
+            const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
@@ -3324,7 +3075,7 @@ body.tw-online-mode .map-pin-shape {
                 closeButton: true,
                 closeOnClick: false,
                 maxWidth: "328px",
-                offset: 22
+                offset: [0, -18]
             });
             enableSubpixelPositioning(popup);
             popup.setHTML(popupHtml);
@@ -3338,19 +3089,14 @@ body.tw-online-mode .map-pin-shape {
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[ev.category] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
+                color: markerStyle.color,
+                scale: 0.65,
                 anchor: "bottom",
-  offset: [0, 0]
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
-                .setLngLat(lngLat)
+                .setLngLat([latlng[1], latlng[0]])
                 .setPopup(popup)
                 .addTo(map);
             
@@ -3368,7 +3114,7 @@ body.tw-online-mode .map-pin-shape {
             enableSubpixelPositioning(tooltip);
 
             markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat(lngLat)
+                tooltip.setLngLat([latlng[1], latlng[0]])
                     .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
                     .addTo(map);
             });
@@ -3387,7 +3133,7 @@ body.tw-online-mode .map-pin-shape {
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
                 closeActivePopup();
-                flyToLatLng(lngLat, ev.source==="TDX CMS"?14:13, 800);
+                flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
                 popup.addTo(map);
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
             });
@@ -3481,7 +3227,6 @@ body.tw-online-mode .map-pin-shape {
       isTaiwanMode = mode; 
       const mapEl    = document.getElementById('map'); 
       const statsEl  = document.getElementById('stats-view'); 
-      const isMobile = window.innerWidth < 768;
  
       ['btn-tw','btn-tw-mobile'].forEach(id=>{ 
         const b=document.getElementById(id); 
@@ -3491,51 +3236,18 @@ body.tw-online-mode .map-pin-shape {
         const b=document.getElementById(id); 
         if(b) b.classList.toggle('active', !mode); 
       }); 
-
-      if(isMobile){
-        if(mode){
-            newsSidebar.style.display = '';
-            if(mobileDrawerStateBeforeStats !== null){
-                newsSidebar.classList.toggle("drawer-collapsed", mobileDrawerStateBeforeStats);
-                mobileDrawerStateBeforeStats = null;
-            }
-            statsEl.classList.remove("mobile-stats-active");
-        } else {
-            if(mobileDrawerStateBeforeStats === null){
-                mobileDrawerStateBeforeStats = newsSidebar.classList.contains("drawer-collapsed");
-            }
-            newsSidebar.style.display = 'none';
-            statsEl.classList.add("mobile-stats-active");
-        }
-      } else {
-        newsSidebar.style.display = '';
-        statsEl.classList.remove("mobile-stats-active");
-        mobileDrawerStateBeforeStats = null;
-      }
  
       if(mode){ 
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
         flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
         renderEvents(); 
-        scheduleMapResize();
       } else { 
         mapEl.style.display   = 'none'; 
         statsEl.style.display = 'flex'; 
         renderStatsView(); 
-        if(isMobile) statsEl.scrollTop = 0;
       } 
     } 
-
-    function bindModeButton(buttonId, mode) {
-        const button = document.getElementById(buttonId);
-        if (!button) return;
-        button.addEventListener("click", e => {
-            e.preventDefault();
-            e.stopPropagation();
-            switchMode(mode);
-        });
-    }
  
     async function renderStatsView(){ 
       const events = parsedEvents.filter(ev=>{ 
@@ -3765,17 +3477,14 @@ body.tw-online-mode .map-pin-shape {
     document.getElementById("event-search-mobile").addEventListener("input",handleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
-    bindModeButton("btn-tw", true);
-    bindModeButton("btn-global", false);
-    bindModeButton("btn-tw-mobile", true);
-    bindModeButton("btn-global-mobile", false);
+    document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
+    document.getElementById("btn-global").addEventListener("click",()=>switchMode(false));
+    document.getElementById("btn-tw-mobile").addEventListener("click",()=>switchMode(true));
+    document.getElementById("btn-global-mobile").addEventListener("click",()=>switchMode(false));
     document.getElementById("btn-dark").addEventListener("click",()=>switchTheme("dark"));
     document.getElementById("btn-light").addEventListener("click",()=>switchTheme("light"));
     document.getElementById("btn-dark-mobile").addEventListener("click",()=>switchTheme("dark"));
     document.getElementById("btn-light-mobile").addEventListener("click",()=>switchTheme("light"));
-    document.getElementById("settings-btn-mobile")?.addEventListener("click", () => {
-        settingsModal.classList.add("visible");
-    });
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
     document.getElementById("report-submit-btn").addEventListener("click",submitReport);
@@ -3801,7 +3510,6 @@ body.tw-online-mode .map-pin-shape {
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
-    eventList.addEventListener("scroll", syncMobileCategoryCollapseState);
 
     document.addEventListener("DOMContentLoaded",()=>{
         populateCityFilters();
@@ -3810,8 +3518,10 @@ body.tw-online-mode .map-pin-shape {
         applyMapMode(currentMapMode); // 套用快取的模式
         syncNewsAndRender();
         loadTwGeoJSON();
-        syncMobileCategoryCollapseState();
     });
 </script>
 </body>
 </html>
+
+
+
