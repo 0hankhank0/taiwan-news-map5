@@ -2921,7 +2921,15 @@ body.tw-online-mode .map-pin-shape {
     }
     function clearRenderedMarkers(){
         closeActivePopup();
-        while(renderedMarkers.length) renderedMarkers.pop().remove();
+        while(renderedMarkers.length){
+            const marker = renderedMarkers.pop();
+            if (marker && typeof marker.remove === "function") marker.remove();
+        }
+        renderedMarkers.length = 0;
+        const mapContainer = map && typeof map.getContainer === "function" ? map.getContainer() : null;
+        if (mapContainer) {
+            mapContainer.querySelectorAll(".event-marker").forEach(el => el.closest(".mapboxgl-marker")?.remove());
+        }
     }
     function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
@@ -2961,7 +2969,7 @@ body.tw-online-mode .map-pin-shape {
         const outerH = Math.round(bodySize * 1.7);
         const iconSize = Math.round(bodySize * 0.42);
         const wrapper = document.createElement("div");
-        wrapper.className = `map-pin marker-severity-${severity}`;
+        wrapper.className = `map-pin event-marker marker-severity-${severity}`;
         wrapper.style.width = `${outerW}px`;
         wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
