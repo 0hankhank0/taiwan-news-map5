@@ -1959,8 +1959,7 @@
  body.tw-online-mode #map::after { 
      content: none; 
  }
-
-    </style>
+</style>
 </head>
 <body>
 
@@ -2594,9 +2593,9 @@
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
             parsedEvents.forEach(ev => {
-                const latlng = getEventLatLng(ev);
-                if (latlng) {
-                    L.marker(latlng).addTo(fallbackMap)
+                const latlng = [Number(ev.lat), Number(ev.lng)];
+                if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
+                    L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)
                         .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
                 }
             });
@@ -2718,22 +2717,7 @@
     }
     function normalizeText(v){ return String(v||"").trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
-
-    // 統一處理事件座標：避免 lat/lng 未宣告、空值、或後端誤把經緯度對調造成 marker 錯位。
-    function getEventLatLng(ev){
-        const rawLat = Number(ev?.lat ?? ev?.latitude ?? ev?.PositionLat ?? ev?.positionLat);
-        const rawLng = Number(ev?.lng ?? ev?.lon ?? ev?.longitude ?? ev?.PositionLon ?? ev?.positionLon);
-
-        if(Number.isFinite(rawLat) && Number.isFinite(rawLng)){
-            if(isValidTaiwanCoord(rawLat, rawLng)) return [rawLat, rawLng];
-            // 有些資料源會把 lat/lng 寫反，這裡自動修正。
-            if(isValidTaiwanCoord(rawLng, rawLat)) return [rawLng, rawLat];
-        }
-        return null;
-    }
-
     function flyToLatLng(latlng, zoom, duration=800){
-        if(!latlng) return;
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
     }
     function closeActivePopup(){
@@ -2973,10 +2957,11 @@
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const filtered = parsedEvents.filter(ev=>{
-            const latlng = getEventLatLng(ev);
-
+            const lat=Number(ev.lat), lng=Number(ev.lng);
+            
             // 座標無效或不在台灣直接排除
-            if(!latlng) return false;
+            if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
+            if(!isValidTaiwanCoord(lat, lng)) return false;
 
             if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
             if(cityFilter!=="all"){
@@ -3073,8 +3058,7 @@
         events.forEach(ev=>{
             const mappedCat = mapConfig[ev.category] || ev.category;
             const cat = config[mappedCat]||config.other;
-            const latlng = getEventLatLng(ev);
-            if(!latlng) return;
+            const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
@@ -3091,7 +3075,7 @@
                 closeButton: true,
                 closeOnClick: false,
                 maxWidth: "328px",
-                offset: 22
+                offset: [0, -18]
             });
             enableSubpixelPositioning(popup);
             popup.setHTML(popupHtml);
@@ -3105,14 +3089,10 @@
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[ev.category] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
-                anchor: "center"
+                color: markerStyle.color,
+                scale: 0.65,
+                anchor: "bottom",
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
@@ -3270,7 +3250,10 @@
     } 
  
     async function renderStatsView(){ 
-      const events = parsedEvents.filter(ev=>getEventLatLng(ev)); 
+      const events = parsedEvents.filter(ev=>{ 
+        const lat=Number(ev.lat), lng=Number(ev.lng); 
+        return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat,lng); 
+      }); 
       updateCurationMeta(events);
  
       // 總數 
@@ -3539,7 +3522,6 @@
 </script>
 </body>
 </html>
-
 
 
 
