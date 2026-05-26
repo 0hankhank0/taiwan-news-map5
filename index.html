@@ -1360,13 +1360,15 @@
         }
         .pin-body {
             position: absolute;
+            width: var(--pin-size);
+            height: var(--pin-size);
             left: 50%;
             bottom: 0;
             display: flex;
             align-items: center;
             justify-content: center;
             border-radius: 50% 50% 50% 0;
-            transform: translate(-50%, var(--pin-tip-y, -28%)) rotate(-45deg);
+            transform: translate(-50%, calc(-1 * var(--pin-tip-offset, calc(var(--pin-size) * 0.2929)))) rotate(-45deg);
             transform-origin: center center;
             background: var(--pin-color, #2471A3);
             border: 2px solid rgba(255,255,255,0.18);
@@ -2971,18 +2973,18 @@
         const outerW = Math.round(bodySize * 1.35);
         const outerH = Math.round(bodySize * 1.7);
         const iconSize = Math.round(bodySize * 0.42);
-        const pinTipY = "-28%";
         const wrapper = document.createElement("div");
         wrapper.className = `map-pin marker-severity-${severity}`;
         wrapper.style.width = `${outerW}px`;
         wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
-        wrapper.style.setProperty("--pin-tip-y", pinTipY);
+        wrapper.style.setProperty("--pin-size", `${bodySize}px`);
+        wrapper.style.setProperty("--pin-tip-offset", "calc(var(--pin-size) * 0.2929)");
         wrapper.innerHTML = `
             <div class="pin-outer">
                 ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
-                <div class="pin-body" style="width:${bodySize}px;height:${bodySize}px;">
+                <div class="pin-body">
                     <span class="pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>
                 </div>
             </div>`;
