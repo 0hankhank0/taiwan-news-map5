@@ -1679,6 +1679,35 @@ function extractRoadName(location) {
     return match ? match[0] : null;
 }
 
+function normalizeEvent(event) {
+  const normalized = { ...event };
+  const fallbackTime =
+    event?.pubDate ||
+    event?.publishedAt ||
+    event?.time;
+
+  let createdAt = Number(event?.createdAt);
+  if (!Number.isFinite(createdAt)) {
+    const parsedTime = fallbackTime ? new Date(fallbackTime).getTime() : NaN;
+    createdAt = Number.isFinite(parsedTime) ? parsedTime : Date.now();
+  }
+
+  normalized.id = String(
+    event?.id ||
+    `EVENT_${String(event?.city || "unknown").slice(0, 12)}_${String(event?.title || event?.text || "untitled").slice(0, 24)}_${createdAt}`
+  );
+  normalized.title = event?.title || event?.text || "未命名事件";
+  normalized.content = event?.content || event?.text || "沒有摘要";
+  normalized.category = event?.category || "other";
+  normalized.source = event?.source || "未知來源";
+  normalized.city = event?.city || "未知城市";
+  normalized.lat = Number(event?.lat);
+  normalized.lng = Number(event?.lng);
+  normalized.createdAt = createdAt;
+
+  return normalized;
+}
+
 async function main() {
   try {
     console.log(`🚀 啟動全台新聞同步系統 (模式: ${mode})...`);
@@ -1976,14 +2005,18 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
         validatedMerged.push(enriched);
       }
   
-      await kv.set("taiwan_traffic_events", JSON.stringify(validatedMerged));
+      const normalizedMerged = validatedMerged
+        .map(normalizeEvent)
+        .filter(ev => Number.isFinite(ev.lat) && Number.isFinite(ev.lng));
+
+      await kv.set("taiwan_traffic_events", JSON.stringify(normalizedMerged));
       if ((mode === "traffic" || mode === "all") && !trafficRefreshHealthy) {
         console.error(
           `TRAFFIC_REFRESH_FAILED status=${trafficSummary.status} liveSource=${trafficSummary.liveSource || "none"} pbs=${trafficSummary.pbs.count} tdx=${trafficSummary.tdx.count} cache=${trafficSummary.cacheCount}`
         );
         process.exitCode = 1;
       }
-      console.log(`💾 全部完工！最終合計: ${validatedMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
+      console.log(`💾 全部完工！最終合計: ${normalizedMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
