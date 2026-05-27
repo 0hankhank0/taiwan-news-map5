@@ -2398,6 +2398,7 @@ body.tw-online-mode .map-pin-shape {
     </section>
 </div>
 
+<script src="/frontend-shared.js"></script>
 <script>
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = "pk.eyJ1IjoiaGFua2hhbmsiLCJhIjoiY21wNWhmNHNiMDJxMzJycjB4a3FmNDY0biJ9.FK_qTU4xvkvvYq1Ze8WC4g"; 
@@ -2412,6 +2413,19 @@ body.tw-online-mode .map-pin-shape {
             return false;
         }
     }
+
+    const {
+        CATEGORY_MAP,
+        FIXED_CATEGORY_ORDER,
+        SOURCE_CONFIG,
+        BAR_COLORS,
+        CAT_COLORS,
+        normalizeText,
+        tryParseJson,
+        normalizeSource,
+        formatEventTime,
+        isValidTaiwanCoord
+    } = window.TNM_SHARED;
 
     // SVG outline icons (stroke-based, clean line style)
     const CAT_SVG = {
@@ -2502,14 +2516,6 @@ body.tw-online-mode .map-pin-shape {
 
     function shouldPinPulse(ev, severity) {
         return ev.category === "disaster" || severity >= 4 || getEventAlertType(ev) === "fire" || getEventAlertType(ev) === "arson";
-    }
-
-    function formatEventTime(ev) {
-        const raw = ev.updatedAt || ev.publishedAt || ev.time || ev.createdAt;
-        if (!raw) return "";
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) return "";
-        return d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
 
     function makeCatBadgeV2(category) {
@@ -2679,26 +2685,6 @@ body.tw-online-mode .map-pin-shape {
         disaster:     { text: "緊急警報",   icon: "fa-triangle-exclamation", color: "#dc2626" },
         activity:     { text: "限時任務",   icon: "fa-users",               color: "#34d399" },
         other:        { text: "系統公告",   icon: "fa-circle-info",         color: "#6b7280" }
-    };
-
-    const CATEGORY_MAP = {
-        normal: {
-            all: "all", disaster: "disaster", criminal: "criminal", traffic: "traffic", 
-            medical: "medical", activity: "activity", other: "other"
-        },
-        online: {
-            all: "all", disaster: "disaster", criminal: "accident", traffic: "traffic", 
-            medical: "construction", activity: "activity", other: "other"
-        }
-    };
-
-    const FIXED_CATEGORY_ORDER = ["all", "disaster", "criminal", "traffic", "medical", "activity", "other"];
-
-    const SOURCE_CONFIG = {
-        "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
-        RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
-        news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
-        default:    { text:"其他來源", shortText:"其他", bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
     };
 
     const CITY_OPTIONS = [
@@ -2919,8 +2905,6 @@ body.tw-online-mode .map-pin-shape {
             heroStatus.textContent = t;
         }
     }
-    function normalizeText(v){ return String(v||"").trim(); }
-    function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function getEventLngLat(event) {
         const lat = Number(event.lat ?? event.latitude);
         const lng = Number(event.lng ?? event.lon ?? event.longitude);
@@ -3060,15 +3044,6 @@ body.tw-online-mode .map-pin-shape {
         }
     }
 
-    function normalizeSource(source) {
-        if (!source) return "news";
-        const s = source.toLowerCase();
-        if (s.includes("tdx") || s.includes("traffic")) return "TDX CMS";
-        if (s.includes("rss") || s.includes("feed")) return "RSS";
-        if (s.includes("news") || s.includes("ai") || s.includes("scraper")) return "news";
-        return "news"; // 其他不認識的來源預設當新聞
-    }
-
     function makeSourceBadge(source, compact=false){
         const normalized = normalizeSource(source);
         const c = SOURCE_CONFIG[normalized] || SOURCE_CONFIG.default;
@@ -3187,10 +3162,6 @@ body.tw-online-mode .map-pin-shape {
                 renderCategoryButtons(); renderEvents();
             });
         });
-    }
-
-    function isValidTaiwanCoord(lat, lng) {
-        return lat >= 21.5 && lat <= 26.5 && lng >= 118.0 && lng <= 122.5;
     }
 
     function deduplicateEvents(events) {
@@ -3482,19 +3453,6 @@ body.tw-online-mode .map-pin-shape {
     }
 
     // ── MODE ─────────────────────────────────────────────────
-    const BAR_COLORS = ['#4f8cff','#a78bfa','#34d399','#fb923c','#f05a5a','#fbbf24','#5eead4','#c4b5fd','#86efac','#fdba74']; 
- 
-    const CAT_COLORS = { 
-      traffic:   { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
-      accident:  { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
-      disaster:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'災害事故' }, 
-      criminal:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'刑事案件' }, 
-      medical:   { bg:'rgba(251,146,60,0.15)',  color:'#fb923c',  text:'醫療緊急' }, 
-      construction:{ bg:'rgba(251,191,36,0.15)',color:'#fbbf24',  text:'施工管制' }, 
-      activity:  { bg:'rgba(52,211,153,0.15)',  color:'#34d399',  text:'活動'     }, 
-      other:     { bg:'rgba(107,114,128,0.15)', color:'#6b7280',  text:'其他'     }, 
-    }; 
- 
     function switchMode(mode){ 
       isTaiwanMode = mode; 
       const mapEl    = document.getElementById('map'); 
