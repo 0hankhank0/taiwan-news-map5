@@ -1282,9 +1282,14 @@
         }
 
         /* ── POPUP demo（設計稿 §07）──────────────────────────── */
+        .mapboxgl-popup,
+        .custom-popup {
+            z-index: 10050 !important;
+        }
         .custom-popup.mapboxgl-popup { max-width: 336px !important; }
         .custom-popup .mapboxgl-popup-content {
             position: relative;
+            z-index: 10051;
             overflow: hidden;
             background:
                 linear-gradient(180deg, rgba(18, 31, 51, 0.98), rgba(11, 20, 35, 0.98));
@@ -1405,7 +1410,17 @@
             cursor: pointer;
             transform-origin: 0 0;
         }
-        .mapboxgl-marker { overflow: visible; }
+        .mapboxgl-marker {
+            overflow: visible;
+            z-index: 20;
+        }
+        .mapboxgl-marker:hover {
+            z-index: 30;
+        }
+        .mapboxgl-marker.marker-active,
+        .mapboxgl-marker.active {
+            z-index: 40;
+        }
         .map-pin-visual {
             position: absolute;
             left: 0;
