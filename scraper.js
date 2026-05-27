@@ -1705,6 +1705,15 @@ function normalizeEvent(event) {
   normalized.lng = Number(event?.lng);
   normalized.createdAt = createdAt;
 
+  const haystack = `${normalized.title} ${normalized.content} ${event?.text || ""}`;
+  const shouldCorrectToDisaster =
+    (normalized.category === "activity" || normalized.category === "other") &&
+    /工安|鷹架|倒塌|坍塌|崩塌|施工意外|工地意外|受傷|重傷|死亡|命危|送醫/.test(haystack);
+
+  if (shouldCorrectToDisaster) {
+    normalized.category = "disaster";
+  }
+
   return normalized;
 }
 
