@@ -197,13 +197,13 @@
         .brand-icon {
             width: 34px;
             height: 34px;
-            background: linear-gradient(135deg, var(--accent), var(--accent-2));
+            background: linear-gradient(135deg, rgba(36, 113, 163, 0.9), rgba(21, 58, 95, 0.95));
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 15px;
-            box-shadow: 0 0 18px var(--accent-glow);
+            box-shadow: 0 8px 18px rgba(8, 18, 34, 0.24);
             flex-shrink: 0;
         }
         .brand-title {
@@ -293,9 +293,10 @@
             font-family: var(--font-body);
         }
         .mode-btn.active {
-            background: var(--accent);
+            background: rgba(36, 113, 163, 0.16);
+            border: 1px solid rgba(36, 113, 163, 0.22);
             color: #fff;
-            box-shadow: 0 2px 10px rgba(79,140,255,0.4);
+            box-shadow: none;
         }
         .mode-btn:disabled {
             cursor: not-allowed;
@@ -335,23 +336,24 @@
             align-items: center;
             gap: 8px;
             padding: 9px 20px;
-            background: linear-gradient(135deg, #7D2D00, #B84000);
-            color: #FFD580;
+            background: rgba(16, 27, 43, 0.9);
+            color: rgba(238, 244, 255, 0.88);
             font-size: 12px;
             font-weight: 700;
-            border: 1px solid rgba(255, 180, 50, 0.25);
+            border: 1px solid rgba(160, 183, 231, 0.14);
             border-radius: var(--radius-sm);
             cursor: pointer;
             font-family: var(--font-body);
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
+            letter-spacing: 0.03em;
             transition: all 0.2s;
-            box-shadow: 0 2px 12px rgba(180, 60, 0, 0.35);
+            box-shadow: none;
             text-decoration: none;
         }
         .donate-btn:hover {
             transform: translateY(-1px);
-            box-shadow: 0 4px 20px rgba(180,83,9,0.5);
+            background: rgba(20, 34, 54, 0.96);
+            border-color: rgba(160, 183, 231, 0.22);
+            box-shadow: 0 10px 24px rgba(3, 8, 18, 0.16);
         }
 
         .mobile-pill,
@@ -446,7 +448,7 @@
             position: absolute;
             inset: 0 0 auto;
             height: 140px;
-            background: linear-gradient(180deg, rgba(192, 57, 43, 0.08), transparent 78%);
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 78%);
             pointer-events: none;
         }
 
@@ -492,7 +494,7 @@
         .sidebar-kpi {
             padding: 10px 10px 9px;
             border-radius: 16px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.018));
+            background: rgba(255, 255, 255, 0.025);
             border: 1px solid rgba(160, 183, 231, 0.08);
             box-shadow: none;
         }
@@ -534,20 +536,19 @@
             margin-bottom: 16px;
         }
         .sidebar-title {
-            font-family: var(--font-display);
-            font-size: 14px;
+            font-family: var(--font-body);
+            font-size: 15px;
             font-weight: 700;
-            color: var(--text-secondary);
-            text-transform: uppercase;
-            letter-spacing: 0.14em;
+            color: rgba(238, 244, 255, 0.92);
+            letter-spacing: 0.02em;
         }
         .count-pill {
             font-family: var(--font-mono);
             font-size: 10px;
             font-weight: 600;
-            color: rgba(238, 244, 255, 0.72);
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(160, 183, 231, 0.12);
+            color: rgba(154, 170, 196, 0.9);
+            background: rgba(255, 255, 255, 0.025);
+            border: 1px solid rgba(160, 183, 231, 0.08);
             padding: 4px 10px;
             border-radius: 99px;
             box-shadow: none;
@@ -590,8 +591,8 @@
         .search-input::placeholder { color: var(--text-muted); }
         .search-input:focus {
             background: rgba(16, 27, 46, 0.96);
-            border-color: rgba(223, 118, 82, 0.42);
-            box-shadow: 0 0 0 3px rgba(192, 57, 43, 0.1), 0 8px 22px rgba(3, 8, 18, 0.16);
+            border-color: rgba(122, 148, 188, 0.34);
+            box-shadow: 0 0 0 3px rgba(94, 126, 178, 0.08);
         }
 
         /* ── FILTER CHIPS（VI v2）────────────────────────────── */
@@ -614,20 +615,20 @@
             transition: all 0.15s;
             font-family: var(--font-body);
             letter-spacing: 0.02em;
-            background: var(--bg-card);
+            background: rgba(16, 28, 46, 0.78);
             color: var(--text-secondary);
-            border: 1px solid var(--border);
+            border: 1px solid rgba(160, 183, 231, 0.08);
         }
         .filter-chip:hover {
-            border-color: var(--border-bright);
+            border-color: rgba(160, 183, 231, 0.16);
             color: var(--text-primary);
-            transform: translateY(-1px);
+            transform: none;
         }
         .filter-chip.active {
             color: #fff;
-            border-color: transparent;
-            background: var(--chip-bg, var(--cat-other));
-            box-shadow: 0 4px 16px color-mix(in srgb, var(--chip-bg, #4A5878) 40%, transparent);
+            border-color: color-mix(in srgb, var(--chip-bg, #4A5878) 38%, rgba(255,255,255,0.12));
+            background: color-mix(in srgb, var(--chip-bg, #4A5878) 18%, rgba(16, 28, 46, 0.92));
+            box-shadow: none;
         }
         .chip-icon {
             display: inline-flex;
@@ -665,7 +666,7 @@
             position: relative;
             padding: 17px 18px 15px;
             background:
-                linear-gradient(180deg, rgba(21, 35, 56, 0.96), rgba(15, 27, 44, 0.98));
+                linear-gradient(180deg, rgba(21, 35, 56, 0.9), rgba(15, 27, 44, 0.94));
             transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
             cursor: pointer;
             display: grid;
@@ -674,21 +675,21 @@
             align-items: start;
             border: 1px solid rgba(160, 183, 231, 0.1);
             border-radius: 20px;
-            box-shadow: 0 10px 22px rgba(2, 6, 18, 0.12);
+            box-shadow: 0 10px 20px rgba(2, 6, 18, 0.08);
         }
         .event-card-v2::after {
             content: "";
             position: absolute;
             inset: 0;
             border-radius: inherit;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.035), transparent 42%, rgba(192, 57, 43, 0.06) 100%);
-            opacity: 0.34;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.025), transparent 48%, rgba(255, 255, 255, 0.02) 100%);
+            opacity: 0.22;
             pointer-events: none;
         }
         .event-card-v2:hover {
             background: linear-gradient(180deg, rgba(25, 41, 64, 0.98), rgba(16, 28, 46, 0.98));
             border-color: rgba(160, 183, 231, 0.18);
-            box-shadow: 0 12px 24px rgba(2, 6, 18, 0.14);
+            box-shadow: 0 12px 22px rgba(2, 6, 18, 0.1);
         }
         .event-card-v2 .card-bar {
             position: absolute;
@@ -698,7 +699,7 @@
             width: 4px;
             border-radius: 999px;
             background: var(--card-color, var(--cat-disaster));
-            opacity: 0.48;
+            opacity: 0.3;
             transition: opacity 0.2s ease;
             pointer-events: none;
         }
@@ -775,7 +776,7 @@
             padding: 3px 7px;
             border-radius: 999px;
             text-transform: uppercase;
-            opacity: 0.66;
+            opacity: 0.5;
         }
         .card-v2-extra {
             grid-column: 1 / -1;
@@ -831,7 +832,7 @@
             transition: color 0.18s ease, opacity 0.18s ease;
             padding: 0;
             text-decoration: none;
-            opacity: 0.66;
+            opacity: 0.54;
         }
         .card-action-btn:hover {
             opacity: 1;
@@ -1437,12 +1438,12 @@
             width: 100%;
             height: 100%;
             overflow: visible;
-            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 14px var(--pin-glow, rgba(90, 143, 212, 0.35)));
+            filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.26)) drop-shadow(0 0 6px var(--pin-glow, rgba(90, 143, 212, 0.2)));
         }
         .map-pin-shape {
             fill: var(--pin-color, #2471A3);
-            stroke: rgba(255,255,255,0.2);
-            stroke-width: 1.5;
+            stroke: rgba(255,255,255,0.14);
+            stroke-width: 1.2;
         }
         .map-pin-icon {
             position: absolute;
@@ -1460,21 +1461,21 @@
         .pin-pulse {
             position: absolute;
             border-radius: 50%;
-            opacity: 0.3;
-            animation: pulse-ring 2s ease-out infinite;
+            opacity: 0.16;
+            animation: pulse-ring 2.8s ease-out infinite;
             left: 50%;
             top: 37%;
-            transform: translate(-50%, -50%) scale(0.75);
+            transform: translate(-50%, -50%) scale(0.82);
             transform-origin: center center;
             pointer-events: none;
             z-index: 0;
         }
         @keyframes pulse-ring {
-            0%   { transform: translate(-50%, -50%) scale(0.75); opacity: 0.42; }
-            100% { transform: translate(-50%, -50%) scale(2.1); opacity: 0; }
+            0%   { transform: translate(-50%, -50%) scale(0.82); opacity: 0.2; }
+            100% { transform: translate(-50%, -50%) scale(1.65); opacity: 0; }
         }
         .map-pin:hover .map-pin-icon {
-            transform: translate(-50%, -50%) scale(1.06);
+            transform: translate(-50%, -50%) scale(1.02);
         }
         .marker-svg-icon {
             display: inline-flex;
@@ -1527,7 +1528,7 @@
             font-weight: 600;
             cursor: pointer;
             border: 1px solid;
-            transition: all 0.18s;
+            transition: border-color 0.18s, background 0.18s, color 0.18s, transform 0.18s;
             font-family: var(--font-body);
             position: relative;
             overflow: hidden;
@@ -1545,26 +1546,26 @@
             transition: opacity 0.15s;
         }
         .react-btn:hover:not(:disabled)::after { opacity: 0.08; }
-        .react-btn:active:not(:disabled) { transform: scale(0.96); }
+        .react-btn:active:not(:disabled) { transform: scale(0.98); }
         .react-btn.muyu {
-            background: var(--brand-muyu-light);
-            border-color: rgba(125, 90, 60, 0.35);
-            color: #C4956B;
+            background: rgba(125, 90, 60, 0.08);
+            border-color: rgba(125, 90, 60, 0.18);
+            color: #B79572;
         }
         .react-btn.candle {
-            background: var(--brand-candle-light);
-            border-color: rgba(232, 160, 32, 0.35);
-            color: var(--brand-candle-flame);
+            background: rgba(232, 160, 32, 0.08);
+            border-color: rgba(232, 160, 32, 0.18);
+            color: #D8B25B;
         }
         .react-btn.muyu.active {
-            background: var(--brand-muyu);
-            border-color: var(--brand-muyu);
-            color: #fff;
+            background: rgba(125, 90, 60, 0.18);
+            border-color: rgba(125, 90, 60, 0.32);
+            color: #E6D4C4;
         }
         .react-btn.candle.active {
-            background: rgba(232, 160, 32, 0.8);
-            border-color: var(--brand-candle);
-            color: #2A1A00;
+            background: rgba(232, 160, 32, 0.18);
+            border-color: rgba(232, 160, 32, 0.32);
+            color: #F3E2B8;
         }
         .react-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
         .react-count {
@@ -1589,29 +1590,30 @@
             cursor: not-allowed;
         }
         .react-btn.candle-lit svg {
-            animation: candleBreath 2.2s ease-in-out infinite;
-            filter: drop-shadow(0 0 6px var(--brand-candle));
+            animation: candleBreath 0.85s ease-out 1;
+            filter: drop-shadow(0 0 3px rgba(232, 160, 32, 0.32));
         }
         @keyframes candleBreath {
-            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px var(--brand-candle)); }
-            50% { transform: scale(1.2); filter: drop-shadow(0 0 12px var(--brand-candle-flame)); }
+            0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(232, 160, 32, 0.22)); }
+            50% { transform: scale(1.08); filter: drop-shadow(0 0 5px rgba(232, 160, 32, 0.28)); }
+            100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(232, 160, 32, 0.22)); }
         }
         .merit-float {
             position: fixed;
             pointer-events: none;
             z-index: 10050;
-            font-family: var(--font-display);
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--brand-candle-flame);
-            text-shadow: 0 0 14px rgba(232, 160, 32, 0.75);
-            animation: meritRise 1.1s ease-out forwards;
+            font-family: var(--font-body);
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(232, 160, 32, 0.88);
+            text-shadow: none;
+            animation: meritRise 0.9s ease-out forwards;
             white-space: nowrap;
         }
         @keyframes meritRise {
-            0% { opacity: 1; transform: translateY(0) scale(0.85); }
-            70% { opacity: 0.9; transform: translateY(-36px) scale(1); }
-            100% { opacity: 0; transform: translateY(-56px) scale(0.95); }
+            0% { opacity: 0; transform: translateY(4px) scale(0.98); }
+            25% { opacity: 0.9; }
+            100% { opacity: 0; transform: translateY(-16px) scale(1); }
         }
         .merit-ripple {
             position: fixed;
@@ -1821,22 +1823,22 @@
   } 
  
  body.tw-online-mode #app-header { 
-     background: rgba(1, 10, 14, 0.95); 
-     border-bottom: 1px solid rgba(0, 255, 170, 0.3); 
-     box-shadow: 0 0 30px rgba(0, 255, 170, 0.08); 
+     background: rgba(5, 14, 20, 0.95); 
+     border-bottom: 1px solid rgba(0, 255, 170, 0.14); 
+     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.16); 
  } 
  
  body.tw-online-mode .brand-title { 
-     color: #00ffaa; 
-     text-shadow: 0 0 10px rgba(0, 255, 170, 0.6); 
-     letter-spacing: 0.15em; 
+     color: rgba(189, 255, 233, 0.92); 
+     text-shadow: none; 
+     letter-spacing: 0.08em; 
      font-family: var(--font-mono); 
  } 
  
  body.tw-online-mode .brand-sub { 
-     color: #ff3cac; 
-     text-shadow: 0 0 8px rgba(255, 60, 172, 0.5); 
-     letter-spacing: 0.2em; 
+     color: rgba(145, 208, 191, 0.72); 
+     text-shadow: none; 
+     letter-spacing: 0.14em; 
  } 
  
  body.tw-online-mode .brand-icon { 
@@ -1924,8 +1926,8 @@
  } 
  
  body.tw-online-mode .event-card-v2 { 
-     background: linear-gradient(180deg, rgba(6, 19, 27, 0.95), rgba(7, 21, 30, 0.96)); 
-     border-color: rgba(0, 255, 170, 0.1); 
+     background: linear-gradient(180deg, rgba(7, 20, 27, 0.94), rgba(8, 21, 29, 0.95)); 
+     border-color: rgba(0, 255, 170, 0.08); 
  } 
  
  body.tw-online-mode .event-card-v2::after { 
@@ -1933,9 +1935,9 @@
  } 
  
  body.tw-online-mode .event-card-v2:hover { 
-     background: linear-gradient(180deg, rgba(8, 23, 32, 0.98), rgba(9, 25, 34, 0.98)); 
-     border-color: rgba(0, 255, 170, 0.18); 
-     box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18); 
+     background: linear-gradient(180deg, rgba(8, 23, 32, 0.96), rgba(9, 25, 34, 0.96)); 
+     border-color: rgba(0, 255, 170, 0.12); 
+     box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14); 
  } 
  
  body.tw-online-mode .event-card-v2:hover::after { opacity: 0.24; } 
@@ -1967,10 +1969,10 @@
  } 
  
 body.tw-online-mode .map-pin-svg {
-    filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.42)) drop-shadow(0 0 10px rgba(0, 255, 102, 0.18));
+    filter: drop-shadow(0 5px 12px rgba(0, 0, 0, 0.28)) drop-shadow(0 0 5px rgba(0, 255, 102, 0.12));
 }
 body.tw-online-mode .map-pin-shape {
-    stroke: rgba(0, 255, 102, 0.24);
+    stroke: rgba(0, 255, 102, 0.16);
     animation: none; 
 } 
  
@@ -2086,9 +2088,9 @@ body.tw-online-mode .event-card-v2::after {
  } 
  
  body.tw-online-mode .donate-btn { 
-     background: linear-gradient(135deg, rgba(0, 255, 170, 0.1), rgba(0, 255, 170, 0.05)); 
-     color: #00ffaa; 
-     border: 1px solid rgba(0, 255, 170, 0.4); 
+     background: rgba(3, 15, 21, 0.88); 
+     color: rgba(191, 255, 233, 0.88); 
+     border: 1px solid rgba(0, 255, 170, 0.18); 
      font-family: var(--font-mono); 
      letter-spacing: 0.06em; 
  } 
@@ -2246,11 +2248,14 @@ body.tw-online-mode .event-card-v2::after {
                 <div class="modal-title">設定</div>
             </div>
             <div class="form-group">
-                <label class="form-label">顯示模式</label>
+                <label class="form-label">地圖情境（實驗）</label>
                 <select id="map-mode-select" class="form-control">
-                    <option value="normal">一般模式</option>
-                    <option value="online">🎮 TW Online</option>
+                    <option value="normal">標準導讀</option>
+                    <option value="online">TW Online（實驗）</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <div class="toolbar-caption">TW Online 會保留互動化視覺，但已降級為設定中的實驗情境，不作為主介面模式。</div>
             </div>
             <div class="modal-actions">
                 <button id="settings-close-btn" class="btn btn-primary">關閉</button>
@@ -2267,8 +2272,8 @@ body.tw-online-mode .event-card-v2::after {
             目前仍是測試版，如果你發現資料有誤，<br>可以直接用內建回報功能通知我。
         </p>
         <div class="modal-actions" style="flex-direction: column; gap: 12px;">
-            <button id="mode-normal-btn" class="btn btn-ghost" style="width: 100%;">一般模式</button>
-            <button id="mode-online-btn" class="btn btn-primary" style="width: 100%;">🎮 TW Online</button>
+            <button id="mode-normal-btn" class="btn btn-primary" style="width: 100%;">使用標準導讀</button>
+            <button id="mode-online-btn" class="btn btn-ghost" style="width: 100%;">啟用 TW Online（實驗）</button>
         </div>
     </div>
 </div>
@@ -2337,20 +2342,20 @@ body.tw-online-mode .event-card-v2::after {
 
         <div class="sidebar-header">
             <div class="sidebar-top-row">
-                <div class="sidebar-title">事件清單</div>
+                <div class="sidebar-title">事件導讀</div>
                 <div class="count-pill" id="mobile-count">0 筆</div>
             </div>
             <div class="sidebar-kpis">
                 <div class="sidebar-kpi">
-                    <div class="sidebar-kpi-label">目前事件</div>
+                    <div class="sidebar-kpi-label">目前顯示</div>
                     <div class="sidebar-kpi-value" id="sidebar-summary-count">0</div>
                 </div>
                 <div class="sidebar-kpi">
-                    <div class="sidebar-kpi-label">篩選狀態</div>
+                    <div class="sidebar-kpi-label">閱讀視角</div>
                     <div class="sidebar-kpi-value" id="sidebar-mode-label">全部</div>
                 </div>
                 <div class="sidebar-kpi">
-                    <div class="sidebar-kpi-label">城市維度</div>
+                    <div class="sidebar-kpi-label">涵蓋城市</div>
                     <div class="sidebar-kpi-value" id="sidebar-summary-city">全台</div>
                 </div>
             </div>
@@ -2480,7 +2485,7 @@ body.tw-online-mode .event-card-v2::after {
         other:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     };
 
-    const CATEGORY_CONFIG = {
+    /* const CATEGORY_CONFIG = {
         all:          { text: "全部",     icon: "fa-list",                color: "#4A5878" },
         disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#C0392B" },
         criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#8E44AD" },
@@ -2488,6 +2493,16 @@ body.tw-online-mode .event-card-v2::after {
         medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#D35400" },
         activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
         other:        { text: "其他事件", icon: "fa-circle-info",         color: "#4A5878" }
+    }; */
+
+    const CATEGORY_CONFIG = {
+        all:          { text: "\u5168\u90e8", icon: "fa-list",                  color: "#4A5878" },
+        disaster:     { text: "\u707d\u5bb3", icon: "fa-triangle-exclamation", color: "#C0392B" },
+        criminal:     { text: "\u6cbb\u5b89", icon: "fa-handcuffs",             color: "#8E44AD" },
+        traffic:      { text: "\u4ea4\u901a", icon: "fa-car-burst",             color: "#2471A3" },
+        medical:      { text: "\u91ab\u7642", icon: "fa-truck-medical",         color: "#D35400" },
+        activity:     { text: "\u6d3b\u52d5", icon: "fa-users",                 color: "#1E8449" },
+        other:        { text: "\u5176\u4ed6", icon: "fa-circle-info",           color: "#4A5878" }
     };
 
     const ALERT_COLOR_MAP = {
@@ -2497,7 +2512,7 @@ body.tw-online-mode .event-card-v2::after {
         disaster: { color: "#C0392B", glow: "rgba(192, 57, 43, 0.4)" },
     };
 
-    function getEventAlertType(ev) {
+    /* function getEventAlertType(ev) {
         const text = (ev.title + " " + (ev.content || ""));
         if (/縱火|放火|蓄意放火/.test(text)) return "arson";
         if (/火災|火警|爆炸|氣爆|失火|燃燒|起火/.test(text)) return "fire";
@@ -2518,6 +2533,33 @@ body.tw-online-mode .event-card-v2::after {
         else score = 1;
         if (isMourningEvent(ev)) score = Math.max(score, 4);
         const urgent = /重大|嚴重|多車|連環|傷亡|死亡|罹難/.test((ev.title || "") + (ev.content || ""));
+        if (urgent) score = Math.min(5, score + 1);
+        return Math.min(5, Math.max(1, score));
+    }
+
+    */
+
+    function getEventAlertType(ev) {
+        const text = `${ev.title || ""} ${ev.content || ""}`;
+        if (/\u7e31\u706b|\u4eba\u70ba\u7e31\u706b/.test(text)) return "arson";
+        if (/\u706b\u8b66|\u706b\u707d|\u8d77\u706b|\u71c3\u71d2|\u5931\u706b/.test(text)) return "fire";
+        if (ev.category === "traffic") return "traffic";
+        if (ev.category === "disaster") return "disaster";
+        return null;
+    }
+
+    function getEventSeverity(ev) {
+        let score = 2;
+        const alertType = getEventAlertType(ev);
+        if (alertType === "arson") score = 5;
+        else if (alertType === "fire") score = 4;
+        else if (alertType === "disaster" || ev.category === "disaster") score = 4;
+        else if (ev.category === "criminal") score = 3;
+        else if (ev.category === "traffic" || alertType === "traffic") score = 2;
+        else if (ev.category === "medical") score = 3;
+        else score = 1;
+        if (isMourningEvent(ev)) score = Math.max(score, 4);
+        const urgent = /\u91cd\u5927|\u56b4\u91cd|\u591a\u8eca|\u9023\u74b0|\u50b7\u4ea1|\u6b7b\u4ea1|\u7f79\u96e3/.test((ev.title || "") + (ev.content || ""));
         if (urgent) score = Math.min(5, score + 1);
         return Math.min(5, Math.max(1, score));
     }
@@ -2573,7 +2615,7 @@ body.tw-online-mode .event-card-v2::after {
         return `<span class="src-badge-v2" style="background:${c.bg};color:${c.color};border:1px solid ${c.color}33;">${t}</span>`;
     }
 
-    function makeReactionBarHtml(eventId, data, reacted, compact = false) {
+    /* function makeReactionBarHtml(eventId, data, reacted, compact = false) {
         const isOnline = currentMapMode === "online";
         const muyuActive = reacted === "muyu";
         const candleActive = reacted === "candle";
@@ -2603,6 +2645,8 @@ body.tw-online-mode .event-card-v2::after {
                 <span class="react-total">${totalLabel}</span>
             </div>`;
     }
+
+    } */
 
     function buildPopupHtml(ev, displayTitle, displayContent, markerStyle) {
         const city = ev.city || "未知城市";
@@ -2682,7 +2726,7 @@ body.tw-online-mode .event-card-v2::after {
             </div>`;
     }
 
-    function toggleReact(btn) {
+    /* function toggleReact(btn) {
         if (btn.classList.contains("active")) return;
         btn.classList.add("active");
         const countEl = btn.querySelector(".react-count");
@@ -2702,7 +2746,27 @@ body.tw-online-mode .event-card-v2::after {
         }
     }
 
-    const TW_ONLINE_TEXT = {
+    } */
+
+    function toggleReact(btn) {
+        if (btn.classList.contains("active")) return;
+        btn.classList.add("active");
+        const countEl = btn.querySelector(".react-count");
+        if (countEl) {
+            const n = parseInt(countEl.textContent.replace(/\D/g, ""), 10) || 0;
+            countEl.textContent = `+${n + 1}`;
+        }
+        const bar = btn.closest(".reaction-bar");
+        if (bar) {
+            bar.querySelectorAll(".react-btn").forEach(sibling => {
+                if (sibling !== btn) sibling.disabled = true;
+            });
+            const total = bar.querySelector(".react-total");
+            if (total) total.textContent = "\u5df2\u56de\u61c9";
+        }
+    }
+
+    /* const TW_ONLINE_TEXT = {
         // Header 
         siteTitle: "TW-01 伺服器",
         siteSubtitle: "TAIWAN ONLINE · LIVE",
@@ -2719,7 +2783,21 @@ body.tw-online-mode .event-card-v2::after {
         playerCount: "玩家數：23,000,000",
     };
 
-    const TW_ONLINE_CATEGORIES = {
+    }; */
+
+    const TW_ONLINE_TEXT = {
+        siteTitle: "TW-01",
+        siteSubtitle: "TAIWAN ONLINE LIVE",
+        statusPrefix: "\u7dda\u4e0a\u60c5\u5883 ",
+        listTitle: "\u4e8b\u4ef6\u5c0e\u89bd",
+        searchPlaceholder: "\u641c\u5c0b\u4e8b\u4ef6\u6216\u5730\u9ede",
+        emptyState: "\u76ee\u524d\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u4e8b\u4ef6",
+        loadingState: "\u8f09\u5165 TW-01 \u4e8b\u4ef6\u4e2d...",
+        serverStatus: "TW-01 \u60c5\u5883\u5df2\u555f\u7528",
+        playerCount: "\u53c3\u8003\u4eba\u53e3 23,000,000"
+    };
+
+    /* const TW_ONLINE_CATEGORIES = {
         all:          { text: "全部警報",   icon: "fa-list",                color: "#475569" },
         traffic:      { text: "區域壅塞",   icon: "fa-car-burst",           color: "#4f8cff" },
         accident:     { text: "PK 事件",    icon: "fa-handcuffs",           color: "#f05a5a" },
@@ -2729,7 +2807,19 @@ body.tw-online-mode .event-card-v2::after {
         other:        { text: "系統公告",   icon: "fa-circle-info",         color: "#6b7280" }
     };
 
-    const CITY_OPTIONS = [
+    }; */
+
+    const TW_ONLINE_CATEGORIES = {
+        all:          { text: "\u5168\u90e8\u4e8b\u4ef6", icon: "fa-list",                 color: "#475569" },
+        traffic:      { text: "\u4ea4\u901a",             icon: "fa-car-burst",            color: "#4f8cff" },
+        accident:     { text: "\u4e8b\u6545",             icon: "fa-handcuffs",            color: "#f05a5a" },
+        construction: { text: "\u65bd\u5de5",             icon: "fa-wrench",               color: "#fb923c" },
+        disaster:     { text: "\u707d\u5bb3",             icon: "fa-triangle-exclamation", color: "#dc2626" },
+        activity:     { text: "\u6d3b\u52d5",             icon: "fa-users",                color: "#34d399" },
+        other:        { text: "\u5176\u4ed6",             icon: "fa-circle-info",          color: "#6b7280" }
+    };
+
+    /* const CITY_OPTIONS = [
         { value:"基隆", label:"基隆市" },{ value:"台北", label:"台北市" },{ value:"新北", label:"新北市" },
         { value:"桃園", label:"桃園市" },{ value:"新竹", label:"新竹縣市" },{ value:"苗栗", label:"苗栗縣" },
         { value:"台中", label:"台中市" },{ value:"彰化", label:"彰化縣" },{ value:"南投", label:"南投縣" },
@@ -2738,6 +2828,33 @@ body.tw-online-mode .event-card-v2::after {
         { value:"花蓮", label:"花蓮縣" },{ value:"台東", label:"台東縣" },{ value:"澎湖", label:"澎湖縣" },
         { value:"金門", label:"金門縣" },{ value:"連江", label:"連江縣" },
         { value:"國道", label:"國道 (高速公路)" },{ value:"省道", label:"省道" }
+    ];
+
+    ]; */
+
+    const CITY_OPTIONS = [
+        { value:"\u53f0\u5317", label:"\u53f0\u5317\u5e02" },
+        { value:"\u65b0\u5317", label:"\u65b0\u5317\u5e02" },
+        { value:"\u57fa\u9686", label:"\u57fa\u9686\u5e02" },
+        { value:"\u6843\u5712", label:"\u6843\u5712\u5e02" },
+        { value:"\u65b0\u7af9", label:"\u65b0\u7af9\u5e02" },
+        { value:"\u82d7\u6817", label:"\u82d7\u6817\u7e23" },
+        { value:"\u53f0\u4e2d", label:"\u53f0\u4e2d\u5e02" },
+        { value:"\u5f70\u5316", label:"\u5f70\u5316\u7e23" },
+        { value:"\u5357\u6295", label:"\u5357\u6295\u7e23" },
+        { value:"\u96f2\u6797", label:"\u96f2\u6797\u7e23" },
+        { value:"\u5609\u7fa9", label:"\u5609\u7fa9\u5e02" },
+        { value:"\u53f0\u5357", label:"\u53f0\u5357\u5e02" },
+        { value:"\u9ad8\u96c4", label:"\u9ad8\u96c4\u5e02" },
+        { value:"\u5c4f\u6771", label:"\u5c4f\u6771\u7e23" },
+        { value:"\u5b9c\u862d", label:"\u5b9c\u862d\u7e23" },
+        { value:"\u82b1\u84ee", label:"\u82b1\u84ee\u7e23" },
+        { value:"\u53f0\u6771", label:"\u53f0\u6771\u7e23" },
+        { value:"\u6f8e\u6e56", label:"\u6f8e\u6e56\u7e23" },
+        { value:"\u91d1\u9580", label:"\u91d1\u9580\u7e23" },
+        { value:"\u9023\u6c5f", label:"\u9023\u6c5f\u7e23" },
+        { value:"\u5168\u53f0", label:"\u5168\u53f0" },
+        { value:"\u4e2d\u592e", label:"\u4e2d\u592e" }
     ];
 
     const taiwanView = { center:[23.6,120.9], zoom:7 };
@@ -2809,9 +2926,19 @@ body.tw-online-mode .event-card-v2::after {
         setMapLanguageToChinese();
     });
 
-    map.on('error', (e) => {
+    /* map.on('error', (e) => {
         if (e.error?.status === 401 || e.error?.status === 403) {
             console.warn('Mapbox token 失效，切換備用地圖');
+            map.remove();
+            fallbackToLeaflet();
+        }
+    });
+
+    }); */
+
+    map.on('error', (e) => {
+        if (e.error?.status === 401 || e.error?.status === 403) {
+            console.warn('Mapbox token invalid, switch to fallback map');
             map.remove();
             fallbackToLeaflet();
         }
@@ -2909,7 +3036,7 @@ body.tw-online-mode .event-card-v2::after {
         }
 
         // 替換文案
-        const textConfig = isOnline ? TW_ONLINE_TEXT : {
+        /* const textConfig = isOnline ? TW_ONLINE_TEXT : {
             siteTitle: "島嶼脈搏",
             siteSubtitle: "ISLAND PULSE",
             listTitle: "事件清單",
@@ -2917,11 +3044,22 @@ body.tw-online-mode .event-card-v2::after {
             emptyState: "目前沒有符合條件的事件",
             loadingState: "正在抓取事件資料...",
             statusPrefix: "準備載入..."
+        }; */
+
+        const textConfig = isOnline ? TW_ONLINE_TEXT : {
+            siteTitle: "\u5cf6\u5dbc\u8108\u640f",
+            siteSubtitle: "ISLAND PULSE",
+            listTitle: "\u4e8b\u4ef6\u5c0e\u89bd",
+            searchPlaceholder: "\u641c\u5c0b\u4e8b\u4ef6\u3001\u5730\u9ede\u6216\u95dc\u9375\u5b57",
+            emptyState: "\u76ee\u524d\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u4e8b\u4ef6",
+            loadingState: "\u8f09\u5165\u4e8b\u4ef6\u4e2d...",
+            statusPrefix: "\u6e96\u5099\u8f09\u5165..."
         };
 
         document.querySelector(".brand-title").textContent = textConfig.siteTitle;
         document.querySelector(".brand-sub").textContent = textConfig.siteSubtitle;
         document.querySelector(".sidebar-title").textContent = textConfig.listTitle;
+        if (!isOnline) document.querySelector(".sidebar-title").textContent = "事件導讀";
         document.getElementById("event-search").placeholder = textConfig.searchPlaceholder;
         
         // TW Online 專屬狀態列
@@ -2988,7 +3126,7 @@ body.tw-online-mode .event-card-v2::after {
             mapContainer.querySelectorAll(".event-marker").forEach(el => el.closest(".mapboxgl-marker")?.remove());
         }
     }
-    function updateCurationMeta(events){
+    /* function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
         const cityLabel = cityValue === "all" ? "全台" : cityValue;
         const modeLabel = isTaiwanMode ? "台灣" : "統計";
@@ -3068,6 +3206,38 @@ body.tw-online-mode .event-card-v2::after {
             setTimeout(() => ripple.remove(), 750);
         }
     }
+    } */
+
+    function updateCurationMeta(events){
+        const cityValue = document.getElementById("city-filter")?.value || "all";
+        const cityLabel = cityValue === "all" ? "\u5168\u53f0" : cityValue;
+        const modeLabel = isTaiwanMode ? "\u53f0\u7063" : "\u7d71\u8a08";
+        const categoryLabel = activeCategory === "all"
+            ? "\u5168\u90e8"
+            : (getCategoryVisual(activeCategory)?.text || activeCategory);
+        const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
+        const categoryCount = new Set(events.map(ev => normalizeText(ev.category)).filter(Boolean)).size;
+
+        [
+            ["sidebar-summary-count", String(events.length)],
+            ["sidebar-mode-label", categoryLabel],
+            ["sidebar-summary-city", cityLabel],
+            ["hero-event-count", String(events.length)],
+            ["hero-category-count", String(categoryCount)],
+            ["hero-mode-copy", modeLabel],
+            ["stats-hero-count", String(events.length)],
+            ["stats-hero-mode", modeLabel]
+        ].forEach(([id, value]) => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = value;
+        });
+
+        const heroStatus = document.getElementById("hero-status-copy");
+        if (heroStatus) {
+            heroStatus.textContent = `\u76ee\u524d\u6db5\u84cb ${cityCount} \u500b\u57ce\u5e02\u3001${categoryCount} \u7a2e\u4e8b\u4ef6\u985e\u5225\uff0c\u6a21\u5f0f\u70ba${modeLabel}\u8996\u89d2\u3002`;
+        }
+    }
+
     function ensureBoundaryLayer(){
         if(!map.getSource("city-boundary")){
             map.addSource("city-boundary", { type:"geojson", data: EMPTY_GEOJSON });
@@ -3105,7 +3275,7 @@ body.tw-online-mode .event-card-v2::after {
         }catch(e){ console.warn("GeoJSON載入失敗", e); }
     }
 
-    function drawCityBoundary(city){
+    /* function drawCityBoundary(city){
         if(!map.isStyleLoaded()) return;
         ensureBoundaryLayer();
         const source = map.getSource("city-boundary");
@@ -3118,6 +3288,23 @@ body.tw-online-mode .event-card-v2::after {
             const n=(f.properties.COUNTYNAME||f.properties.name||"").replace(/臺/g,"台");
             const t=city.replace(/臺/g,"台");
             return n.includes(t)||t.includes(n);
+        });
+        source.setData(filteredFeatures.length ? { ...twGeoJSON, features: filteredFeatures } : EMPTY_GEOJSON);
+    }
+
+    } */
+
+    function drawCityBoundary(city){
+        const source = map?.getSource?.("city-boundary");
+        if (!source) return;
+        if (city === "all" || !twGeoJSON?.features?.length) {
+            source.setData(EMPTY_GEOJSON);
+            return;
+        }
+        const filteredFeatures = twGeoJSON.features.filter(f => {
+            const n = (f.properties.COUNTYNAME || f.properties.name || "").replace(/\u81fa/g, "\u53f0");
+            const t = city.replace(/\u81fa/g, "\u53f0");
+            return n.includes(t) || t.includes(n);
         });
         source.setData(filteredFeatures.length ? { ...twGeoJSON, features: filteredFeatures } : EMPTY_GEOJSON);
     }
@@ -3206,7 +3393,7 @@ body.tw-online-mode .event-card-v2::after {
         });
     }
 
-    function deduplicateEvents(events) {
+    /* function deduplicateEvents(events) {
         const seenTitles = new Set();
         const seenContent = new Set();
         return events.filter(ev => {
@@ -3222,6 +3409,56 @@ body.tw-online-mode .event-card-v2::after {
                 .slice(0, 30); // 取前30字比對
 
             // 如果標題或內容其中一個重複，就視為重複事件
+            if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
+                return false;
+            }
+
+            seenTitles.add(titleKey);
+            if (contentKey) seenContent.add(contentKey);
+            return true;
+        });
+    }
+
+    } */
+
+    /* function deduplicateEvents(events) {
+        const seenTitles = new Set();
+        const seenContent = new Set();
+        return events.filter(ev => {
+            const titleKey = (ev.title || ev.text || "")
+                .replace(/\s+/g, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
+                .slice(0, 20);
+            const contentKey = (ev.content || "")
+                .replace(/\s+/g, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
+                .slice(0, 30);
+
+            if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
+                return false;
+            }
+
+            seenTitles.add(titleKey);
+            if (contentKey) seenContent.add(contentKey);
+            return true;
+        });
+    }
+
+    } */
+
+    function deduplicateEvents(events) {
+        const seenTitles = new Set();
+        const seenContent = new Set();
+        return events.filter(ev => {
+            const titleKey = (ev.title || ev.text || "")
+                .replace(/\s+/g, "")
+                .replace(/[^\p{L}\p{N}]/gu, "")
+                .slice(0, 20);
+            const contentKey = (ev.content || "")
+                .replace(/\s+/g, "")
+                .replace(/[^\p{L}\p{N}]/gu, "")
+                .slice(0, 30);
+
             if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
                 return false;
             }
@@ -3277,10 +3514,19 @@ body.tw-online-mode .event-card-v2::after {
         } catch (e) { return null; }
     }
 
-    function isMourningEvent(ev) {
+    /* function isMourningEvent(ev) {
         if (ev.hasCasualty !== undefined) return ev.hasCasualty;
         const keywords = ["死亡", "罹難", "身亡", "喪生", "不治", "往生", "遇難"];
         const text = (ev.title + ev.content);
+        return keywords.some(k => text.includes(k));
+    }
+
+    } */
+
+    function isMourningEvent(ev) {
+        if (ev.hasCasualty !== undefined) return ev.hasCasualty;
+        const keywords = ["\u6b7b\u4ea1", "\u7f79\u96e3", "\u8eab\u4ea1", "\u55aa\u751f", "\u4e0d\u6cbb", "\u5f80\u751f", "\u9047\u96e3"];
+        const text = `${ev.title || ""}${ev.content || ""}`;
         return keywords.some(k => text.includes(k));
     }
 
@@ -3312,8 +3558,85 @@ body.tw-online-mode .event-card-v2::after {
 
     window.handleReaction = window.handleReactClick;
 
+    // Override a few interaction helpers to keep the public-information tone quieter.
+    function shouldPinPulse(ev, severity) {
+        const alertType = getEventAlertType(ev);
+        return severity >= 5 || alertType === "arson";
+    }
+
+    function makeReactionBarHtml(eventId, data, reacted, compact = false) {
+        const muyuActive = reacted === "muyu";
+        const candleActive = reacted === "candle";
+        const compactCls = compact ? " react-btn--compact" : "";
+        const muyuCount = muyuActive ? `+${data.muyu}` : String(data.muyu || 0);
+        const candleCount = candleActive ? `+${data.candle}` : String(data.candle || 0);
+        const total = (data.muyu || 0) + (data.candle || 0);
+        const totalLabel = reacted ? "\u5df2\u7559\u4e0b\u56de\u61c9" : `${total.toLocaleString()} \u5247\u56de\u61c9`;
+
+        return `
+            <div class="reaction-bar" data-event-id="${eventId}">
+                <button type="button" class="react-btn muyu${muyuActive ? " active" : ""}${compactCls}"
+                    onclick="handleReactClick(event, '${eventId}', 'muyu', this)"
+                    ${reacted && !muyuActive ? "disabled" : ""}>
+                    ${REACT_SVG.muyu}
+                    <span>\u81f4\u610f</span>
+                    <span class="react-count">${muyuCount}</span>
+                </button>
+                <div class="react-divider"></div>
+                <button type="button" class="react-btn candle${candleActive ? " active candle-lit" : ""}${compactCls}"
+                    onclick="handleReactClick(event, '${eventId}', 'candle', this)"
+                    ${reacted && !candleActive ? "disabled" : ""}>
+                    ${REACT_SVG.candle}
+                    <span>\u95dc\u6ce8</span>
+                    <span class="react-count">${candleCount}</span>
+                </button>
+                <span class="react-total">${totalLabel}</span>
+            </div>`;
+    }
+
+    function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
+        const pinSizes = { 1: 28, 2: 31, 3: 34, 4: 37, 5: 40 };
+        const bodySize = pinSizes[severity] || 31;
+        const g = glowColor || color;
+        const glowR = { 1: 2, 2: 3, 3: 4, 4: 5, 5: 7 }[severity] || 3;
+        const outerW = Math.round(bodySize * 1.1);
+        const outerH = Math.round(bodySize * 1.55);
+        const iconSize = Math.round(bodySize * 0.36);
+
+        const wrapper = document.createElement("div");
+        wrapper.className = `map-pin event-marker marker-severity-${severity}`;
+        wrapper.style.width = "0px";
+        wrapper.style.height = "0px";
+        wrapper.style.setProperty("--pin-color", color);
+        wrapper.style.setProperty("--pin-glow", g);
+        wrapper.innerHTML = `
+            <div class="map-pin-visual" style="width:${outerW}px;height:${outerH}px;">
+                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
+                <svg class="map-pin-svg" viewBox="0 0 64 96" aria-hidden="true" style="filter:drop-shadow(0 5px 10px rgba(0,0,0,0.28)) drop-shadow(0 0 ${glowR}px ${g});">
+                    <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
+                    <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.1)"></circle>
+                </svg>
+                <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>
+            </div>`;
+        return wrapper;
+    }
+
+    function spawnMeritEffect(btn) {
+        const rect = btn.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top;
+        const float = document.createElement("div");
+        float.className = "merit-float";
+        float.textContent = "\u5df2\u81f4\u610f";
+        float.style.left = `${cx}px`;
+        float.style.top = `${cy - 8}px`;
+        float.style.transform = "translateX(-50%)";
+        document.body.appendChild(float);
+        setTimeout(() => float.remove(), 900);
+    }
+
     // ── RENDER ──────────────────────────────────────────────
-    function renderEvents(){
+    /* function renderEvents(){
         let events = getFilteredEvents();
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
@@ -3441,17 +3764,140 @@ body.tw-online-mode .event-card-v2::after {
     }
 
     // ── MOCK DATA ────────────────────────────────────────────
+    } */
+
+    function renderEvents(){
+        let events = getFilteredEvents();
+        const isOnline = currentMapMode === "online";
+        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
+        const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
+
+        events.sort((a,b)=>{
+            const aNews = (a.source === "news" || a.source === "RSS") ? 1 : 0;
+            const bNews = (b.source === "news" || b.source === "RSS") ? 1 : 0;
+            return bNews - aNews;
+        });
+
+        clearRenderedMarkers();
+        eventList.innerHTML = "";
+        updateCurationMeta(events);
+
+        if(!events.length){
+            const emptyText = isOnline ? TW_ONLINE_TEXT.emptyState : "\u76ee\u524d\u6c92\u6709\u7b26\u5408\u689d\u4ef6\u7684\u4e8b\u4ef6";
+            eventList.innerHTML = `<div class="empty-state"><i class="fa-solid fa-map-location-dot"></i><p>${emptyText}</p></div>`;
+        }
+
+        events.forEach(ev=>{
+            const mappedCat = mapConfig[ev.category] || ev.category;
+            const cat = config[mappedCat] || config.other;
+            const lngLat = getEventLngLat(ev);
+            if(!lngLat) return;
+
+            const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "\u672a\u547d\u540d\u4e8b\u4ef6");
+            const displayContent = (isOnline && ev.twOnlineContent) ? ev.twOnlineContent : (ev.content || "\u5c1a\u7121\u6458\u8981");
+            const severity = getEventSeverity(ev);
+            const markerStyle = resolveMarkerStyle(ev, cat.color);
+            const catVisual = getCategoryVisual(ev.category);
+            const pinPulse = shouldPinPulse(ev, severity);
+            const popupHtml = buildPopupHtml(ev, displayTitle, displayContent, markerStyle);
+
+            const popup = new mapboxgl.Popup({
+                className: "custom-popup",
+                closeButton: true,
+                closeOnClick: false,
+                maxWidth: "328px",
+                offset: 22
+            });
+            enableSubpixelPositioning(popup);
+            popup.setHTML(popupHtml);
+            popup.on("open", () => {
+                activePopup = popup;
+                if (isMourningEvent(ev)) {
+                    const container = popup.getElement().querySelector(".reaction-container, .popup-reactions-wrap");
+                    if (container) updateReactionUI(ev.id, container);
+                }
+            });
+            popup.on("close", () => { if (activePopup === popup) activePopup = null; });
+
+            const marker = new mapboxgl.Marker({
+                element: makeMarkerElement(
+                    markerStyle.color,
+                    CAT_SVG[ev.category] || CAT_SVG.other,
+                    severity,
+                    markerStyle.glow,
+                    pinPulse
+                ),
+                anchor: "center",
+                offset: [0, 0]
+            });
+            enableSubpixelPositioning(marker);
+            marker.setLngLat(lngLat).setPopup(popup).addTo(map);
+
+            const markerEl = marker.getElement();
+            markerEl.style.cursor = "pointer";
+
+            const tooltip = new mapboxgl.Popup({
+                closeButton: false,
+                closeOnClick: false,
+                className: "custom-tooltip",
+                offset: [0, -20],
+                anchor: "bottom"
+            });
+            enableSubpixelPositioning(tooltip);
+
+            markerEl.addEventListener("mouseenter", () => {
+                tooltip.setLngLat(lngLat)
+                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${displayTitle}</div>`)
+                    .addTo(map);
+            });
+
+            markerEl.addEventListener("mouseleave", () => {
+                tooltip.remove();
+            });
+
+            renderedMarkers.push(marker);
+
+            const card = document.createElement("article");
+            card.className = "event-card-v2";
+            card.style.setProperty("--card-color", catVisual.color);
+            card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
+
+            card.addEventListener("click",e=>{
+                if(e.target instanceof HTMLElement && (e.target.tagName === "A" || e.target.tagName === "BUTTON" || e.target.closest("button"))) return;
+                closeActivePopup();
+                flyToLatLng(lngLat, ev.source === "TDX CMS" ? 14 : 13, 800);
+                popup.addTo(map);
+                if(window.innerWidth < 768) newsSidebar.classList.add("drawer-collapsed");
+            });
+
+            const reportBtn = card.querySelector("[data-report]");
+            if(reportBtn) reportBtn.addEventListener("click",e=>{
+                e.stopPropagation();
+                openReportModal(decodeURIComponent(reportBtn.dataset.report || ""));
+            });
+
+            eventList.appendChild(card);
+            if (isMourningEvent(ev)) {
+                updateReactionUI(ev.id, card.querySelector(".reaction-container"));
+            }
+        });
+
+        const cnt = document.getElementById("mobile-count");
+        if(cnt) cnt.textContent = `${events.length} \u7b46`;
+        setStatus(`\u986f\u793a ${events.length} \u7b46\u4e8b\u4ef6`);
+    }
+
     const MOCK_EVENTS = [
-        { id:"m1", title:"國道1號南向 林口段 車輛故障", category:"traffic", city:"新北", lat:25.07, lng:121.38, source:"TDX CMS", content:"林口交流道附近有車輛故障，請用路人注意行車安全。" },
-        { id:"m2", title:"台北市信義區 追撞事故",        category:"accident", city:"台北", lat:25.033, lng:121.564, source:"RSS",     content:"信義路五段發生輕微追撞，已報警處理中。" },
-        { id:"m3", title:"台中市北屯區 道路施工管制",    category:"construction", city:"台中", lat:24.17, lng:120.69, source:"TDX CMS", content:"文心路四段進行路面刨除工程，預計施工至下午六點。" },
-        { id:"m4", title:"花蓮縣 地震後山區道路落石",    category:"disaster", city:"花蓮", lat:23.98, lng:121.60, source:"news",    content:"蘇花公路部分路段因餘震出現落石，已進行臨時管制。" },
-        { id:"m5", title:"高雄市左營區 路跑活動交通管制",category:"activity", city:"高雄", lat:22.68, lng:120.30, source:"RSS",     content:"左營大路周六上午舉辦路跑，部分路段暫停停車。" },
-        { id:"m6", title:"新竹縣竹北市 水管破裂搶修",   category:"other",    city:"新竹", lat:24.83, lng:121.01, source:"news",    content:"光明六路發生自來水管破裂，施工人員緊急搶修中。" }
+        { id:"m1", title:"\u570b\u90531\u865f\u5357\u5411 \u6797\u53e3\u6bb5 \u8eca\u8f1b\u6545\u969c", category:"traffic", city:"\u65b0\u5317", lat:25.07, lng:121.38, source:"TDX CMS", content:"\u6797\u53e3\u4ea4\u6d41\u9053\u9644\u8fd1\u6709\u8eca\u8f1b\u6545\u969c\uff0c\u8acb\u7528\u8def\u4eba\u6ce8\u610f\u884c\u8eca\u5b89\u5168\u3002" },
+        { id:"m2", title:"\u53f0\u5317\u5e02\u4fe1\u7fa9\u5340 \u8ffd\u649e\u4e8b\u6545", category:"accident", city:"\u53f0\u5317", lat:25.033, lng:121.564, source:"RSS", content:"\u4fe1\u7fa9\u8def\u4e94\u6bb5\u767c\u751f\u8f15\u5fae\u8ffd\u649e\uff0c\u5df2\u5831\u8b66\u8655\u7406\u4e2d\u3002" },
+        { id:"m3", title:"\u53f0\u4e2d\u5e02\u5317\u5c6f\u5340 \u9053\u8def\u65bd\u5de5\u7ba1\u5236", category:"construction", city:"\u53f0\u4e2d", lat:24.17, lng:120.69, source:"TDX CMS", content:"\u6587\u5fc3\u8def\u56db\u6bb5\u9032\u884c\u8def\u9762\u5228\u9664\u5de5\u7a0b\uff0c\u9810\u8a08\u65bd\u5de5\u81f3\u4e0b\u5348\u516d\u9ede\u3002" },
+        { id:"m4", title:"\u82b1\u84ee\u7e23 \u5730\u9707\u5f8c\u5c71\u5340\u9053\u8def\u843d\u77f3", category:"disaster", city:"\u82b1\u84ee", lat:23.98, lng:121.60, source:"news", content:"\u8607\u82b1\u516c\u8def\u90e8\u5206\u8def\u6bb5\u56e0\u9918\u9707\u51fa\u73fe\u843d\u77f3\uff0c\u5df2\u9032\u884c\u81e8\u6642\u7ba1\u5236\u3002" },
+        { id:"m5", title:"\u9ad8\u96c4\u5e02\u5de6\u71df\u5340 \u8def\u8dd1\u6d3b\u52d5\u4ea4\u901a\u7ba1\u5236", category:"activity", city:"\u9ad8\u96c4", lat:22.68, lng:120.30, source:"RSS", content:"\u5de6\u71df\u5927\u8def\u5468\u516d\u4e0a\u5348\u8209\u8fa6\u8def\u8dd1\uff0c\u90e8\u5206\u8def\u6bb5\u66ab\u505c\u505c\u8eca\u3002" },
+        { id:"m6", title:"\u65b0\u7af9\u7e23\u7af9\u5317\u5e02 \u6c34\u7ba1\u7834\u88c2\u640d\u4fee", category:"other", city:"\u65b0\u7af9", lat:24.83, lng:121.01, source:"news", content:"\u5149\u660e\u516d\u8def\u767c\u751f\u81ea\u4f86\u6c34\u7ba1\u7834\u88c2\uff0c\u65bd\u5de5\u4eba\u54e1\u7dca\u6025\u640d\u4fee\u4e2d\u3002" }
     ];
 
     // ── FETCH ────────────────────────────────────────────────
-    async function syncNewsAndRender(){
+    /* async function syncNewsAndRender(){
         setStatus("正在抓取事件資料...");
         try{
             const res = await fetch("/api/events");
@@ -3467,10 +3913,30 @@ body.tw-online-mode .event-card-v2::after {
             renderCategoryButtons(); renderEvents();
             setStatus("展示模式：顯示範例資料");
         }
+    } */
+
+    async function syncNewsAndRender(){
+        setStatus("\u6b63\u5728\u6293\u53d6\u4e8b\u4ef6\u8cc7\u6599...");
+        try{
+            const res = await fetch("/api/events");
+            const raw = await res.text();
+            if(!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = tryParseJson(raw, []);
+            const list = Array.isArray(data) ? data : [];
+            parsedEvents = deduplicateEvents(list);
+            renderCategoryButtons();
+            renderEvents();
+        }catch(e){
+            console.warn("API fetch failed, falling back to mock events.", e);
+            parsedEvents = deduplicateEvents(MOCK_EVENTS);
+            renderCategoryButtons();
+            renderEvents();
+            setStatus("\u76ee\u524d\u986f\u793a\u6a21\u64ec\u8cc7\u6599");
+        }
     }
 
     // ── CITY SYNC ────────────────────────────────────────────
-    function syncCityFilter(value){
+    /* function syncCityFilter(value){
         document.getElementById("city-filter").value=value;
         document.getElementById("city-filter-mobile").value=value;
         drawCityBoundary(value);
@@ -3491,6 +3957,45 @@ body.tw-online-mode .event-card-v2::after {
             flyToLatLng([23.698,120.961],7,1500);
         } else if(match){
             flyToLatLng(centers[match],11,1500);
+        }
+    } */
+
+    function syncCityFilter(value){
+        document.getElementById("city-filter").value = value;
+        document.getElementById("city-filter-mobile").value = value;
+        drawCityBoundary(value);
+        renderEvents();
+        const centers = {
+            "\u53f0\u5317\u5e02":[25.033,121.565],
+            "\u65b0\u5317\u5e02":[25.011,121.466],
+            "\u57fa\u9686\u5e02":[25.128,121.739],
+            "\u6843\u5712\u5e02":[24.994,121.301],
+            "\u65b0\u7af9\u5e02":[24.814,120.968],
+            "\u65b0\u7af9\u7e23":[24.828,121.013],
+            "\u82d7\u6817\u7e23":[24.560,120.821],
+            "\u53f0\u4e2d\u5e02":[24.148,120.674],
+            "\u5f70\u5316\u7e23":[24.052,120.539],
+            "\u5357\u6295\u7e23":[23.903,120.688],
+            "\u96f2\u6797\u7e23":[23.709,120.431],
+            "\u5609\u7fa9\u5e02":[23.480,120.449],
+            "\u5609\u7fa9\u7e23":[23.452,120.255],
+            "\u53f0\u5357\u5e02":[23.000,120.227],
+            "\u9ad8\u96c4\u5e02":[22.627,120.301],
+            "\u5c4f\u6771\u7e23":[22.672,120.486],
+            "\u5b9c\u862d\u7e23":[24.730,121.763],
+            "\u82b1\u84ee\u7e23":[23.987,121.602],
+            "\u53f0\u6771\u7e23":[22.758,121.144],
+            "\u6f8e\u6e56\u7e23":[23.571,119.579],
+            "\u91d1\u9580\u7e23":[24.449,118.376],
+            "\u9023\u6c5f\u7e23":[26.150,119.936],
+            "\u53f0\u4e2d":[24.148,120.674],
+            "\u53f0\u7063":[23.698,120.961],
+        };
+        const match = Object.keys(centers).find(k => k.startsWith(value) || value.startsWith(k));
+        if(value === "all"){
+            flyToLatLng([23.698,120.961], 7, 1500);
+        } else if(match){
+            flyToLatLng(centers[match], 11, 1500);
         }
     }
 
@@ -3555,7 +4060,7 @@ body.tw-online-mode .event-card-v2::after {
         });
     }
  
-    async function renderStatsView(){ 
+    /* async function renderStatsView(){ 
       const events = parsedEvents.filter(ev=>{ 
         const lat=Number(ev.lat), lng=Number(ev.lng); 
         return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat,lng); 
@@ -3645,6 +4150,188 @@ body.tw-online-mode .event-card-v2::after {
             </div> 
             <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
             <div style="font-size:11px;color:var(--text-muted);">📍 ${city}</div> 
+          </div> 
+        `; 
+      }).join(''); 
+    } */
+
+    /* async function renderStatsView(){ 
+      const events = parsedEvents.filter(ev => { 
+        const lat = Number(ev.lat), lng = Number(ev.lng); 
+        return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat, lng); 
+      }); 
+      updateCurationMeta(events);
+ 
+      const totalEl = document.getElementById('stat-total'); 
+      if(totalEl) totalEl.textContent = events.length; 
+ 
+      const cityMap = {}; 
+      events.forEach(ev => { 
+        if(!ev.city) return; 
+        const city = (ev.city || '').replace(/市|縣/g, '').slice(0, 3); 
+        if(!city) return; 
+        cityMap[city] = (cityMap[city] || 0) + 1; 
+      }); 
+      const sorted = Object.entries(cityMap).sort((a, b) => b[1] - a[1]).slice(0, 8); 
+      const max = sorted[0]?.[1] || 1; 
+      const barsEl = document.getElementById('city-bars'); 
+      if(barsEl){ 
+        barsEl.innerHTML = sorted.map(([city, count], i) => ` 
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"> 
+            <span style="font-size:12px;color:var(--text-secondary);width:52px;text-align:right;flex-shrink:0;">${city}</span> 
+            <div style="flex:1;height:7px;background:rgba(99,120,180,0.1);border-radius:4px;overflow:hidden;"> 
+              <div style="height:100%;border-radius:4px;width:${Math.round(count / max * 100)}%;background:${BAR_COLORS[i]};"></div> 
+            </div> 
+            <span style="font-size:11px;color:var(--text-muted);width:24px;">${count}</span> 
+          </div> 
+        `).join(''); 
+      } 
+ 
+      fetch('/api/reactions/total') 
+        .then(r => r.json()) 
+        .then(data => { 
+          const m = document.getElementById('stat-muyu'); 
+          const c = document.getElementById('stat-candle'); 
+          if(m) m.textContent = (data.muyu || 0).toLocaleString(); 
+          if(c) c.textContent = (data.candle || 0).toLocaleString(); 
+        }) 
+        .catch(() => { 
+          const m = document.getElementById('stat-muyu'); 
+          const c = document.getElementById('stat-candle'); 
+          if(m) m.textContent = '0'; 
+          if(c) c.textContent = '0'; 
+        }); 
+ 
+      const hotEl = document.getElementById('hot-events'); 
+      if(!hotEl) return; 
+      hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">載入中...</div>'; 
+ 
+      const withReactions = await Promise.all( 
+        events.map(async ev => { 
+          try{ 
+            const r = await fetch(`/api/reaction?eventId=${ev.id}`); 
+            const d = await r.json(); 
+            return { ...ev, muyu: d.muyu || 0, candle: d.candle || 0, total: (d.muyu || 0) + (d.candle || 0) }; 
+          }catch{ 
+            return { ...ev, muyu: 0, candle: 0, total: 0 }; 
+          } 
+        }) 
+      ); 
+ 
+      const top4 = withReactions 
+        .filter(ev => ev.total > 0) 
+        .sort((a, b) => b.total - a.total) 
+        .slice(0, 4); 
+ 
+      if(!top4.length){ 
+        hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">尚無反應資料</div>'; 
+        return; 
+      } 
+ 
+      hotEl.innerHTML = top4.map((ev, i) => { 
+        const cat = CAT_COLORS[ev.category] || CAT_COLORS.other; 
+        const title = ev.twOnlineTitle || ev.title || '\u672a\u547d\u540d\u4e8b\u4ef6'; 
+        const city = ev.city || ''; 
+        const border = i < top4.length - 1 ? 'border-bottom:1px solid rgba(99,120,180,0.1);' : ''; 
+        return ` 
+          <div style="padding:10px 0;${border}"> 
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"> 
+              <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${cat.bg};color:${cat.color};">${cat.text}</span> 
+              <span style="font-size:11px;color:var(--text-secondary);">木魚 ${ev.muyu} &nbsp; 蠟燭 ${ev.candle}</span> 
+            </div> 
+            <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
+            <div style="font-size:11px;color:var(--text-muted);">地點 ${city}</div> 
+          </div> 
+        `; 
+      }).join(''); 
+    } */
+
+    async function renderStatsView(){ 
+      const events = parsedEvents.filter(ev => { 
+        const lat = Number(ev.lat), lng = Number(ev.lng); 
+        return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat, lng); 
+      }); 
+      updateCurationMeta(events);
+ 
+      const totalEl = document.getElementById('stat-total'); 
+      if(totalEl) totalEl.textContent = events.length; 
+ 
+      const cityMap = {}; 
+      events.forEach(ev => { 
+        if(!ev.city) return; 
+        const city = (ev.city || '').replace(/[\u5e02\u7e23]/g, '').slice(0, 3); 
+        if(!city) return; 
+        cityMap[city] = (cityMap[city] || 0) + 1; 
+      }); 
+      const sorted = Object.entries(cityMap).sort((a, b) => b[1] - a[1]).slice(0, 8); 
+      const max = sorted[0]?.[1] || 1; 
+      const barsEl = document.getElementById('city-bars'); 
+      if(barsEl){ 
+        barsEl.innerHTML = sorted.map(([city, count], i) => ` 
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:9px;"> 
+            <span style="font-size:12px;color:var(--text-secondary);width:52px;text-align:right;flex-shrink:0;">${city}</span> 
+            <div style="flex:1;height:7px;background:rgba(99,120,180,0.1);border-radius:4px;overflow:hidden;"> 
+              <div style="height:100%;border-radius:4px;width:${Math.round(count / max * 100)}%;background:${BAR_COLORS[i]};"></div> 
+            </div> 
+            <span style="font-size:11px;color:var(--text-muted);width:24px;">${count}</span> 
+          </div> 
+        `).join(''); 
+      } 
+ 
+      fetch('/api/reactions/total') 
+        .then(r => r.json()) 
+        .then(data => { 
+          const m = document.getElementById('stat-muyu'); 
+          const c = document.getElementById('stat-candle'); 
+          if(m) m.textContent = (data.muyu || 0).toLocaleString(); 
+          if(c) c.textContent = (data.candle || 0).toLocaleString(); 
+        }) 
+        .catch(() => { 
+          const m = document.getElementById('stat-muyu'); 
+          const c = document.getElementById('stat-candle'); 
+          if(m) m.textContent = '0'; 
+          if(c) c.textContent = '0'; 
+        }); 
+ 
+      const hotEl = document.getElementById('hot-events'); 
+      if(!hotEl) return; 
+      hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">\u8f09\u5165\u4e2d...</div>'; 
+ 
+      const withReactions = await Promise.all( 
+        events.map(async ev => { 
+          try{ 
+            const r = await fetch(`/api/reaction?eventId=${ev.id}`); 
+            const d = await r.json(); 
+            return { ...ev, muyu: d.muyu || 0, candle: d.candle || 0, total: (d.muyu || 0) + (d.candle || 0) }; 
+          }catch{ 
+            return { ...ev, muyu: 0, candle: 0, total: 0 }; 
+          } 
+        }) 
+      ); 
+ 
+      const top4 = withReactions 
+        .filter(ev => ev.total > 0) 
+        .sort((a, b) => b.total - a.total) 
+        .slice(0, 4); 
+ 
+      if(!top4.length){ 
+        hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">\u5c1a\u7121\u53cd\u61c9\u8cc7\u6599</div>'; 
+        return; 
+      } 
+ 
+      hotEl.innerHTML = top4.map((ev, i) => { 
+        const cat = CAT_COLORS[ev.category] || CAT_COLORS.other; 
+        const title = ev.twOnlineTitle || ev.title || '\u672a\u547d\u540d\u4e8b\u4ef6'; 
+        const city = ev.city || ''; 
+        const border = i < top4.length - 1 ? 'border-bottom:1px solid rgba(99,120,180,0.1);' : ''; 
+        return ` 
+          <div style="padding:10px 0;${border}"> 
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"> 
+              <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${cat.bg};color:${cat.color};">${cat.text}</span> 
+              <span style="font-size:11px;color:var(--text-secondary);">\u6728\u9b5a ${ev.muyu} &nbsp; \u87df\u71ed ${ev.candle}</span> 
+            </div> 
+            <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
+            <div style="font-size:11px;color:var(--text-muted);">\u5730\u9ede ${city}</div> 
           </div> 
         `; 
       }).join(''); 
@@ -3753,7 +4440,7 @@ body.tw-online-mode .event-card-v2::after {
 
     // ── BETA MODAL ───────────────────────────────────────────
     function checkBetaModal(){
-        if(!localStorage.getItem("beta_accepted")) betaModal.classList.add("visible");
+        if(!localStorage.getItem("beta_accepted")) localStorage.setItem("beta_accepted","true");
     }
     function closeBetaModal(){
         localStorage.setItem("beta_accepted","true");
