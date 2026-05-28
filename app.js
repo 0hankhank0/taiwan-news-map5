@@ -1,4 +1,4 @@
-// ── CONFIG ──────────────────────────────────────────────
+    // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = "pk.eyJ1IjoiaGFua2hhbmsiLCJhIjoiY21wNWhmNHNiMDJxMzJycjB4a3FmNDY0biJ9.FK_qTU4xvkvvYq1Ze8WC4g"; 
     
     // 測試 Mapbox Token 是否有效
@@ -11,6 +11,19 @@
             return false;
         }
     }
+
+    const {
+        CATEGORY_MAP,
+        FIXED_CATEGORY_ORDER,
+        SOURCE_CONFIG,
+        BAR_COLORS,
+        CAT_COLORS,
+        normalizeText,
+        tryParseJson,
+        normalizeSource,
+        formatEventTime,
+        isValidTaiwanCoord
+    } = window.TNM_SHARED;
 
     // SVG outline icons (stroke-based, clean line style)
     const CAT_SVG = {
@@ -101,14 +114,6 @@
 
     function shouldPinPulse(ev, severity) {
         return ev.category === "disaster" || severity >= 4 || getEventAlertType(ev) === "fire" || getEventAlertType(ev) === "arson";
-    }
-
-    function formatEventTime(ev) {
-        const raw = ev.updatedAt || ev.publishedAt || ev.time || ev.createdAt;
-        if (!raw) return "";
-        const d = new Date(raw);
-        if (Number.isNaN(d.getTime())) return "";
-        return d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
 
     function makeCatBadgeV2(category) {
@@ -280,26 +285,6 @@
         other:        { text: "系統公告",   icon: "fa-circle-info",         color: "#6b7280" }
     };
 
-    const CATEGORY_MAP = {
-        normal: {
-            all: "all", disaster: "disaster", criminal: "criminal", traffic: "traffic", 
-            medical: "medical", activity: "activity", other: "other"
-        },
-        online: {
-            all: "all", disaster: "disaster", criminal: "accident", traffic: "traffic", 
-            medical: "construction", activity: "activity", other: "other"
-        }
-    };
-
-    const FIXED_CATEGORY_ORDER = ["all", "disaster", "criminal", "traffic", "medical", "activity", "other"];
-
-    const SOURCE_CONFIG = {
-        "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
-        RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
-        news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
-        default:    { text:"其他來源", shortText:"其他", bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
-    };
-
     const CITY_OPTIONS = [
         { value:"基隆", label:"基隆市" },{ value:"台北", label:"台北市" },{ value:"新北", label:"新北市" },
         { value:"桃園", label:"桃園市" },{ value:"新竹", label:"新竹縣市" },{ value:"苗栗", label:"苗栗縣" },
@@ -318,7 +303,9 @@
     let parsedEvents = [];
     let activeCategory = "all";
     let searchKeyword = "";
+    let isMobileCategoryCollapsed = false;
     let isTaiwanMode = true;
+    let mobileDrawerStateBeforeStats = null;
     let twGeoJSON = null;
     let activePopup = null;
     const renderedMarkers = [];
@@ -395,11 +382,10 @@
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
             parsedEvents.forEach(ev => {
-                const latlng = [Number(ev.lat), Number(ev.lng)];
-                if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
-                    L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)
-                        .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
-                }
+                const lngLat = getEventLngLat(ev);
+                if (!lngLat) return;
+                L.marker([lngLat[1], lngLat[0]]).addTo(fallbackMap)
+                    .bindPopup(`<b>${ev.title}</b><br>${ev.content}`);
             });
         }
     }
@@ -480,8 +466,8 @@
 
         // 替換文案
         const textConfig = isOnline ? TW_ONLINE_TEXT : {
-            siteTitle: "台灣新聞事件地圖",
-            siteSubtitle: "REAL-TIME EVENT TRACKER",
+            siteTitle: "島嶼脈搏",
+            siteSubtitle: "ISLAND PULSE",
             listTitle: "事件清單",
             searchPlaceholder: "搜尋標題、內容、城市",
             emptyState: "目前沒有符合條件的事件",
@@ -517,10 +503,28 @@
             heroStatus.textContent = t;
         }
     }
-    function normalizeText(v){ return String(v||"").trim(); }
-    function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
-    function flyToLatLng(latlng, zoom, duration=800){
-        map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
+    function getEventLngLat(event) {
+        const lat = Number(event.lat ?? event.latitude);
+        const lng = Number(event.lng ?? event.lon ?? event.longitude);
+        const isTaiwan = (lngValue, latValue) =>
+            Number.isFinite(lngValue) &&
+            Number.isFinite(latValue) &&
+            lngValue >= 118 && lngValue <= 123.5 &&
+            latValue >= 21 && latValue <= 26.5;
+
+        if (isTaiwan(lng, lat)) return [lng, lat];
+        if (isTaiwan(lat, lng)) return [lat, lng];
+
+        console.warn("Invalid event coordinate", event.title, { lat, lng, event });
+        return null;
+    }
+    function flyToLatLng(lngLat, zoom, duration=800){
+        if(!Array.isArray(lngLat) || lngLat.length < 2) return;
+        const [a, b] = lngLat;
+        const eventLike = { lng: a, lat: b, longitude: a, latitude: b };
+        const normalized = getEventLngLat(eventLike) || getEventLngLat({ lng: b, lat: a, longitude: b, latitude: a });
+        if(!normalized) return;
+        map.flyTo({ center: normalized, zoom, duration, essential:true });
     }
     function closeActivePopup(){
         if(activePopup){
@@ -530,7 +534,15 @@
     }
     function clearRenderedMarkers(){
         closeActivePopup();
-        while(renderedMarkers.length) renderedMarkers.pop().remove();
+        while(renderedMarkers.length){
+            const marker = renderedMarkers.pop();
+            if (marker && typeof marker.remove === "function") marker.remove();
+        }
+        renderedMarkers.length = 0;
+        const mapContainer = map && typeof map.getContainer === "function" ? map.getContainer() : null;
+        if (mapContainer) {
+            mapContainer.querySelectorAll(".event-marker").forEach(el => el.closest(".mapboxgl-marker")?.remove());
+        }
     }
     function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
@@ -563,26 +575,31 @@
     }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
         const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
-        const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
         const bodySize = pinSizes[severity] || 38;
         const g = glowColor || color;
-        const glowR = glowPx[severity] || 10;
+        const glowR = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 }[severity] || 10;
         const outerW = Math.round(bodySize * 1.18);
         const outerH = Math.round(bodySize * 1.7);
         const iconSize = Math.round(bodySize * 0.42);
+
+        // 重要：Mapbox marker 本體保持 0x0，座標點固定在這個 0x0 原點。
+        // 視覺 pin 另外用 absolute 往左上畫出來，底部尖端永遠對齊座標。
+        // 這樣縮放地圖時 Mapbox 不會因為自訂 HTML 的寬高/anchor 重新量測而產生漂移。
         const wrapper = document.createElement("div");
-        wrapper.className = `map-pin marker-severity-${severity}`;
-        wrapper.style.width = `${outerW}px`;
-        wrapper.style.height = `${outerH}px`;
+        wrapper.className = `map-pin event-marker marker-severity-${severity}`;
+        wrapper.style.width = "0px";
+        wrapper.style.height = "0px";
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
         wrapper.innerHTML = `
-            ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
-            <svg class="map-pin-svg" viewBox="0 0 64 96" aria-hidden="true" style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});">
-                <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
-                <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.12)"></circle>
-            </svg>
-            <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>`;
+            <div class="map-pin-visual" style="width:${outerW}px;height:${outerH}px;">
+                ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
+                <svg class="map-pin-svg" viewBox="0 0 64 96" aria-hidden="true" style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});">
+                    <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
+                    <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.12)"></circle>
+                </svg>
+                <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>
+            </div>`;
         return wrapper;
     }
 
@@ -623,15 +640,6 @@
                 paint: { "line-color":"#2471A3", "line-width":2.5, "line-opacity":0.7 }
             });
         }
-    }
-
-    function normalizeSource(source) {
-        if (!source) return "news";
-        const s = source.toLowerCase();
-        if (s.includes("tdx") || s.includes("traffic")) return "TDX CMS";
-        if (s.includes("rss") || s.includes("feed")) return "RSS";
-        if (s.includes("news") || s.includes("ai") || s.includes("scraper")) return "news";
-        return "news"; // 其他不認識的來源預設當新聞
     }
 
     function makeSourceBadge(source, compact=false){
@@ -703,13 +711,36 @@
         d.innerHTML=html; m.innerHTML=html;
     }
 
+    function isMobileSidebarListMode() {
+        return window.innerWidth < 768 && isTaiwanMode && newsSidebar.style.display !== 'none';
+    }
+
+    function setMobileCategoryCollapsed(collapsed) {
+        const next = !!collapsed && isMobileSidebarListMode();
+        if (isMobileCategoryCollapsed === next) return;
+        isMobileCategoryCollapsed = next;
+        renderCategoryButtons();
+    }
+
+    function syncMobileCategoryCollapseState() {
+        if (!eventList) return;
+        if (!isMobileSidebarListMode()) {
+            setMobileCategoryCollapsed(false);
+            return;
+        }
+        setMobileCategoryCollapsed(eventList.scrollTop > 6);
+    }
+
     // ── FILTERS ─────────────────────────────────────────────
     function renderCategoryButtons(){
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
+        const showCollapsed = isMobileCategoryCollapsed && isMobileSidebarListMode();
+        const renderOrder = showCollapsed ? [activeCategory] : FIXED_CATEGORY_ORDER;
 
-        catFilters.innerHTML = FIXED_CATEGORY_ORDER.map(cat=>{
+        catFilters.classList.toggle("mobile-category-collapsed", showCollapsed);
+        catFilters.innerHTML = renderOrder.map(cat=>{
             const mappedCat = mapConfig[cat] || cat;
             const c = config[mappedCat]||config.other;
             const isActive = activeCategory===cat;
@@ -720,14 +751,15 @@
         }).join("");
         catFilters.querySelectorAll("[data-category]").forEach(btn=>{
             btn.addEventListener("click",()=>{
+                if (showCollapsed) {
+                    setMobileCategoryCollapsed(false);
+                    return;
+                }
                 activeCategory=btn.dataset.category||"all";
+                if (isMobileSidebarListMode()) isMobileCategoryCollapsed = true;
                 renderCategoryButtons(); renderEvents();
             });
         });
-    }
-
-    function isValidTaiwanCoord(lat, lng) {
-        return lat >= 21.5 && lat <= 26.5 && lng >= 118.0 && lng <= 122.5;
     }
 
     function deduplicateEvents(events) {
@@ -759,11 +791,12 @@
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const filtered = parsedEvents.filter(ev=>{
-            const lat=Number(ev.lat), lng=Number(ev.lng);
+            const lngLat = getEventLngLat(ev);
+            if(!lngLat) return false;
             
             // 座標無效或不在台灣直接排除
+            const [lng, lat] = lngLat;
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
-            if(!isValidTaiwanCoord(lat, lng)) return false;
 
             if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
             if(cityFilter!=="all"){
@@ -860,7 +893,8 @@
         events.forEach(ev=>{
             const mappedCat = mapConfig[ev.category] || ev.category;
             const cat = config[mappedCat]||config.other;
-            const latlng = [Number(ev.lat),Number(ev.lng)];
+            const lngLat = getEventLngLat(ev);
+            if(!lngLat) return;
 
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
@@ -898,11 +932,12 @@
                     markerStyle.glow,
                     pinPulse
                 ),
-                anchor: "center"
+                anchor: "center",
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
-                .setLngLat([latlng[1], latlng[0]])
+                .setLngLat(lngLat)
                 .setPopup(popup)
                 .addTo(map);
             
@@ -920,7 +955,7 @@
             enableSubpixelPositioning(tooltip);
 
             markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat([latlng[1], latlng[0]])
+                tooltip.setLngLat(lngLat)
                     .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
                     .addTo(map);
             });
@@ -939,7 +974,7 @@
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
                 closeActivePopup();
-                flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
+                flyToLatLng(lngLat, ev.source==="TDX CMS"?14:13, 800);
                 popup.addTo(map);
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
             });
@@ -1016,23 +1051,11 @@
     }
 
     // ── MODE ─────────────────────────────────────────────────
-    const BAR_COLORS = ['#4f8cff','#a78bfa','#34d399','#fb923c','#f05a5a','#fbbf24','#5eead4','#c4b5fd','#86efac','#fdba74']; 
- 
-    const CAT_COLORS = { 
-      traffic:   { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
-      accident:  { bg:'rgba(79,140,255,0.15)',  color:'#4f8cff',  text:'交通事故' }, 
-      disaster:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'災害事故' }, 
-      criminal:  { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'刑事案件' }, 
-      medical:   { bg:'rgba(251,146,60,0.15)',  color:'#fb923c',  text:'醫療緊急' }, 
-      construction:{ bg:'rgba(251,191,36,0.15)',color:'#fbbf24',  text:'施工管制' }, 
-      activity:  { bg:'rgba(52,211,153,0.15)',  color:'#34d399',  text:'活動'     }, 
-      other:     { bg:'rgba(107,114,128,0.15)', color:'#6b7280',  text:'其他'     }, 
-    }; 
- 
     function switchMode(mode){ 
       isTaiwanMode = mode; 
       const mapEl    = document.getElementById('map'); 
       const statsEl  = document.getElementById('stats-view'); 
+      const isMobile = window.innerWidth < 768;
  
       ['btn-tw','btn-tw-mobile'].forEach(id=>{ 
         const b=document.getElementById(id); 
@@ -1042,18 +1065,51 @@
         const b=document.getElementById(id); 
         if(b) b.classList.toggle('active', !mode); 
       }); 
+
+      if(isMobile){
+        if(mode){
+            newsSidebar.style.display = '';
+            if(mobileDrawerStateBeforeStats !== null){
+                newsSidebar.classList.toggle("drawer-collapsed", mobileDrawerStateBeforeStats);
+                mobileDrawerStateBeforeStats = null;
+            }
+            statsEl.classList.remove("mobile-stats-active");
+        } else {
+            if(mobileDrawerStateBeforeStats === null){
+                mobileDrawerStateBeforeStats = newsSidebar.classList.contains("drawer-collapsed");
+            }
+            newsSidebar.style.display = 'none';
+            statsEl.classList.add("mobile-stats-active");
+        }
+      } else {
+        newsSidebar.style.display = '';
+        statsEl.classList.remove("mobile-stats-active");
+        mobileDrawerStateBeforeStats = null;
+      }
  
       if(mode){ 
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
         flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
         renderEvents(); 
+        scheduleMapResize();
       } else { 
         mapEl.style.display   = 'none'; 
         statsEl.style.display = 'flex'; 
         renderStatsView(); 
+        if(isMobile) statsEl.scrollTop = 0;
       } 
     } 
+
+    function bindModeButton(buttonId, mode) {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.addEventListener("click", e => {
+            e.preventDefault();
+            e.stopPropagation();
+            switchMode(mode);
+        });
+    }
  
     async function renderStatsView(){ 
       const events = parsedEvents.filter(ev=>{ 
@@ -1283,14 +1339,17 @@
     document.getElementById("event-search-mobile").addEventListener("input",handleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
-    document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
-    document.getElementById("btn-global").addEventListener("click",()=>switchMode(false));
-    document.getElementById("btn-tw-mobile").addEventListener("click",()=>switchMode(true));
-    document.getElementById("btn-global-mobile").addEventListener("click",()=>switchMode(false));
+    bindModeButton("btn-tw", true);
+    bindModeButton("btn-global", false);
+    bindModeButton("btn-tw-mobile", true);
+    bindModeButton("btn-global-mobile", false);
     document.getElementById("btn-dark").addEventListener("click",()=>switchTheme("dark"));
     document.getElementById("btn-light").addEventListener("click",()=>switchTheme("light"));
     document.getElementById("btn-dark-mobile").addEventListener("click",()=>switchTheme("dark"));
     document.getElementById("btn-light-mobile").addEventListener("click",()=>switchTheme("light"));
+    document.getElementById("settings-btn-mobile")?.addEventListener("click", () => {
+        settingsModal.classList.add("visible");
+    });
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
     document.getElementById("report-submit-btn").addEventListener("click",submitReport);
@@ -1316,6 +1375,7 @@
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
+    eventList.addEventListener("scroll", syncMobileCategoryCollapseState);
 
     document.addEventListener("DOMContentLoaded",()=>{
         populateCityFilters();
@@ -1324,4 +1384,5 @@
         applyMapMode(currentMapMode); // 套用快取的模式
         syncNewsAndRender();
         loadTwGeoJSON();
+        syncMobileCategoryCollapseState();
     });
