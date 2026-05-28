@@ -898,7 +898,9 @@
                     markerStyle.glow,
                     pinPulse
                 ),
-                anchor: "center"
+                // Pin 的座標必須對齊「針尖」，不能用 center；否則縮放/移動時會看起來跑位。
+                anchor: "bottom",
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
