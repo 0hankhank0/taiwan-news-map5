@@ -1913,3 +1913,32 @@
  body.tw-online-mode #map::after { 
      content: none; 
  }
+
+/* ── FIX: Popup 必須永遠壓在所有地圖圖釘上方 ─────────────────
+   Mapbox 的 marker 與 popup 是不同 DOM 圖層；若 marker 有 z-index，
+   就可能蓋到 popup 卡片上。這裡把 popup 提升、marker 壓低，避免圖釘穿過卡片。 */
+.mapboxgl-popup.custom-popup,
+.custom-popup.mapboxgl-popup {
+    z-index: 10080 !important;
+    pointer-events: auto;
+}
+.custom-popup .mapboxgl-popup-content {
+    position: relative;
+    z-index: 10081 !important;
+}
+.custom-popup .mapboxgl-popup-tip {
+    z-index: 10080 !important;
+}
+.mapboxgl-marker {
+    z-index: 20 !important;
+}
+.mapboxgl-marker:hover {
+    z-index: 30 !important;
+}
+.mapboxgl-marker.marker-active,
+.mapboxgl-marker.active {
+    z-index: 40 !important;
+}
+.custom-tooltip.mapboxgl-popup {
+    z-index: 10020 !important;
+}
