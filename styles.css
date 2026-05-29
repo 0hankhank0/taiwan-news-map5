@@ -686,6 +686,30 @@
         .card-sources-list a:hover { text-decoration: underline; }
         .card-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .card-action-group { display: flex; align-items: center; gap: 10px; }
+        .event-actions {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .event-actions--card {
+            flex: 1;
+            min-width: 0;
+            justify-content: flex-start;
+        }
+        .event-actions--popup {
+            margin: 0 0 14px;
+            align-items: stretch;
+        }
+        .event-actions--popup .popup-action-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-reactions-wrap {
+            width: 100%;
+            margin-bottom: 2px;
+        }
         .card-action-btn {
             font-size: 11px;
             font-weight: 700;
@@ -700,6 +724,12 @@
         .card-action-btn:hover { opacity: 0.75; }
         .card-action-btn.report { color: var(--red); }
         .card-action-btn.link { color: var(--accent); }
+        .card-action-btn.rating-action { color: var(--text-secondary); }
+        .card-action-btn.rating-action.rating-active,
+        .popup-btn-v2.rating-action.rating-active {
+            color: var(--accent);
+            border-color: rgba(90, 143, 212, 0.55);
+        }
 
         /* ── BADGE / CHIP ────────────────────────────────────── */
         .cat-badge {

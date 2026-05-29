@@ -124,8 +124,110 @@
         return `<span class="src-badge-v2" style="background:${c.bg};color:${c.color};border:1px solid ${c.color}33;">${t}</span>`;
     }
 
+    const EVENT_INTERACTION_KEYWORDS = {
+        safety: ["disaster", "accident", "criminal", "fire", "medical", "emergency"],
+        traffic: ["traffic", "construction", "road", "closure"],
+        activity: ["activity", "event"],
+        sports: ["sports", "game"],
+        weather: ["typhoon", "earthquake", "weather", "climate"],
+    };
+
+    function getEventTypeTokens(ev) {
+        return [
+            ev.category,
+            ev.type,
+            ev.eventType,
+            ev.kind,
+            ev.subtype,
+        ].map(v => normalizeText(v).toLowerCase()).filter(Boolean);
+    }
+
+    function eventMatchesAny(ev, keywords) {
+        const tokens = getEventTypeTokens(ev);
+        return tokens.some(token => keywords.some(keyword => token.includes(keyword)));
+    }
+
+    function isSafetyEvent(ev) {
+        return eventMatchesAny(ev, EVENT_INTERACTION_KEYWORDS.safety);
+    }
+
+    function isTrafficEvent(ev) {
+        return eventMatchesAny(ev, EVENT_INTERACTION_KEYWORDS.traffic);
+    }
+
+    function isActivityEvent(ev) {
+        return eventMatchesAny(ev, EVENT_INTERACTION_KEYWORDS.activity);
+    }
+
+    function isSportsEvent(ev) {
+        return eventMatchesAny(ev, EVENT_INTERACTION_KEYWORDS.sports);
+    }
+
+    function isWeatherLayerEvent(ev) {
+        return eventMatchesAny(ev, EVENT_INTERACTION_KEYWORDS.weather);
+    }
+
+    function getEventInteractionType(ev) {
+        if (isWeatherLayerEvent(ev)) return "report";
+        if (isTrafficEvent(ev)) return "report";
+        if (isSportsEvent(ev)) return "sports-rating";
+        if (isActivityEvent(ev)) return "activity-rating";
+        if (isSafetyEvent(ev)) return "safety";
+        return "report";
+    }
+
+    function makeReportActionHtml(displayTitle, context) {
+        const reportArg = encodeURIComponent(displayTitle || "");
+        if (context === "popup") {
+            return `<button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"))'>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                回報
+            </button>`;
+        }
+        return `<button type="button" class="card-action-btn report" data-report="${reportArg}">
+            <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
+        </button>`;
+    }
+
+    function makeRatingActionHtml(ev, labels, context) {
+        const cls = context === "popup" ? "popup-btn-v2 ghost rating-action" : "card-action-btn rating-action";
+        return labels.map(label => {
+            const value = encodeURIComponent(label);
+            return `<button type="button" class="${cls}" data-rating="${value}" onclick="handleRatingClick(event, '${ev.id}', '${value}', this)">${label}</button>`;
+        }).join("");
+    }
+
+    function renderEventActions(ev, options = {}) {
+        const context = options.context || "card";
+        const displayTitle = options.displayTitle || ev.title || "";
+        const interactionType = getEventInteractionType(ev);
+        const ratingLabels = interactionType === "sports-rating"
+            ? ["精彩", "普通", "冷場"]
+            : interactionType === "activity-rating"
+                ? ["值得去", "還好", "不推薦"]
+                : [];
+        const reactionHtml = interactionType === "safety"
+            ? `<div class="${context === "popup" ? "popup-reactions-wrap" : "card-reactions-wrap"} reaction-container" data-event-id="${ev.id}"></div>`
+            : "";
+        const buttonsHtml = `${makeRatingActionHtml(ev, ratingLabels, context)}${makeReportActionHtml(displayTitle, context)}`;
+        return `
+            <div class="event-actions event-actions--${context}" data-interaction-type="${interactionType}">
+                ${reactionHtml}
+                <div class="${context === "popup" ? "popup-action-group" : "card-action-group"}">${buttonsHtml}</div>
+            </div>`;
+    }
+
+    Object.assign(window, {
+        getEventInteractionType,
+        renderEventActions,
+        isSafetyEvent,
+        isTrafficEvent,
+        isActivityEvent,
+        isSportsEvent,
+        isWeatherLayerEvent,
+    });
+
     function makeReactionBarHtml(eventId, data, reacted, compact = false) {
-        const isOnline = currentMapMode === "online";
         const muyuActive = reacted === "muyu";
         const candleActive = reacted === "candle";
         const compactCls = compact ? " react-btn--compact" : "";
@@ -140,7 +242,7 @@
                     onclick="handleReactClick(event, '${eventId}', 'muyu', this)"
                     ${reacted && !muyuActive ? "disabled" : ""}>
                     ${REACT_SVG.muyu}
-                    <span>${isOnline ? "致敬" : "敲木魚"}</span>
+                    <span>敲木魚</span>
                     <span class="react-count">${muyuCount}</span>
                 </button>
                 <div class="react-divider"></div>
@@ -148,7 +250,7 @@
                     onclick="handleReactClick(event, '${eventId}', 'candle', this)"
                     ${reacted && !candleActive ? "disabled" : ""}>
                     ${REACT_SVG.candle}
-                    <span>${isOnline ? "悼念" : "點蠟燭"}</span>
+                    <span>上香</span>
                     <span class="react-count">${candleCount}</span>
                 </button>
                 <span class="react-total">${totalLabel}</span>
@@ -159,10 +261,6 @@
         const city = ev.city || "未知城市";
         const timeStr = formatEventTime(ev);
         const timeHtml = timeStr ? `<span class="popup-location-tag">${timeStr}</span>` : "";
-        const reactionSlot = isMourningEvent(ev)
-            ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${ev.id}"></div>`
-            : "";
-        const reportArg = encodeURIComponent(displayTitle);
 
         return `
             <div class="popup-demo-inner" style="--popup-color:${markerStyle.color}">
@@ -177,16 +275,12 @@
                     </div>
                 </div>
                 <div class="popup-summary">${displayContent}</div>
-                ${reactionSlot}
+                ${renderEventActions(ev, { displayTitle, context: "popup" })}
                 <div class="popup-footer">
                     ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn-v2 primary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         查看原文
                     </a>` : ""}
-                    <button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"))'>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
-                        回報錯誤
-                    </button>
                 </div>
             </div>`;
     }
@@ -202,10 +296,6 @@
             <div class="card-sources-list">
                 ${ev.sources.map(s => `<a href="${s.url}" target="_blank" onclick="event.stopPropagation();">${s.outlet}：${s.title}</a>`).join("")}
             </div>` : "";
-        const reactionSlot = isMourningEvent(ev)
-            ? `<div class="card-v2-extra"><div class="reaction-container" data-event-id="${ev.id}"></div></div>`
-            : "";
-        const reportArg = encodeURIComponent(displayTitle);
 
         return `
             <div class="card-bar" style="background:${catVisual.color};"></div>
@@ -219,16 +309,11 @@
                 <div class="card-v2-content">${displayContent}</div>
             </div>
             <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
-            ${reactionSlot}
             <div class="card-v2-extra card-footer">
                 ${sourcesHtml}
                 <div class="card-actions">
-                    <div class="card-action-group">
-                        <button type="button" class="card-action-btn report" data-report="${reportArg}">
-                            <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
-                        </button>
-                        ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
-                    </div>
+                    ${renderEventActions(ev, { displayTitle, context: "card" })}
+                    ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
                 </div>
             </div>`;
     }
@@ -835,6 +920,18 @@
 
     window.handleReaction = window.handleReactClick;
 
+    window.handleRatingClick = (e, eventId, value, btn) => {
+        e.stopPropagation();
+        const rating = decodeURIComponent(value);
+        localStorage.setItem(`rating:${eventId}`, rating);
+        const group = btn.closest(".event-actions");
+        if (group) {
+            group.querySelectorAll(".rating-action").forEach(action => {
+                action.classList.toggle("rating-active", action === btn);
+            });
+        }
+    };
+
     // ── RENDER ──────────────────────────────────────────────
     function renderEvents(){
         let events = getFilteredEvents();
@@ -883,7 +980,7 @@
             popup.setHTML(popupHtml);
             popup.on("open", () => {
                 activePopup = popup;
-                if (isMourningEvent(ev)) {
+                if (getEventInteractionType(ev) === "safety") {
                     const container = popup.getElement().querySelector(".reaction-container, .popup-reactions-wrap");
                     if (container) updateReactionUI(ev.id, container);
                 }
@@ -954,7 +1051,7 @@
             });
 
             eventList.appendChild(card);
-            if (isMourningEvent(ev)) {
+            if (getEventInteractionType(ev) === "safety") {
                 updateReactionUI(ev.id, card.querySelector('.reaction-container'));
             }
         });
