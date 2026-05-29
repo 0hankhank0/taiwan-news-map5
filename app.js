@@ -176,15 +176,15 @@
         return "report";
     }
 
-    function makeReportActionHtml(displayTitle, context) {
-        const reportArg = encodeURIComponent(displayTitle || "");
+    function makeReportActionHtml(ev, context) {
+        const eventId = encodeURIComponent(ev.id || "");
         if (context === "popup") {
-            return `<button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"))'>
+            return `<button type="button" class="popup-btn-v2 ghost" data-action="report" data-event-id="${eventId}">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                 回報
             </button>`;
         }
-        return `<button type="button" class="card-action-btn report" data-report="${reportArg}">
+        return `<button type="button" class="card-action-btn report" data-action="report" data-event-id="${eventId}">
             <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
         </button>`;
     }
@@ -209,7 +209,7 @@
         const reactionHtml = interactionType === "safety"
             ? `<div class="${context === "popup" ? "popup-reactions-wrap" : "card-reactions-wrap"} reaction-container" data-event-id="${ev.id}"></div>`
             : "";
-        const buttonsHtml = `${makeRatingActionHtml(ev, ratingLabels, context)}${makeReportActionHtml(displayTitle, context)}`;
+        const buttonsHtml = `${makeRatingActionHtml(ev, ratingLabels, context)}${makeReportActionHtml(ev, context)}`;
         return `
             <div class="event-actions event-actions--${context}" data-interaction-type="${interactionType}">
                 ${reactionHtml}
@@ -406,6 +406,9 @@
     let isTaiwanMode = true;
     let twGeoJSON = null;
     let activePopup = null;
+    let currentReportEvent = null;
+    let reportCloseTimer = null;
+    const eventRegistry = new Map();
     const renderedMarkers = [];
 
     // ── THEME ───────────────────────────────────────────────
@@ -946,6 +949,7 @@
         });
 
         clearRenderedMarkers();
+        eventRegistry.clear();
         eventList.innerHTML="";
         updateCurationMeta(events);
 
@@ -962,6 +966,7 @@
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
             const displayContent = (isOnline && ev.twOnlineContent) ? ev.twOnlineContent : (ev.content || "沒有摘要");
+            eventRegistry.set(String(ev.id), { ...ev, displayTitle });
             const severity = getEventSeverity(ev);
             const markerStyle = resolveMarkerStyle(ev, cat.color);
 
@@ -1042,12 +1047,6 @@
                 flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
                 popup.addTo(map);
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
-            });
-
-            const reportBtn=card.querySelector("[data-report]");
-            if(reportBtn) reportBtn.addEventListener("click",e=>{
-                e.stopPropagation();
-                openReportModal(decodeURIComponent(reportBtn.dataset.report||""));
             });
 
             eventList.appendChild(card);
@@ -1327,28 +1326,136 @@
         if (mapStage) layoutObserver.observe(mapStage);
         if (newsSidebar) layoutObserver.observe(newsSidebar);
     }
-    function openReportModal(title){
-        document.getElementById("report-title").value=title;
-        document.getElementById("report-type").value="資料錯誤";
-        document.getElementById("report-message").value="";
+    function getReportOptionsForEvent(ev) {
+        const resolvedOption = isActivityEvent(ev) || isSportsEvent(ev)
+            ? "活動已結束"
+            : isTrafficEvent(ev)
+                ? "路況已解除"
+                : "事件已解除";
+        return ["位置有誤", resolvedOption, "內容不正確", "重複事件", "補充資訊", "其他"];
+    }
+
+    function renderReportTypeOptions(ev) {
+        const typeEl = document.getElementById("report-type");
+        if (!typeEl) return;
+        const options = getReportOptionsForEvent(ev);
+        typeEl.innerHTML = `<option value="">請選擇回報類型</option>` +
+            options.map(option => `<option value="${option}">${option}</option>`).join("");
+    }
+
+    function resetReportForm() {
+        const titleEl = document.getElementById("report-title");
+        const typeEl = document.getElementById("report-type");
+        const messageEl = document.getElementById("report-message");
+        const statusEl = document.getElementById("report-status");
+        const submitBtn = document.getElementById("report-submit-btn");
+        if (titleEl) titleEl.value = "";
+        if (typeEl) typeEl.value = "";
+        if (messageEl) messageEl.value = "";
+        if (statusEl) {
+            statusEl.textContent = "";
+            statusEl.className = "report-status";
+        }
+        if (submitBtn) {
+            submitBtn.textContent = "送出回報";
+            submitBtn.disabled = false;
+        }
+        currentReportEvent = null;
+    }
+
+    function openReportModal(eventOrId) {
+        const ev = typeof eventOrId === "string"
+            ? eventRegistry.get(String(eventOrId))
+            : eventOrId;
+        if (!ev) return;
+        if (reportCloseTimer) {
+            clearTimeout(reportCloseTimer);
+            reportCloseTimer = null;
+        }
+        currentReportEvent = ev;
+        const titleEl = document.getElementById("report-title");
+        const messageEl = document.getElementById("report-message");
+        const statusEl = document.getElementById("report-status");
+        if (titleEl) titleEl.value = ev.displayTitle || ev.title || "未命名事件";
+        renderReportTypeOptions(ev);
+        if (messageEl) messageEl.value = "";
+        if (statusEl) {
+            statusEl.textContent = "";
+            statusEl.className = "report-status";
+        }
         reportModal.classList.add("visible");
     }
-    function closeReportModal(){ reportModal.classList.remove("visible"); }
 
-    async function submitReport(){
-        const title=document.getElementById("report-title").value.trim();
-        const errorType=document.getElementById("report-type").value;
-        const message=document.getElementById("report-message").value.trim();
-        if(!message){ alert("請填寫補充說明！"); return; }
-        const btn=document.getElementById("report-submit-btn");
-        btn.textContent="傳送中..."; btn.disabled=true;
-        try{
-            const res=await fetch("/api/report",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({title,errorType,message})});
-            const result=await res.json();
-            if(res.ok&&result.success){ alert("✅ 回報成功！"); closeReportModal(); }
-            else throw new Error(result.error||"伺服器錯誤");
-        }catch(e){ alert("❌ 回報失敗，請稍後再試。"); }
-        finally{ btn.textContent="送出回報"; btn.disabled=false; }
+    function closeReportModal() {
+        if (reportCloseTimer) {
+            clearTimeout(reportCloseTimer);
+            reportCloseTimer = null;
+        }
+        reportModal.classList.remove("visible");
+        resetReportForm();
+    }
+
+    function buildReportPayload(ev, reportType, message) {
+        return {
+            id: `report_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+            eventId: String(ev.id || ""),
+            eventTitle: ev.displayTitle || ev.title || "未命名事件",
+            category: ev.category || "",
+            city: ev.city || "",
+            source: ev.source || "",
+            reportType,
+            message,
+            createdAt: new Date().toISOString(),
+        };
+    }
+
+    function saveReportPayload(payload) {
+        const key = "island_pulse_reports";
+        const existing = tryParseJson(localStorage.getItem(key), []);
+        const reports = Array.isArray(existing) ? existing : [];
+        reports.push(payload);
+        localStorage.setItem(key, JSON.stringify(reports));
+        console.log("[report]", payload);
+    }
+
+    function showReportSuccess(message) {
+        const statusEl = document.getElementById("report-status");
+        if (!statusEl) return;
+        statusEl.textContent = message;
+        statusEl.className = "report-status success";
+    }
+
+    function showReportError(message) {
+        const statusEl = document.getElementById("report-status");
+        if (!statusEl) {
+            alert(message);
+            return;
+        }
+        statusEl.textContent = message;
+        statusEl.className = "report-status error";
+    }
+
+    function submitReport() {
+        const reportType = document.getElementById("report-type").value;
+        const message = document.getElementById("report-message").value.trim();
+        if (!currentReportEvent) {
+            showReportError("找不到事件資料，請重新開啟回報。");
+            return;
+        }
+        if (!reportType) {
+            showReportError("請選擇回報類型。");
+            return;
+        }
+        const btn = document.getElementById("report-submit-btn");
+        btn.textContent = "已送出";
+        btn.disabled = true;
+        const payload = buildReportPayload(currentReportEvent, reportType, message);
+        saveReportPayload(payload);
+        showReportSuccess("已收到回報");
+        reportCloseTimer = setTimeout(() => {
+            reportCloseTimer = null;
+            closeReportModal();
+        }, 1000);
     }
 
     // ── BETA MODAL ───────────────────────────────────────────
@@ -1378,6 +1485,17 @@
 
     // ── EVENTS ───────────────────────────────────────────────
     window.openReportModal=openReportModal;
+
+    document.addEventListener("click", e => {
+        const reportBtn = e.target instanceof HTMLElement
+            ? e.target.closest('[data-action="report"]')
+            : null;
+        if (!reportBtn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const eventId = decodeURIComponent(reportBtn.dataset.eventId || "");
+        openReportModal(eventId);
+    });
 
     document.getElementById("event-search").addEventListener("input",handleSearch);
     document.getElementById("event-search-mobile").addEventListener("input",handleSearch);
@@ -1415,6 +1533,9 @@
 
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
+    document.addEventListener("keydown", e => {
+        if (e.key === "Escape" && reportModal.classList.contains("visible")) closeReportModal();
+    });
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
 
     document.addEventListener("DOMContentLoaded",()=>{

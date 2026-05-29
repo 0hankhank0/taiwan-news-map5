@@ -69,9 +69,12 @@
 <div class="form-group">
 <label class="form-label">回報類型</label>
 <select class="form-control" id="report-type">
-<option value="資料錯誤">資料錯誤</option>
-<option value="位置錯誤">位置錯誤</option>
+<option value="">請選擇回報類型</option>
+<option value="位置有誤">位置有誤</option>
+<option value="事件已解除">事件已解除</option>
+<option value="內容不正確">內容不正確</option>
 <option value="重複事件">重複事件</option>
+<option value="補充資訊">補充資訊</option>
 <option value="其他">其他</option>
 </select>
 </div>
@@ -79,6 +82,7 @@
 <label class="form-label">補充說明</label>
 <textarea class="form-control" id="report-message" placeholder="例如：地址有誤、不是同一件事..."></textarea>
 </div>
+<div class="report-status" id="report-status" aria-live="polite"></div>
 <div class="modal-actions">
 <button class="btn btn-ghost" id="report-cancel-btn">取消</button>
 <button class="btn btn-danger" id="report-submit-btn">送出回報</button>
