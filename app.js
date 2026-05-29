@@ -86,7 +86,7 @@
 
     const REACT_SVG = {
         muyu: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="10" rx="7" ry="6"/><path d="M8 16c0 2.2 1.8 4 4 4s4-1.8 4-4"/><line x1="12" y1="4" x2="12" y2="2"/></svg>`,
-        candle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><path d="M8 10c0-2.2 1.8-4 4-4s4 1.8 4 4v8a4 4 0 01-8 0v-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>`,
+        incense: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5c-1.5 1-1.5 2.2 0 3.2s1.5 2.2 0 3.2"/><path d="M12 4c-1.5 1.1-1.5 2.4 0 3.5s1.5 2.4 0 3.5"/><path d="M16 5c-1.5 1-1.5 2.2 0 3.2s1.5 2.2 0 3.2"/><line x1="9" y1="12" x2="9" y2="21"/><line x1="12" y1="12" x2="12" y2="21"/><line x1="15" y1="12" x2="15" y2="21"/><line x1="7" y1="21" x2="17" y2="21"/></svg>`,
     };
 
     function getCategoryVisual(category) {
@@ -229,10 +229,10 @@
 
     function makeReactionBarHtml(eventId, data, reacted, compact = false) {
         const muyuActive = reacted === "muyu";
-        const candleActive = reacted === "candle";
+        const incenseActive = reacted === "candle";
         const compactCls = compact ? " react-btn--compact" : "";
         const muyuCount = muyuActive ? `✓ ${data.muyu}` : String(data.muyu || 0);
-        const candleCount = candleActive ? `✓ ${data.candle}` : String(data.candle || 0);
+        const incenseCount = incenseActive ? `✓ ${data.candle}` : String(data.candle || 0);
         const total = (data.muyu || 0) + (data.candle || 0);
         const totalLabel = reacted ? "已回應" : `${total.toLocaleString()} 人回應`;
 
@@ -246,12 +246,12 @@
                     <span class="react-count">${muyuCount}</span>
                 </button>
                 <div class="react-divider"></div>
-                <button type="button" class="react-btn candle${candleActive ? " active candle-lit" : ""}${compactCls}"
+                <button type="button" class="react-btn incense${incenseActive ? " active incense-lit" : ""}${compactCls}"
                     onclick="handleReactClick(event, '${eventId}', 'candle', this)"
-                    ${reacted && !candleActive ? "disabled" : ""}>
-                    ${REACT_SVG.candle}
+                    ${reacted && !incenseActive ? "disabled" : ""}>
+                    ${REACT_SVG.incense}
                     <span>上香</span>
-                    <span class="react-count">${candleCount}</span>
+                    <span class="react-count">${incenseCount}</span>
                 </button>
                 <span class="react-total">${totalLabel}</span>
             </div>`;
@@ -906,7 +906,7 @@
 
         toggleReact(btn);
         if (type === "muyu") spawnMeritEffect(btn);
-        if (type === "candle") btn.classList.add("candle-lit");
+        if (type === "candle") btn.classList.add("incense-lit");
 
         const data = await sendReaction(eventId, type);
         const container = btn.closest(".reaction-container") || btn.closest(".popup-reactions-wrap");
@@ -1194,15 +1194,15 @@
         .then(r=>r.json()) 
         .then(data=>{ 
           const m=document.getElementById('stat-muyu'); 
-          const c=document.getElementById('stat-candle'); 
+          const incense=document.getElementById('stat-incense'); 
           if(m) m.textContent=(data.muyu||0).toLocaleString(); 
-          if(c) c.textContent=(data.candle||0).toLocaleString(); 
+          if(incense) incense.textContent=(data.candle||0).toLocaleString(); 
         }) 
         .catch(()=>{ 
           const m=document.getElementById('stat-muyu'); 
-          const c=document.getElementById('stat-candle'); 
+          const incense=document.getElementById('stat-incense'); 
           if(m) m.textContent='0'; 
-          if(c) c.textContent='0'; 
+          if(incense) incense.textContent='0'; 
         }); 
  
       // 熱門事件：逐一抓 reaction，取前4 
@@ -1241,7 +1241,7 @@
           <div style="padding:10px 0;${border}"> 
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"> 
               <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${cat.bg};color:${cat.color};">${cat.text}</span> 
-              <span style="font-size:11px;color:var(--text-secondary);">🪘 ${ev.muyu} &nbsp;🕯️ ${ev.candle}</span> 
+              <span style="font-size:11px;color:var(--text-secondary);">🪘 ${ev.muyu} &nbsp;上香 ${ev.candle}</span> 
             </div> 
             <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
             <div style="font-size:11px;color:var(--text-muted);">📍 ${city}</div> 

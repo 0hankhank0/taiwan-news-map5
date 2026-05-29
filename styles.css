@@ -45,7 +45,7 @@
             --font-mono: "JetBrains Mono", "Space Mono", monospace;
 
             /* ── 相容舊變數 ── */
-            --incense-warm: var(--brand-candle-flame);
+            --incense-warm: var(--brand-incense);
             --incense-warm-soft: var(--brand-muyu-light);
             --candle-glow: var(--brand-candle);
             --candle-glow-soft: var(--brand-candle-light);
@@ -63,7 +63,7 @@
             --red: var(--brand-crimson);
             --orange: var(--brand-incense);
             --green: var(--cat-activity);
-            --yellow: var(--brand-candle-flame);
+            --yellow: var(--brand-incense);
 
             --radius-xs: 6px;
             --radius-sm: 10px;
@@ -808,7 +808,7 @@
             font-size: 10px;
             letter-spacing: 0.2em;
             text-transform: uppercase;
-            color: var(--brand-candle-flame);
+            color: var(--brand-incense);
             margin-bottom: 12px;
         }
         .map-hero-title {
@@ -895,7 +895,7 @@
             font-size: 10px;
             letter-spacing: 0.18em;
             text-transform: uppercase;
-            color: var(--brand-candle-flame);
+            color: var(--brand-incense);
             margin-bottom: 12px;
         }
         .stats-hero-title {
@@ -1259,20 +1259,20 @@
             border-color: rgba(125, 90, 60, 0.35);
             color: #C4956B;
         }
-        .react-btn.candle {
-            background: var(--brand-candle-light);
-            border-color: rgba(232, 160, 32, 0.35);
-            color: var(--brand-candle-flame);
+        .react-btn.incense {
+            background: var(--brand-incense-light);
+            border-color: rgba(211, 84, 0, 0.35);
+            color: #F0B27A;
         }
         .react-btn.muyu.active {
             background: var(--brand-muyu);
             border-color: var(--brand-muyu);
             color: #fff;
         }
-        .react-btn.candle.active {
-            background: rgba(232, 160, 32, 0.8);
-            border-color: var(--brand-candle);
-            color: #2A1A00;
+        .react-btn.incense.active {
+            background: rgba(211, 84, 0, 0.82);
+            border-color: var(--brand-incense);
+            color: #fff7ed;
         }
         .react-btn svg { width: 16px; height: 16px; flex-shrink: 0; }
         .react-count {
@@ -1296,13 +1296,13 @@
             opacity: 0.35;
             cursor: not-allowed;
         }
-        .react-btn.candle-lit svg {
-            animation: candleBreath 2.2s ease-in-out infinite;
-            filter: drop-shadow(0 0 6px var(--brand-candle));
+        .react-btn.incense-lit svg {
+            animation: incenseSmoke 2.4s ease-in-out infinite;
+            filter: drop-shadow(0 0 5px rgba(211, 84, 0, 0.55));
         }
-        @keyframes candleBreath {
-            0%, 100% { transform: scale(1); filter: drop-shadow(0 0 5px var(--brand-candle)); }
-            50% { transform: scale(1.2); filter: drop-shadow(0 0 12px var(--brand-candle-flame)); }
+        @keyframes incenseSmoke {
+            0%, 100% { transform: translateY(0); opacity: 0.95; }
+            50% { transform: translateY(-1px); opacity: 1; }
         }
         .merit-float {
             position: fixed;
@@ -1311,8 +1311,8 @@
             font-family: var(--font-display);
             font-size: 13px;
             font-weight: 700;
-            color: var(--brand-candle-flame);
-            text-shadow: 0 0 14px rgba(232, 160, 32, 0.75);
+            color: var(--brand-incense);
+            text-shadow: 0 0 14px rgba(211, 84, 0, 0.62);
             animation: meritRise 1.1s ease-out forwards;
             white-space: nowrap;
         }
