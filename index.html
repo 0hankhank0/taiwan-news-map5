@@ -2519,6 +2519,12 @@
     let twGeoJSON = null;
     let activePopup = null;
     const renderedMarkers = [];
+    const EVENT_POINT_SOURCE_ID = "event-points-source";
+    const EVENT_POINT_HALO_LAYER_ID = "event-points-halo";
+    const EVENT_POINT_LAYER_ID = "event-points";
+    const eventPointLookup = new Map();
+    const eventPopupLookup = new Map();
+    let eventHoverPopup = null;
 
     // ── THEME ───────────────────────────────────────────────
     const MAPBOX_STYLES = {
@@ -2728,6 +2734,89 @@
     function clearRenderedMarkers(){
         closeActivePopup();
         while(renderedMarkers.length) renderedMarkers.pop().remove();
+        eventPopupLookup.clear();
+    }
+
+    function ensureEventPointLayer() {
+        if (!map || !map.isStyleLoaded()) return false;
+        if (!map.getSource(EVENT_POINT_SOURCE_ID)) {
+            map.addSource(EVENT_POINT_SOURCE_ID, {
+                type: "geojson",
+                data: { type: "FeatureCollection", features: [] }
+            });
+        }
+        if (!map.getLayer(EVENT_POINT_HALO_LAYER_ID)) {
+            map.addLayer({
+                id: EVENT_POINT_HALO_LAYER_ID,
+                type: "circle",
+                source: EVENT_POINT_SOURCE_ID,
+                paint: {
+                    "circle-radius": ["+", ["get", "radius"], 9],
+                    "circle-color": ["get", "color"],
+                    "circle-opacity": 0.16,
+                    "circle-blur": 0.45
+                }
+            });
+        }
+        if (!map.getLayer(EVENT_POINT_LAYER_ID)) {
+            map.addLayer({
+                id: EVENT_POINT_LAYER_ID,
+                type: "circle",
+                source: EVENT_POINT_SOURCE_ID,
+                paint: {
+                    "circle-radius": ["get", "radius"],
+                    "circle-color": ["get", "color"],
+                    "circle-stroke-color": "rgba(255,255,255,0.82)",
+                    "circle-stroke-width": 2,
+                    "circle-opacity": 0.95
+                }
+            });
+        }
+        if (!ensureEventPointLayer._bound) {
+            ensureEventPointLayer._bound = true;
+            map.on("click", EVENT_POINT_LAYER_ID, (e) => {
+                const feature = e.features && e.features[0];
+                const eventId = feature?.properties?.eventId;
+                const ev = eventPointLookup.get(eventId);
+                const popup = eventPopupLookup.get(eventId);
+                if (!ev || !popup) return;
+                closeActivePopup();
+                popup.setLngLat([Number(ev.lng), Number(ev.lat)]).addTo(map);
+            });
+            map.on("mouseenter", EVENT_POINT_LAYER_ID, (e) => {
+                map.getCanvas().style.cursor = "pointer";
+                const feature = e.features && e.features[0];
+                const title = feature?.properties?.title || "";
+                if (!title) return;
+                if (!eventHoverPopup) {
+                    eventHoverPopup = enableSubpixelPositioning(new mapboxgl.Popup({
+                        closeButton: false,
+                        closeOnClick: false,
+                        className: "custom-tooltip",
+                        offset: [0, -12],
+                        anchor: "bottom"
+                    }));
+                }
+                const coordinates = feature.geometry.coordinates.slice();
+                eventHoverPopup
+                    .setLngLat(coordinates)
+                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${title}</div>`)
+                    .addTo(map);
+            });
+            map.on("mouseleave", EVENT_POINT_LAYER_ID, () => {
+                map.getCanvas().style.cursor = "";
+                if (eventHoverPopup) eventHoverPopup.remove();
+            });
+        }
+        return true;
+    }
+
+    function updateEventPointLayer(features) {
+        if (!ensureEventPointLayer()) return;
+        const source = map.getSource(EVENT_POINT_SOURCE_ID);
+        if (source) {
+            source.setData({ type: "FeatureCollection", features });
+        }
     }
     function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
@@ -3050,8 +3139,10 @@
         });
 
         clearRenderedMarkers();
+        eventPointLookup.clear();
         eventList.innerHTML="";
         updateCurationMeta(events);
+        const pointFeatures = [];
 
         if(!events.length){
             const emptyText = isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的事件";
@@ -3091,47 +3182,18 @@
             });
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
-            const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[ev.category] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
-                anchor: "bottom",
-                offset: [0, 0]
+            eventPointLookup.set(String(ev.id), ev);
+            eventPopupLookup.set(String(ev.id), popup);
+            pointFeatures.push({
+                type: "Feature",
+                geometry: { type: "Point", coordinates: [latlng[1], latlng[0]] },
+                properties: {
+                    eventId: String(ev.id),
+                    title: displayTitle,
+                    color: markerStyle.color,
+                    radius: Math.max(8, Math.min(16, 7 + severity * 1.7))
+                }
             });
-            enableSubpixelPositioning(marker);
-            marker
-                .setLngLat([latlng[1], latlng[0]])
-                .setPopup(popup)
-                .addTo(map);
-            
-            // Tooltip on hover
-            const markerEl = marker.getElement();
-            markerEl.style.cursor = "pointer";
-
-            const tooltip = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false,
-                className: "custom-tooltip",
-                offset: [0, -20],
-                anchor: "bottom"
-            });
-            enableSubpixelPositioning(tooltip);
-
-            markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat([latlng[1], latlng[0]])
-                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
-                    .addTo(map);
-            });
-
-            markerEl.addEventListener("mouseleave", () => {
-                tooltip.remove();
-            });
-
-            renderedMarkers.push(marker);
 
             const card = document.createElement("article");
             card.className = "event-card-v2";
@@ -3142,7 +3204,7 @@
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
                 closeActivePopup();
                 flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
-                popup.addTo(map);
+                popup.setLngLat([latlng[1], latlng[0]]).addTo(map);
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
             });
 
@@ -3157,6 +3219,8 @@
                 updateReactionUI(ev.id, card.querySelector('.reaction-container'));
             }
         });
+
+        updateEventPointLayer(pointFeatures);
 
         const cnt=document.getElementById("mobile-count");
         if(cnt) cnt.textContent=`${events.length} 筆`;
