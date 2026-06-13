@@ -1035,53 +1035,6 @@
             flex-shrink: 0;
         }
 
-
-
-        /* ── MOBILE STATS VIEW FIX ────────────────────────────── */
-        @media (max-width: 767px) {
-            body.stats-mode #news-sidebar {
-                display: none !important;
-                pointer-events: none !important;
-            }
-            body.stats-mode #map-stage,
-            body.stats-mode #map {
-                display: none !important;
-            }
-            body.stats-mode #app-body {
-                height: 100dvh;
-                min-height: 100dvh;
-                overflow: hidden;
-            }
-            body.stats-mode #stats-view {
-                display: flex !important;
-                width: 100% !important;
-                height: 100dvh !important;
-                max-height: 100dvh !important;
-                padding: 132px 14px 28px !important;
-                gap: 14px !important;
-                overflow-y: auto !important;
-                -webkit-overflow-scrolling: touch;
-                background: var(--bg-deep) !important;
-            }
-            body.stats-mode .stats-hero {
-                padding: 18px 16px !important;
-                border-radius: 20px !important;
-            }
-            body.stats-mode .stats-hero-title {
-                font-size: 22px !important;
-                line-height: 1.35 !important;
-                word-break: keep-all;
-            }
-            body.stats-mode .stats-hero-copy {
-                font-size: 13px !important;
-                line-height: 1.75 !important;
-            }
-            body.stats-mode #stats-view > div[style*="display:grid"] {
-                grid-template-columns: 1fr !important;
-                gap: 12px !important;
-            }
-        }
-
         /* ── POPUP demo（設計稿 §07）──────────────────────────── */
         .custom-popup.mapboxgl-popup { max-width: 336px !important; }
         .custom-popup .mapboxgl-popup-content {
@@ -2818,17 +2771,21 @@
         const iconSize = Math.round(bodySize * 0.42);
         const wrapper = document.createElement("div");
         wrapper.className = `map-pin marker-severity-${severity}`;
+        wrapper.dataset.pinWidth = String(outerW);
+        wrapper.dataset.pinHeight = String(outerH);
         wrapper.style.width = `${outerW}px`;
         wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
         wrapper.innerHTML = `
-            ${showPulse ? `<div class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></div>` : ""}
-            <svg class="map-pin-svg" viewBox="0 0 64 96" aria-hidden="true" style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});">
-                <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
-                <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.12)"></circle>
-            </svg>
-            <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>`;
+            <span class="map-pin-visual" style="position:relative;display:block;width:${outerW}px;height:${outerH}px;">
+                ${showPulse ? `<span class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></span>` : ""}
+                <svg class="map-pin-svg" viewBox="0 0 64 92" aria-hidden="true" style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});">
+                    <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
+                    <circle cx="32" cy="34" r="16" fill="rgba(255,255,255,0.12)"></circle>
+                </svg>
+                <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>
+            </span>`;
         return wrapper;
     }
 
@@ -3136,15 +3093,18 @@
             });
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
+            const markerElement = makeMarkerElement(
+                markerStyle.color,
+                CAT_SVG[ev.category] || CAT_SVG.other,
+                severity,
+                markerStyle.glow,
+                pinPulse
+            );
             const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[ev.category] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
-                anchor: "center"
+                element: markerElement,
+                // 讓事件座標固定在圖釘尖端，縮放時不會因中心點定位而漂移。
+                anchor: "bottom",
+                offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
             marker
@@ -3277,7 +3237,6 @@
  
     function switchMode(mode){ 
       isTaiwanMode = mode; 
-      document.body.classList.toggle('stats-mode', !mode);
       const mapEl    = document.getElementById('map'); 
       const statsEl  = document.getElementById('stats-view'); 
  
