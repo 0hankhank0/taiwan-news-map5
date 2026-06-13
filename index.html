@@ -2522,7 +2522,6 @@
     const EVENT_POINT_SOURCE_ID = "event-points-source";
     const EVENT_POINT_HALO_LAYER_ID = "event-points-halo";
     const EVENT_POINT_LAYER_ID = "event-points";
-    const EVENT_PIN_IMAGE_ID = "event-pin-sdf";
     const eventPointLookup = new Map();
     const eventPopupLookup = new Map();
     let eventHoverPopup = null;
@@ -2738,37 +2737,8 @@
         eventPopupLookup.clear();
     }
 
-    function ensureEventPinImage() {
-        if (!map || map.hasImage(EVENT_PIN_IMAGE_ID)) return;
-
-        const width = 64;
-        const height = 96;
-        const scale = 2;
-        const canvas = document.createElement("canvas");
-        canvas.width = width * scale;
-        canvas.height = height * scale;
-        const ctx = canvas.getContext("2d");
-        ctx.scale(scale, scale);
-        ctx.fillStyle = "#fff";
-        ctx.beginPath();
-        ctx.moveTo(32, 92);
-        ctx.bezierCurveTo(32, 92, 2, 60, 2, 34);
-        ctx.bezierCurveTo(2, 17.432, 15.432, 4, 32, 4);
-        ctx.bezierCurveTo(48.568, 4, 62, 17.432, 62, 34);
-        ctx.bezierCurveTo(62, 60, 32, 92, 32, 92);
-        ctx.closePath();
-        ctx.fill();
-
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        map.addImage(EVENT_PIN_IMAGE_ID, imageData, {
-            sdf: true,
-            pixelRatio: scale
-        });
-    }
-
     function ensureEventPointLayer() {
         if (!map || !map.isStyleLoaded()) return false;
-        ensureEventPinImage();
         if (!map.getSource(EVENT_POINT_SOURCE_ID)) {
             map.addSource(EVENT_POINT_SOURCE_ID, {
                 type: "geojson",
@@ -2781,30 +2751,24 @@
                 type: "circle",
                 source: EVENT_POINT_SOURCE_ID,
                 paint: {
-                    "circle-radius": ["+", ["get", "radius"], 5],
+                    "circle-radius": ["+", ["get", "radius"], 4],
                     "circle-color": ["get", "color"],
-                    "circle-opacity": 0.18,
-                    "circle-blur": 0.55
+                    "circle-opacity": 0.2,
+                    "circle-blur": 0.6
                 }
             });
         }
         if (!map.getLayer(EVENT_POINT_LAYER_ID)) {
             map.addLayer({
                 id: EVENT_POINT_LAYER_ID,
-                type: "symbol",
+                type: "circle",
                 source: EVENT_POINT_SOURCE_ID,
-                layout: {
-                    "icon-image": EVENT_PIN_IMAGE_ID,
-                    "icon-size": ["get", "iconSize"],
-                    "icon-anchor": "bottom",
-                    "icon-allow-overlap": true,
-                    "icon-ignore-placement": true
-                },
                 paint: {
-                    "icon-color": ["get", "color"],
-                    "icon-halo-color": "rgba(255,255,255,0.88)",
-                    "icon-halo-width": 1.4,
-                    "icon-opacity": 0.96
+                    "circle-radius": ["get", "radius"],
+                    "circle-color": ["get", "color"],
+                    "circle-stroke-color": "rgba(255,255,255,0.86)",
+                    "circle-stroke-width": 1.4,
+                    "circle-opacity": 0.96
                 }
             });
         }
@@ -3227,8 +3191,7 @@
                     eventId: String(ev.id),
                     title: displayTitle,
                     color: markerStyle.color,
-                    radius: Math.max(4.5, Math.min(7.5, 3.8 + severity * 0.75)),
-                    iconSize: Math.max(0.32, Math.min(0.48, 0.28 + severity * 0.04))
+                    radius: Math.max(4, Math.min(6.5, 3.4 + severity * 0.6))
                 }
             });
 
