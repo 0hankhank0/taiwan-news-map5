@@ -1903,6 +1903,10 @@
         setTimeout(resizeNow, 360);
     }
 
+    ["zoomend", "moveend"].forEach(eventName => {
+        map.on(eventName, scheduleMapResize);
+    });
+
     function removeMapOverlays() {
         document.querySelectorAll(".map-hero, .map-orbital-card").forEach(el => el.remove());
     }
