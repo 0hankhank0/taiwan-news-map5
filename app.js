@@ -1,9 +1,9 @@
-// ???? CONFIG ????????????????????????????????????????????????????????????????????????????????????????????
+// ?? CONFIG ??????????????????????????????????????????????
     const MAPBOX_TOKEN = "pk.eyJ1IjoiaGFua2hhbmsiLCJhIjoiY21wNWhmNHNiMDJxMzJycjB4a3FmNDY0biJ9.FK_qTU4xvkvvYq1Ze8WC4g"; 
     const MOBILE_EVENT_CARD_LIMIT = 24;
     const MOBILE_MARKER_LIMIT = 50;
     
-    // ?潘撓貔?Mapbox Token ??秋????
+    // 瑼Ｘ Mapbox Token ?臬??
     async function checkMapboxToken() {
         const testUrl = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/7/108/55.mvt?access_token=${MAPBOX_TOKEN}`;
         try {
@@ -28,9 +28,9 @@
     const CATEGORY_CONFIG = {
         all:          { text: "全部事件", icon: "fa-list",                color: "#4A5878" },
         disaster:     { text: "災害",     icon: "fa-triangle-exclamation", color: "#C0392B" },
-        criminal:     { text: "意外",     icon: "fa-handcuffs",           color: "#8E44AD" },
+        criminal:     { text: "治安",     icon: "fa-handcuffs",           color: "#8E44AD" },
         traffic:      { text: "交通",       icon: "fa-car-burst",           color: "#2471A3" },
-        medical:      { text: "救護",       icon: "fa-truck-medical",       color: "#D35400" },
+        medical:      { text: "醫療",       icon: "fa-truck-medical",       color: "#D35400" },
         activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
         other:        { text: "其他",     icon: "fa-circle-info",         color: "#4A5878" }
     };
@@ -44,8 +44,8 @@
 
     function getEventAlertType(ev) {
         const text = normalizeText(`${ev.title || ""} ${ev.content || ""}`);
-        if (text.includes("蝮梁")) return "arson";
-        if (["?怎", "憭梁", "?", "韏瑞"].some(keyword => text.includes(keyword))) return "fire";
+        if (text.includes("縱火")) return "arson";
+        if (["火災", "失火", "爆炸", "起火"].some(keyword => text.includes(keyword))) return "fire";
         if (ev.category === "traffic" || ev.category === "construction") return "traffic";
         if (["disaster", "earthquake", "typhoon"].includes(ev.category)) return "disaster";
         return null;
@@ -63,7 +63,7 @@
         else score = 1;
         if (isMourningEvent(ev)) score = Math.max(score, 4);
         const urgentText = normalizeText(`${ev.title || ""} ${ev.content || ""}`);
-        const urgent = ["緊急", "重大", "封閉", "傷亡", "火警", "受困"].some(keyword => urgentText.includes(keyword));
+        const urgent = ["緊急", "重大", "警戒", "死亡", "傷亡", "救援"].some(keyword => urgentText.includes(keyword));
         if (urgent) score = Math.min(5, score + 1);
         return Math.min(5, Math.max(1, score));
     }
@@ -140,8 +140,8 @@
     }
 
     const MAJOR_INCIDENT_KEYWORDS = [
-        "傷亡", "死亡", "受困", "火警", "火災", "爆炸", "坍塌", "封閉", "搶救",
-        "重大", "事故", "災害", "警戒", "停駛", "管制", "救援", "危險"
+        "死亡", "一死", "二死", "三死", "一死一傷", "傷亡", "重傷", "送醫", "搜救",
+        "墜落", "溺水", "火災", "爆炸", "倒塌", "重大事故", "工安"
     ];
     const MAJOR_INCIDENT_CATEGORIES = new Set(["accident", "incident", "safety"]);
 
@@ -165,7 +165,7 @@
         if (keywordHit) return true;
         if (!inMajorCategory) return false;
         if (getEventSeverity(ev) >= 4) return true;
-        return normalizeText(ev.impactLevel).includes("?之");
+        return normalizeText(ev.impactLevel).includes("重大");
     }
 
     function isSafetyEvent(ev) {
@@ -195,9 +195,9 @@
     function makeReactionBarHtml(eventId, data, reacted, compact = false) {
         const muyuActive = reacted === "muyu";
         const compactCls = compact ? " react-btn--compact" : "";
-        const muyuCount = muyuActive ? `+${data.muyu}` : String(data.muyu || 0);
+        const muyuCount = muyuActive ? `✔ ${data.muyu}` : String(data.muyu || 0);
         const total = data.muyu || 0;
-        const totalLabel = reacted ? "已回應" : `${total.toLocaleString()} 次互動`;
+        const totalLabel = reacted ? "已回應" : `${total.toLocaleString()} 人已關注`;
 
         return `
             <div class="reaction-bar" data-event-id="${eventId}">
@@ -205,7 +205,7 @@
                     onclick="handleReactClick(event, '${eventId}', 'muyu', this)"
                     ${reacted && !muyuActive ? "disabled" : ""}>
                     ${REACT_SVG.muyu}
-                    <span>支持</span>
+                    <span>敲木魚</span>
                     <span class="react-count">${muyuCount}</span>
                 </button>
                 <span class="react-total">${totalLabel}</span>
@@ -218,7 +218,7 @@
         const countEl = btn.querySelector(".react-count");
         if (countEl) {
             const n = parseInt(countEl.textContent.replace(/\D/g, ""), 10) || 0;
-            countEl.textContent = "+" + (n + 1);
+            countEl.textContent = "✔ " + (n + 1);
         }
         const bar = btn.closest(".reaction-bar");
         if (bar) {
@@ -236,12 +236,12 @@
         siteTitle: "島嶼脈搏 Island Pulse",
         siteSubtitle: "TW Online 視覺模式",
         statusPrefix: "TW Online 視覺層",
-        listTitle: "公共事件清單",
-        searchPlaceholder: "搜尋事件、地區或關鍵字",
-        emptyState: "目前沒有符合條件的事件",
-        loadingState: "正在載入事件資料...",
+        listTitle: "台灣即時事件清單",
+        searchPlaceholder: "搜尋事件、城市或關鍵字",
+        emptyState: "目前沒有符合條件的台灣即時事件地圖資料",
+        loadingState: "正在同步事件資料...",
         serverStatus: "視覺模式啟用中",
-        playerCount: "即時資料"
+        playerCount: "Concept Demo"
     };
 
     const TW_ONLINE_CATEGORIES = {
@@ -250,7 +250,7 @@
         accident:     { text: "意外",     icon: "fa-kit-medical", color: "#f97316" },
         construction: { text: "交通",     icon: "fa-wrench", color: "#fb923c" },
         disaster:     { text: "災害",     icon: "fa-triangle-exclamation", color: "#ef4444" },
-        weather:      { text: "天氣",     icon: "fa-cloud-sun-rain", color: "#38bdf8" },
+        weather:      { text: "災害",     icon: "fa-cloud-sun-rain", color: "#38bdf8" },
         activity:     { text: "活動",     icon: "fa-calendar-days", color: "#34d399" },
         event:        { text: "活動",     icon: "fa-calendar-days", color: "#34d399" },
         market:       { text: "活動",     icon: "fa-store", color: "#34d399" },
@@ -286,21 +286,21 @@
         traffic: "交通",
         construction: "施工",
         accident: "意外",
-        incident: "事件",
+        incident: "意外事件",
         safety: "公共安全",
-        criminal: "治安",
+        criminal: "刑案",
         medical: "醫療",
-        fire: "火警",
+        fire: "火災",
         disaster: "災害",
-        earthquake: "地震",
-        typhoon: "颱風",
-        weather: "天氣",
-        climate: "氣候",
+        earthquake: "環境圖層",
+        typhoon: "環境圖層",
+        weather: "環境圖層",
+        climate: "環境圖層",
         activity: "活動",
         event: "活動",
-        market: "市集",
-        exhibition: "展覽",
-        sports: "運動",
+        market: "活動",
+        exhibition: "活動",
+        sports: "活動",
         other: "其他"
     };
 
@@ -322,10 +322,10 @@
     const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity"];
     const FORTUNE_CATEGORY_ORDER = ["all", "great-risk", "risk", "good", "great-good"];
     const FORTUNE_CONFIG = {
-        "great-risk": { label: "高風險", color: "#EF4444", icon: "fa-triangle-exclamation", actionText: "查看風險" },
-        risk: { label: "注意", color: "#F97316", icon: "fa-circle-exclamation", actionText: "保持注意" },
-        good: { label: "順行", color: "#22C55E", icon: "fa-seedling", actionText: "查看活動" },
-        "great-good": { label: "亮點", color: "#FACC15", icon: "fa-star", actionText: "前往探索" }
+        "great-risk": { label: "大凶", color: "#EF4444", icon: "fa-triangle-exclamation", actionText: "持續注意" },
+        risk: { label: "凶", color: "#F97316", icon: "fa-circle-exclamation", actionText: "已避開" },
+        good: { label: "吉", color: "#22C55E", icon: "fa-seedling", actionText: "想前往" },
+        "great-good": { label: "大吉", color: "#FACC15", icon: "fa-star", actionText: "值得看看" }
     };
     const FORTUNE_GOOD_CATEGORIES = new Set(["activity", "event", "market", "exhibition", "sports", "good_weather"]);
     const FORTUNE_RISK_CATEGORIES = new Set([
@@ -335,14 +335,14 @@
 
     const SOURCE_CONFIG = {
         "TDX CMS": { text:"TDX 交通資料", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
-        RSS:        { text:"RSS 新聞資料", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
-        news:       { text:"新聞資料", shortText:"新聞",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
+        RSS:        { text:"RSS 事件資料", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
+        news:       { text:"公共事件資料", shortText:"資料",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
         default:    { text:"展示資料", shortText:"展示", bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
     };
 
     Object.assign(SOURCE_CONFIG, {
-        "disabled-demo-source": { text: "即時資料", shortText: "資料", bg: "rgba(47,128,237,0.16)", color: "#93c5fd" },
-        default: { text: "即時資料", shortText: "資料", bg: "rgba(71,85,105,0.25)", color: "#94a3b8" }
+        "Concept Demo": { text: "Concept Demo", shortText: "Demo", bg: "rgba(47,128,237,0.16)", color: "#93c5fd" },
+        default: { text: "Concept Demo", shortText: "Demo", bg: "rgba(71,85,105,0.25)", color: "#94a3b8" }
     });
 
     Object.assign(CAT_SVG, {
@@ -360,7 +360,7 @@
         traffic: { text: "交通", icon: "fa-car-burst", color: "#2F80ED" },
         accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
         disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#C0392B" },
-        weather: { text: "天氣", icon: "fa-cloud-showers-heavy", color: "#38BDF8" },
+        weather: { text: "災害", icon: "fa-cloud-showers-heavy", color: "#38BDF8" },
         activity: { text: "活動", icon: "fa-users", color: "#1E8449" },
         sports: { text: "活動", icon: "fa-trophy", color: "#A3A948" },
         other: { text: "其他", icon: "fa-circle-info", color: "#64748B" }
@@ -393,7 +393,6 @@
 
     let parsedEvents = [];
     let activeCategory = "all";
-    let currentFortuneFilter = "all";
     let searchKeyword = "";
     let isTaiwanMode = true;
     let twGeoJSON = null;
@@ -413,9 +412,8 @@
     const demoLayers = new Set();
     const demoSources = new Set();
     const demoMarkers = [];
-    console.log("FORTUNE FILTER FIX v2 loaded");
 
-    // ???? THEME ??????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? THEME ???????????????????????????????????????????????
     const MAPBOX_STYLES = {
         light: 'mapbox://styles/mapbox/streets-v12',
         dark: 'mapbox://styles/mapbox/dark-v11'
@@ -439,10 +437,10 @@
         if (map && typeof map.setStyle === "function") {
             map.setStyle(MAPBOX_STYLES[theme]);
         }
-        console.log("??銝駁?:", theme);
+        console.log("切換主題:", theme);
     }
 
-    // ???? MAP INIT ????????????????????????????????????????????????????????????????????????????????????????
+    // ?? MAP INIT ????????????????????????????????????????????
     function setMapLanguageToChinese() {
         const layers = [
             'country-label',
@@ -486,11 +484,11 @@
     function fallbackToLeaflet() {
         const fallbackMap = L.map('map').setView([23.5, 121], 7);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '穢 OpenStreetMap'
+            attribution: '© OpenStreetMap'
         }).addTo(fallbackMap);
         window._fallbackMap = fallbackMap;
         if (parsedEvents.length) {
-            parsedEvents.slice(0, isMobileViewport() ? MOBILE_MARKER_LIMIT : parsedEvents.length).forEach(ev => {
+            parsedEvents.forEach(ev => {
                 const latlng = [Number(ev.lat), Number(ev.lng)];
                 if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
                     const severity = getEventSeverity(ev);
@@ -506,7 +504,13 @@
                         shouldPinPulse(ev, severity)
                     );
                     const marker = L.marker([latlng[0], latlng[1]], {
-                        icon: makeLeafletMarkerIcon(element)
+                        icon: L.divIcon({
+                            html: element.outerHTML,
+                            className: "leaflet-demo-pin",
+                            iconSize: [0, 0],
+                            iconAnchor: [0, 0],
+                            popupAnchor: [0, -42]
+                        })
                     }).addTo(fallbackMap)
                         .bindPopup(buildPopupHtml(ev, displayTitle, displayContent, markerStyle), {
                             className: "custom-popup",
@@ -519,14 +523,14 @@
     }
 
     function initBaseMaps() {
-        console.log("base maps initialized");
+        console.log("初始化地圖設定完成");
     }
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
     map.on("load", async () => {
-        console.log("map loaded");
+        console.log("地圖載入完成，初始化資料...");
         
-        // Check Mapbox token availability.
+        // 瑼Ｘ葫 Mapbox Token
         checkMapboxToken().then(valid => {
             isMapboxValid = valid;
             if (!valid) {
@@ -542,7 +546,7 @@
 
         ensureBoundaryLayer();
         drawCityBoundary(currentCityFilter());
-        applyMapMode(currentMapMode);
+        applyMapMode(currentMapMode); // 依目前模式套用底圖與介面文案。
         if(parsedEvents.length) renderEvents();
         createDemoLayerControl();
         scheduleMapResize();
@@ -634,17 +638,17 @@
     const DEMO_DATA = {
         earthquake: {
             info: {
-                title: "?圈? Demo",
+                title: "地震 Demo",
                 tone: "earthquake",
-                rows: ["閬芋 M5.8", "瘛勗漲 12 km", "?梯餈絲", "?湔 07:42"],
+                rows: ["規模 M5.8", "深度 12 km", "花蓮近海", "更新 07:42"],
             },
             epicenter: {
                 type: "FeatureCollection",
-                features: [{ type: "Feature", properties: { label: "?亢" }, geometry: { type: "Point", coordinates: [121.72, 24.02] } }],
+                features: [{ type: "Feature", properties: { label: "震央" }, geometry: { type: "Point", coordinates: [121.72, 24.02] } }],
             },
             label: {
                 type: "FeatureCollection",
-                features: [{ type: "Feature", properties: { label: "M 5.6 ?梯餈絲" }, geometry: { type: "Point", coordinates: [121.78, 24.06] } }],
+                features: [{ type: "Feature", properties: { label: "M 5.6 花蓮近海" }, geometry: { type: "Point", coordinates: [121.78, 24.06] } }],
             },
             ring: {
                 type: "FeatureCollection",
@@ -662,9 +666,9 @@
         },
         typhoon: {
             info: {
-                title: "憸梢◢ Demo",
+                title: "颱風 Demo",
                 tone: "typhoon",
-                rows: ["憸梢◢?葫頝臬?", "憸典?蝭?", "?芯? 48 撠?", "???湔"],
+                rows: ["颱風預測路徑", "風圈範圍", "未來 48 小時", "持續更新"],
             },
             center: {
                 type: "FeatureCollection",
@@ -689,14 +693,14 @@
             },
             label: {
                 type: "FeatureCollection",
-                features: [{ type: "Feature", properties: { label: "憸梢◢?葫頝臬?" }, geometry: { type: "Point", coordinates: [122.6, 22.2] } }]
+                features: [{ type: "Feature", properties: { label: "颱風預測路徑" }, geometry: { type: "Point", coordinates: [122.6, 22.2] } }]
             },
         },
         weather: {
             info: {
-                title: "Weather Demo",
+                title: "天氣 Demo",
                 tone: "weather",
-                rows: ["午後雷雨", "降雨機率 70%", "高溫 33C", "局部強降雨提醒"],
+                rows: ["北部降雨區", "降雨機率 70%", "高溫 33°C", "午後雷陣雨提醒"],
             },
             zone: {
                 type: "FeatureCollection",
@@ -709,8 +713,8 @@
             alert: {
                 type: "FeatureCollection",
                 features: [
-                    { type: "Feature", properties: { label: "擃澈??" }, geometry: { type: "Point", coordinates: [121.56, 25.04] } },
-                    { type: "Feature", properties: { label: "???" }, geometry: { type: "Point", coordinates: [120.31, 22.63] } }
+                    { type: "Feature", properties: { label: "高溫提醒" }, geometry: { type: "Point", coordinates: [121.56, 25.04] } },
+                    { type: "Feature", properties: { label: "降雨提醒" }, geometry: { type: "Point", coordinates: [120.31, 22.63] } }
                 ],
             },
             marker: {
@@ -801,8 +805,8 @@
         }
         demoInfoCard.className = `demo-info-card data-layer-overlay ${info.tone}`;
         demoInfoCard.innerHTML = `
-            <button type="button" class="demo-info-close" aria-label="??蝷箇??惜鞈?">?</button>
-            <div class="demo-info-kicker">蝷箇??惜</div>
+            <button type="button" class="demo-info-close" aria-label="關閉示範圖層資訊">×</button>
+            <div class="demo-info-kicker">示範圖層</div>
             <div class="demo-info-title">${info.title}</div>
             <div class="demo-info-list">${info.rows.map(row => `<div>${row}</div>`).join("")}</div>
         `;
@@ -857,12 +861,12 @@
             button.type = "button";
             button.id = "settings-btn-mobile";
             button.className = "mobile-settings-btn";
-            button.setAttribute("aria-label", "設定");
+            button.setAttribute("aria-label", "開啟設定");
             button.innerHTML = '<i class="fa-solid fa-gear" aria-hidden="true"></i>';
             button.addEventListener("click", openSettingsModal);
         }
         if (button.parentElement !== row1) row1.appendChild(button);
-        button.setAttribute("aria-label", "閮剖?");
+        button.setAttribute("aria-label", "設定");
         button.hidden = false;
         return button;
     }
@@ -1048,7 +1052,7 @@
             paint: {
                 "text-color": [
                     "case",
-                    ["==", ["get", "label"], "擃澈??"],
+                    ["==", ["get", "label"], "高溫提醒"],
                     "rgba(251,191,36,0.82)",
                     "rgba(224,242,254,0.82)"
                 ],
@@ -1089,10 +1093,10 @@
             demoLayerControl = document.createElement("div");
             demoLayerControl.className = "demo-layer-control data-layer-overlay";
             demoLayerControl.innerHTML = `
-                <div class="demo-layer-label data-layer-label">資料圖層</div>
-                <button type="button" data-demo-layer="earthquake">地震圖層</button>
-                <button type="button" data-demo-layer="typhoon">颱風圖層</button>
-                <button type="button" data-demo-layer="weather">天氣圖層</button>
+                <div class="demo-layer-label data-layer-label">環境圖層（輔助資訊）</div>
+                <button type="button" data-demo-layer="earthquake">環境｜地震</button>
+                <button type="button" data-demo-layer="typhoon">環境｜颱風</button>
+                <button type="button" data-demo-layer="weather">環境｜天氣</button>
                 <button type="button" data-demo-clear>清除</button>
             `;
             mapStage.appendChild(demoLayerControl);
@@ -1136,7 +1140,7 @@
         const isOnline = mode === "online";
         const isFortune = mode === "fortune";
         
-        // Toggle the optional online raster layer when the style is ready.
+        // 切換底圖視覺風格。
         if (map && map.isStyleLoaded()) {
             if (isOnline) {
                 if (map.getSource('online-tile')) {
@@ -1166,14 +1170,14 @@
             siteTitle: "島嶼脈搏 Island Pulse",
             siteSubtitle: isOnline
                 ? "TW ONLINE 視覺模式"
-                : (isFortune ? "事件風險模式" : "公共事件地圖"),
-            listTitle: isFortune ? "事件風險清單" : "公共事件清單",
-            searchPlaceholder: isFortune ? "搜尋風險事件或地區" : "搜尋事件、地區或關鍵字",
-            emptyState: "目前沒有符合條件的事件",
-            loadingState: "正在載入事件資料...",
+                : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo"),
+            listTitle: isFortune ? "周邊事件判定" : "台灣即時事件清單",
+            searchPlaceholder: isFortune ? "搜尋附近事件、地點或分類" : "搜尋事件、城市或關鍵字",
+            emptyState: "目前沒有符合條件的台灣即時事件地圖資料",
+            loadingState: "正在同步事件資料...",
             statusPrefix: isOnline
                 ? "TW Online 視覺層啟用中"
-                : (isFortune ? "事件風險模式啟用中" : "公共事件地圖")
+                : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo")
         };
 
         document.querySelector(".brand-title").textContent = textConfig.siteTitle;
@@ -1182,16 +1186,15 @@
         const sidebarSubtitle = document.getElementById("sidebar-subtitle");
         if (sidebarSubtitle) {
             sidebarSubtitle.textContent = isFortune
-                ? "依事件性質整理風險與亮點"
+                ? "以目前位置為中心，整理附近值得靠近與需要避開的事件。"
                 : "";
         }
         const toolbarCaption = document.querySelector(".toolbar-caption");
-        if (toolbarCaption) toolbarCaption.textContent = isFortune ? "依風險層級篩選事件" : "公共事件地圖";
+        if (toolbarCaption) toolbarCaption.textContent = isFortune ? "以你的位置為中心判讀附近事件" : "台灣即時事件地圖";
         document.getElementById("event-search").placeholder = textConfig.searchPlaceholder;
         const mobileSearch = document.getElementById("event-search-mobile");
         if (mobileSearch) mobileSearch.placeholder = textConfig.searchPlaceholder;
         activeCategory = "all";
-        currentFortuneFilter = "all";
         
         const onlineStatus = document.getElementById("tw-online-status");
         if (isOnline) {
@@ -1199,8 +1202,8 @@
             const serverStatus = document.getElementById("server-status");
             const playerCount = document.getElementById("player-count");
             if (serverStatus) serverStatus.textContent = "視覺模式啟用中";
-            if (playerCount) playerCount.textContent = "即時資料";
-            setStatus("TW Online 視覺層啟用中");
+            if (playerCount) playerCount.textContent = "Concept Demo";
+            setStatus("TW Online 視覺層啟用中｜公共事件資料不變");
         } else {
             if (onlineStatus) onlineStatus.style.display = "none";
             setStatus(textConfig.statusPrefix);
@@ -1209,7 +1212,7 @@
         renderCategoryButtons();
         renderEvents();
         if (userLocation && isNearbyMode) drawUserLocationOverlay();
-        setStatus(isOnline ? "TW Online 視覺層啟用中" : textConfig.statusPrefix);
+        setStatus(isOnline ? "TW Online 視覺層啟用中｜公共事件資料不變" : textConfig.statusPrefix);
         scheduleMapResize();
     }
     function setStatus(t){
@@ -1254,32 +1257,30 @@
             "fortune-all": "all",
             "great-risk": "great-risk",
             greatbad: "great-risk",
-            "高風險": "great-risk",
+            "大凶": "great-risk",
             risk: "risk",
             bad: "risk",
             badonly: "risk",
-            "注意": "risk",
+            "凶": "risk",
             good: "good",
             goodonly: "good",
-            "順行": "good",
+            "吉": "good",
+            "中吉": "good",
             "great-good": "great-good",
             greatgood: "great-good",
-            "亮點": "great-good"
+            "大吉": "great-good"
         };
         return mapping[normalized] || mapping[raw] || "all";
-    }
-    function getCurrentFortuneFilter() {
-        return normalizeFortuneFilterValue(currentFortuneFilter || activeCategory || "all");
     }
     function getEventFortuneType(event) {
         const text = normalizeText(`${event?.title || ""} ${event?.content || ""} ${event?.category || ""}`);
         const rawCategory = normalizeText(event?.category || "").toLowerCase();
         const groupCategory = normalizeText(event?.groupCategory || getGroupCategory(rawCategory)).toLowerCase();
         const severity = getEventSeverity(event);
-        const riskWords = ["交通", "災害", "意外", "施工", "治安", "火警", "醫療", "公共安全", "管制", "事故", "封閉", "延誤"];
-        const highRiskWords = ["傷亡", "死亡", "受困", "火災", "重大", "警戒", "地震", "颱風", "火警", "救援", "危險"];
-        const opportunityWords = ["活動", "市集", "展覽", "演出", "開幕", "晴朗", "親子", "運動"];
-        const premiumGoodWords = ["亮點", "推薦", "精選", "假日"];
+        const riskWords = ["交通", "災害", "意外", "施工", "刑案", "火災", "醫療", "公共安全", "事故", "壅塞", "延誤", "管制"];
+        const highRiskWords = ["死亡", "受傷", "封閉", "爆炸", "坍塌", "淹水", "地震", "颱風", "火災", "刑案", "重大"];
+        const opportunityWords = ["活動", "賽事", "市集", "展覽", "好消息", "散步", "開放", "登場"];
+        const premiumGoodWords = ["大型", "熱門", "節慶", "人流聚集"];
         const isRiskCategory = FORTUNE_RISK_CATEGORIES.has(rawCategory) || FORTUNE_RISK_CATEGORIES.has(groupCategory);
         const isGoodCategory = FORTUNE_GOOD_CATEGORIES.has(rawCategory) || FORTUNE_GOOD_CATEGORIES.has(groupCategory);
 
@@ -1295,7 +1296,7 @@
                 : "good";
             return { type: "good", level, label: FORTUNE_CONFIG[level].label, key: level };
         }
-        return { type: "neutral", level: "neutral", label: "一般", key: "neutral" };
+        return { type: "neutral", level: "neutral", label: "觀察", key: "neutral" };
     }
     function eventMatchesFortuneFilter(event, filterValue = activeCategory) {
         const filter = normalizeFortuneFilterValue(filterValue);
@@ -1310,30 +1311,58 @@
     function getFortuneFilterLabel(filterValue = activeCategory) {
         const filter = normalizeFortuneFilterValue(filterValue);
         if (filter === "all") return "全部事件";
-        if (filter === "neutral") return "一般";
+        if (filter === "neutral") return "觀察";
         return FORTUNE_CONFIG[filter]?.label || filterValue || "全部事件";
     }
     function getEventFortuneLevel(event) {
+        const text = normalizeText(`${event?.title || ""} ${event?.content || ""}`.toLowerCase());
+        const rawCategory = normalizeText(event?.category || "").toLowerCase();
+        const groupCategory = normalizeText(event?.groupCategory || getGroupCategory(rawCategory)).toLowerCase();
+        const severity = getEventSeverity(event);
         const fortuneType = getEventFortuneType(event);
-        const level = fortuneType.level;
+
+        const highRiskWords = ["死亡", "受傷", "封閉", "爆炸", "坍塌", "淹水", "地震", "颱風", "火災", "刑案", "重大"];
+        const riskWords = ["壅塞", "管制", "施工", "事故", "異常", "延誤"];
+        const greatGoodWords = ["大型", "市集", "展覽", "節慶", "賽事", "熱門"];
+
+        const isRiskCategory = FORTUNE_RISK_CATEGORIES.has(rawCategory) || FORTUNE_RISK_CATEGORIES.has(groupCategory);
+        const isGoodCategory = FORTUNE_GOOD_CATEGORIES.has(rawCategory) || FORTUNE_GOOD_CATEGORIES.has(groupCategory);
+        let level = fortuneType.level;
+        if (
+            ["disaster", "criminal", "fire", "incident", "safety"].includes(groupCategory) ||
+            (isRiskCategory && severity >= 4) ||
+            highRiskWords.some((k) => text.includes(k)) ||
+            severity >= 4
+        ) level = "great-risk";
+        else if (
+            isRiskCategory ||
+            ["traffic", "construction", "accident", "weather"].includes(groupCategory) ||
+            riskWords.some((k) => text.includes(k))
+        ) level = "risk";
+        else if (
+            ["sports", "market", "exhibition", "good_weather"].includes(rawCategory) ||
+            ["sports", "market", "exhibition"].includes(groupCategory) ||
+            greatGoodWords.some((k) => text.includes(k))
+        ) level = "great-good";
+        else if (isGoodCategory || groupCategory === "activity") level = "good";
+        else if (!isRiskCategory && !isGoodCategory && !riskWords.some((k) => text.includes(k)) && !highRiskWords.some((k) => text.includes(k))) level = "neutral";
 
         const cfg = level === "neutral"
             ? { label: "觀察", color: "#94A3B8", icon: "fa-circle-info", actionText: "先觀察" }
             : FORTUNE_CONFIG[level];
-
         const titleByLevel = {
-            "great-risk": ["高風險事件", "需要避開", "重大警示"],
-            risk: ["注意事件", "局部影響", "保持留意"],
-            good: ["順行亮點", "適合前往", "日常推薦"],
-            "great-good": ["精選亮點", "值得安排", "高品質活動"],
-            neutral: ["一般觀察", "資訊更新", "持續觀察"]
+            "great-risk": ["建議避開", "周邊風險上升", "小心通行"],
+            risk: ["小心通行", "建議避開", "周邊風險上升"],
+            good: ["可前往", "值得靠近", "附近有活動"],
+            "great-good": ["值得靠近", "可前往", "附近有活動"],
+            neutral: ["持續觀察", "留意後續變化", "暫無明確吉凶"]
         };
         const contentByLevel = {
-            "great-risk": "此事件可能造成明顯影響，建議避開周邊區域並留意官方資訊。",
-            risk: "此事件有局部影響，通行或行程安排前建議再確認。",
-            good: "此事件較適合安排造訪，可作為行程亮點參考。",
-            "great-good": "此事件具備展示價值與行程吸引力，適合放入精選地圖。",
-            neutral: "此事件目前影響有限，保持觀察即可。"
+            "great-risk": "附近風險較高，建議先避開這一帶並改走其他路線。",
+            risk: "附近事件可能影響通行或安全，建議放慢速度並小心通過。",
+            good: "附近有可前往的事件，適合順路靠近查看現場狀況。",
+            "great-good": "附近活動吸引力較高，值得靠近停留或安排前往。",
+            neutral: "目前沒有明確偏吉或偏凶訊號，可先列入觀察。"
         };
         const seed = Array.from(String(event?.id || event?.title || "0")).reduce((a, ch) => a + ch.charCodeAt(0), 0);
         const titles = titleByLevel[level];
@@ -1401,7 +1430,7 @@
         };
     }
     function getUserLocationLabel() {
-        if (document.body.classList.contains("fortune-mode")) return "目前位置";
+        if (document.body.classList.contains("fortune-mode")) return "我在此處";
         if (currentMapMode === "online" || document.body.classList.contains("tw-online-mode")) return "PLAYER";
         return "你的位置";
     }
@@ -1518,14 +1547,14 @@
         if (labelEl) labelEl.textContent = `附近範圍：${formatRadiusLabel(nearbyRadiusMeters)}`;
         if (!el) return;
         if (!userLocation) {
-            el.textContent = "尚未定位";
+            el.textContent = "未定位";
             return;
         }
         if (!isNearbyMode) {
-            el.textContent = "附近模式未啟用";
+            el.textContent = "已定位";
             return;
         }
-        el.textContent = nearbyEventsCache.length > 0 ? `${nearbyEventsCache.length} 個附近事件` : "附近沒有事件";
+        el.textContent = nearbyEventsCache.length > 0 ? `${nearbyEventsCache.length} 件事件` : "目前沒有事件";
     }
     function getFortuneCounts(events = []) {
         const counts = { "great-risk": 0, risk: 0, good: 0, "great-good": 0 };
@@ -1540,37 +1569,37 @@
         const labelEl = document.getElementById("sidebar-nearby-label");
         if (labelEl) {
             labelEl.textContent = currentMapMode === "fortune"
-                ? "風險觀察範圍"
+                ? "周邊判定範圍"
                 : `附近範圍：${formatRadiusLabel(nearbyRadiusMeters)}`;
         }
         if (!el) return;
         if (currentMapMode === "fortune") {
             if (!userLocation) {
-                el.textContent = "請先定位以查看附近事件";
+                el.textContent = "尚未定位｜請啟用我的周邊";
                 return;
             }
             const counts = getFortuneCounts(nearbyEventsCache);
-            el.textContent = `範圍 ${formatRadiusLabel(nearbyRadiusMeters)}：高風險 ${counts["great-risk"]}、注意 ${counts.risk}、順行 ${counts.good}、亮點 ${counts["great-good"]}`;
+            el.textContent = `範圍 ${formatRadiusLabel(nearbyRadiusMeters)}｜大凶 ${counts["great-risk"]}｜凶 ${counts.risk}｜吉 ${counts.good}｜大吉 ${counts["great-good"]}`;
             return;
         }
         if (!userLocation) {
-            el.textContent = "尚未定位";
+            el.textContent = "未定位";
             return;
         }
         if (!isNearbyMode) {
-            el.textContent = currentMapMode === "fortune" ? "附近風險未啟用" : "附近模式未啟用";
+            el.textContent = currentMapMode === "fortune" ? "全台總覽中" : "查看全台中";
             return;
         }
         el.textContent = nearbyEventsCache.length > 0
-            ? `附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 個事件`
-            : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 沒有事件`;
+            ? `附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 件事件`
+            : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 目前沒有事件`;
     }
     function updateNearbyButtonsV2() {
         const active = isNearbyMode;
         const isFortune = currentMapMode === "fortune";
         const text = isFortune
-            ? (active ? "附近風險" : "查看附近")
-            : (active ? "附近模式" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
+            ? (active ? "全台總覽" : "查看周邊")
+            : (active ? "查看全台" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
         ["nearby-toggle-btn", "nearby-toggle-mobile"].forEach((id) => {
             const btn = document.getElementById(id);
             if (!btn) return;
@@ -1584,8 +1613,8 @@
         const active = isNearbyMode;
         const isFortune = currentMapMode === "fortune";
         const text = isFortune
-            ? (active ? "附近風險" : "查看附近")
-            : (active ? "附近模式" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
+            ? (active ? "全台總覽" : "查看周邊")
+            : (active ? "查看全台" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
         ["nearby-toggle-btn", "nearby-toggle-mobile"].forEach((id) => {
             const btn = document.getElementById(id);
             if (!btn) return;
@@ -1611,7 +1640,7 @@
         if (!userLocation) return;
         if (isNearbyMode) {
             renderEvents();
-            setStatus(`附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 個事件`);
+            setStatus(`附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 件事件`);
         }
     }
     function focusUserLocation() {
@@ -1630,17 +1659,17 @@
         drawUserLocationOverlay();
         focusUserLocation();
         renderEvents();
-        setStatus(`已啟用附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
+        setStatus(`已切換為附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
     }
     function exitNearbyMode() {
         isNearbyMode = false;
         clearUserLocationOverlay();
         renderEvents();
-        setStatus("已離開附近模式");
+        setStatus("已回到全台事件");
     }
     function requestUserLocation() {
         if (!navigator.geolocation) {
-            setStatus("此瀏覽器不支援定位");
+            setStatus("此瀏覽器不支援定位功能。");
             return;
         }
         navigator.geolocation.getCurrentPosition((position) => {
@@ -1650,7 +1679,7 @@
             };
             enterNearbyMode();
         }, () => {
-            setStatus("無法取得定位，請確認瀏覽器權限");
+            setStatus("無法取得位置，請開啟瀏覽器定位權限。");
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 120000 });
     }
     function handleNearbyRadiusChangeV2(value) {
@@ -1663,7 +1692,7 @@
         if (!userLocation) return;
         if (isNearbyMode || currentMapMode === "fortune") {
             renderEvents();
-            setStatus(`附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 個事件`);
+            setStatus(`附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${nearbyEventsCache.length} 件事件`);
         }
     }
     function enterNearbyModeV2() {
@@ -1672,17 +1701,17 @@
         drawUserLocationOverlay();
         focusUserLocation();
         renderEvents();
-        setStatus(`已啟用附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
+        setStatus(`已切換為附近 ${formatRadiusLabel(nearbyRadiusMeters)}`);
     }
     function exitNearbyModeV2() {
         isNearbyMode = false;
         clearUserLocationOverlay();
         renderEvents();
-        setStatus("已離開附近模式");
+        setStatus("已切換回全台事件");
     }
     function requestUserLocationV2() {
         if (!navigator.geolocation) {
-            setStatus("此瀏覽器不支援定位");
+            setStatus("此瀏覽器不支援定位功能。");
             return;
         }
         navigator.geolocation.getCurrentPosition((position) => {
@@ -1692,7 +1721,7 @@
             };
             enterNearbyModeV2();
         }, () => {
-            setStatus("無法取得定位，請確認瀏覽器權限");
+            setStatus("無法取得位置，請開啟瀏覽器定位權限。");
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 120000 });
     }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
@@ -1720,7 +1749,7 @@
             ? "TW Online 視覺模式"
             : (isTaiwanMode ? "台灣地圖" : "統計視圖");
         const categoryLabel = currentMapMode === "fortune"
-            ? getFortuneFilterLabel(getCurrentFortuneFilter())
+            ? getFortuneFilterLabel(activeCategory)
             : (activeCategory === "all" ? "全部事件" : (getCategoryVisual(activeCategory)?.text || activeCategory));
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
         const categoryCount = new Set(events.map(ev => getGroupCategory(normalizeText(ev.groupCategory || ev.category))).filter(Boolean)).size;
@@ -1742,8 +1771,8 @@
         const heroStatus = document.getElementById("hero-status-copy");
         if (heroStatus) {
             heroStatus.textContent = currentMapMode === "online"
-                ? "TW Online 視覺層啟用中，事件資料維持不變"
-                : "整理後的公共事件地圖展示";
+                ? "TW Online：事件地圖的遊戲化展示模式"
+                : "用地圖看見台灣正在發生的事";
         }
     }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
@@ -1759,8 +1788,6 @@
         const wrapper = document.createElement("div");
         const band = severity >= 4 ? "high" : severity >= 2 ? "medium" : "low";
         wrapper.className = `map-pin marker-severity-${severity} marker-${band}${isMobile ? " marker-mobile-simple" : ""}`;
-        wrapper.style.width = `${outerW}px`;
-        wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
         const svgFilter = isMobile ? "" : ` style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});"`;
@@ -1776,25 +1803,13 @@
         return wrapper;
     }
 
-    function makeLeafletMarkerIcon(element) {
-        const width = parseInt(element.style.width, 10) || 44;
-        const height = parseInt(element.style.height, 10) || 64;
-        return L.divIcon({
-            html: element.outerHTML,
-            className: "leaflet-demo-pin",
-            iconSize: [width, height],
-            iconAnchor: [Math.round(width / 2), height],
-            popupAnchor: [0, -height]
-        });
-    }
-
     function spawnMeritEffect(btn) {
         const rect = btn.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
         const cy = rect.top;
         const float = document.createElement("div");
         float.className = "merit-float";
-        float.textContent = "?噸 +1";
+        float.textContent = "功德 +1";
         float.style.left = `${cx}px`;
         float.style.top = `${cy - 8}px`;
         float.style.transform = "translateX(-50%)";
@@ -1846,13 +1861,13 @@
         return makeCatBadgeV2(category);
     }
 
-    // ???? GEO ??????????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? GEO ?????????????????????????????????????????????????
     async function loadTwGeoJSON(){
         try{
             const res = await fetch("https://cdn.jsdelivr.net/gh/g0v/twgeojson@master/json/twCounty2010.geo.json");
             twGeoJSON = await res.json();
             drawCityBoundary(currentCityFilter());
-        }catch(e){ console.warn("GeoJSON load failed", e); }
+        }catch(e){ console.warn("GeoJSON 載入失敗", e); }
     }
 
     function drawCityBoundary(city){
@@ -1903,10 +1918,6 @@
         setTimeout(resizeNow, 360);
     }
 
-    ["zoomend", "moveend"].forEach(eventName => {
-        map.on(eventName, scheduleMapResize);
-    });
-
     function removeMapOverlays() {
         document.querySelectorAll(".map-hero, .map-orbital-card").forEach(el => el.remove());
     }
@@ -1919,7 +1930,7 @@
         d.innerHTML=html; m.innerHTML=html;
     }
 
-    // ???? FILTERS ??????????????????????????????????????????????????????????????????????????????????????????
+    // ?? FILTERS ?????????????????????????????????????????????
     function renderCategoryButtons(){
         const isFortune = currentMapMode === "fortune";
         const isOnline = currentMapMode === "online";
@@ -1947,20 +1958,10 @@
         }).join("");
         catFilters.querySelectorAll("[data-category]").forEach(btn=>{
             btn.addEventListener("click",()=>{
-                if (isFortune) {
-                    const clickedValue =
-                        btn.dataset.filter ||
-                        btn.dataset.level ||
-                        btn.dataset.fortune ||
-                        btn.dataset.category ||
-                        "all";
-                    currentFortuneFilter = normalizeFortuneFilterValue(clickedValue);
-                    activeCategory = currentFortuneFilter;
-                } else {
-                    activeCategory = btn.dataset.category || "all";
-                }
-                renderCategoryButtons();
-                renderEvents();
+                activeCategory = isFortune
+                    ? normalizeFortuneFilterValue(btn.dataset.category || "all")
+                    : (btn.dataset.category || "all");
+                renderCategoryButtons(); renderEvents();
             });
         });
     }
@@ -1975,11 +1976,11 @@
         return events.filter(ev => {
             const titleKey = normalizeText(ev.title || ev.text || "")
                 .replace(/\s+/g, "")
-                .replace(/[\p{P}\p{S}]/gu, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
                 .slice(0, 20);
             const contentKey = normalizeText(ev.content || ev.summary || "")
                 .replace(/\s+/g, "")
-                .replace(/[\p{P}\p{S}]/gu, "")
+                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
                 .slice(0, 30);
             if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) return false;
             seenTitles.add(titleKey);
@@ -2002,15 +2003,6 @@
     function getFilteredEvents(options = {}){
         const { forMap = false } = options;
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
-        const normalizedFortuneFilter = getCurrentFortuneFilter();
-        console.log("[fortune filter]", {
-            mode: currentMapMode,
-            bodyClass: document.body.className,
-            currentFortuneFilter,
-            normalized: normalizedFortuneFilter,
-            total: parsedEvents.length,
-            forMap
-        });
         const filtered = parsedEvents.filter(ev=>{
             const lat=Number(ev.lat), lng=Number(ev.lng);
             
@@ -2019,7 +2011,7 @@
 
             const groupCategory = getGroupCategory(ev.groupCategory || ev.category);
             if (currentMapMode === "fortune") {
-                if (normalizedFortuneFilter !== "all" && !eventMatchesFortuneFilter(ev, normalizedFortuneFilter)) return false;
+                if (!eventMatchesFortuneFilter(ev, activeCategory)) return false;
             } else if(activeCategory!=="all"&&groupCategory!==activeCategory) return false;
             if(cityFilter!=="all"){
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
@@ -2030,14 +2022,6 @@
             }
             return true;
         });
-        if (currentMapMode === "fortune") {
-            console.log("[fortune result]", filtered.map(e => ({
-                title: e.title,
-                category: e.category,
-                fortune: getEventFortuneLevel(e),
-                match: eventMatchesFortuneFilter(e, normalizedFortuneFilter)
-            })));
-        }
         if (!forMap && isNearbyMode && userLocation) {
             nearbyEventsCache = getEventsNearUser(filtered, nearbyRadiusMeters);
             return nearbyEventsCache;
@@ -2048,7 +2032,7 @@
     }
 
     function getCurrentCategoryLabel() {
-        if (currentMapMode === "fortune") return getFortuneFilterLabel(getCurrentFortuneFilter());
+        if (currentMapMode === "fortune") return getFortuneFilterLabel(activeCategory);
         if (activeCategory === "all") return "全部事件";
         const visual = getCategoryVisual(activeCategory);
         return visual?.text || activeCategory || "全部事件";
@@ -2065,7 +2049,7 @@
             mobileFilterSummary = document.createElement("button");
             mobileFilterSummary.type = "button";
             mobileFilterSummary.className = "mobile-filter-summary";
-            mobileFilterSummary.setAttribute("aria-label", "目前篩選狀態");
+            mobileFilterSummary.setAttribute("aria-label", "展開篩選條件");
             header.appendChild(mobileFilterSummary);
         }
         return mobileFilterSummary;
@@ -2076,7 +2060,7 @@
         if (!summary) return;
         const label = getCurrentCategoryLabel();
         const countLabel = Number.isFinite(count) ? `${count} 筆` : "";
-        summary.innerHTML = `<span>目前篩選：${label}</span><strong>${countLabel}</strong>`;
+        summary.innerHTML = `<span>目前分類：${label}</span><strong>${countLabel}</strong>`;
     }
 
     function getEventAlertType(ev) {
@@ -2123,40 +2107,40 @@
     }
 
     function getEventSummary(ev) {
-        return ev.summary || ev.content || "暫無摘要";
+        return ev.summary || ev.content || "目前尚無摘要資訊。";
     }
 
     function getImpactLabel(ev) {
         const raw = normalizeText(ev.impactLevel);
         if (raw) return raw;
         const severity = getEventSeverity(ev);
-        if (severity <= 1) return "低影響";
+        if (severity <= 1) return "低度影響";
         if (severity === 2) return "輕度影響";
         if (severity === 3) return "中度影響";
         if (severity === 4) return "高度影響";
-        return "重大影響";
+        return "緊急影響";
     }
 
     function getSeverityLabel(ev) {
         const severity = getEventSeverity(ev);
-        if (severity <= 1) return "低";
-        if (severity === 2) return "輕度";
-        if (severity === 3) return "中度";
-        if (severity === 4) return "高度";
-        return "重大";
+        if (severity <= 1) return "低度影響";
+        if (severity === 2) return "輕度影響";
+        if (severity === 3) return "中度影響";
+        if (severity === 4) return "高度影響";
+        return "緊急影響";
     }
 
     function formatAttentionCount(ev) {
-        return `${Number(ev.interactionCount || 0).toLocaleString()} 次互動`;
+        return `${Number(ev.interactionCount || 0).toLocaleString()} 人已關注`;
     }
 
     function formatSourceLabel(ev) {
         const raw = normalizeText(ev.sourceName || ev.source);
         const lowered = raw.toLowerCase();
         if (!raw || lowered.includes("concept demo") || lowered.includes("island pulse")) {
-            return "來源：Island Pulse 展示資料";
+            return "來源｜Island Pulse 展示資料";
         }
-        return `來源：${raw}`;
+        return `來源｜${raw}`;
     }
 
     function getEventInteractionType(ev) {
@@ -2179,34 +2163,34 @@
         const groupCategory = normalizeText(event?.groupCategory || getGroupCategory(rawCategory)).toLowerCase();
         const category = groupCategory || rawCategory || "accident";
         const severity = getEventSeverity(event);
-        const severityLabel = severity <= 2 ? "低影響" : (severity === 3 ? "中影響" : "高影響");
+        const severityLabel = severity <= 2 ? "輕度" : (severity === 3 ? "中度" : "高度");
         const seedBase = normalizeText(event?.id || event?.title || "0");
         const seed = Array.from(seedBase).reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
         const pick = list => list[seed % list.length];
         const copyMap = {
             traffic: {
-                titles: ["交通節點提醒", "道路通行更新", "移動路線建議"],
-                contents: ["此區交通事件已整理為展示訊號，建議避開壅塞路段。", "通行狀態可能影響周邊動線，出發前可再確認。"],
-                categoryLabel: "交通事件",
-                impactLabel: "交通影響"
+                titles: ["道路節點壅塞警報", "城市移動路線受阻", "通勤路徑發生干擾"],
+                contents: ["該區域移動效率下降，建議玩家重新規劃路線。", "交通節點出現異常負載，通行速度降低。"],
+                categoryLabel: "移動事件",
+                impactLabel: "移動受阻"
             },
             disaster: {
-                titles: ["災害觀察訊號", "環境風險提醒", "區域警戒更新"],
-                contents: ["此區有災害或天候相關訊號，建議留意官方資訊。", "事件已整理為風險提示，適合在地圖上保留代表點。"],
+                titles: ["區域災害事件觸發", "城市安全警戒升級", "環境異常事件出現"],
+                contents: ["該區域安全值下降，建議避開事件範圍。", "環境風險上升，系統已標記為高注意區。"],
                 categoryLabel: "災害事件",
-                impactLabel: "安全提醒"
+                impactLabel: "安全值下降"
             },
             accident: {
-                titles: ["意外事件整理", "公共安全提醒", "現場狀況更新"],
-                contents: ["此事件屬公共安全或意外訊號，保留為代表性觀察點。", "周邊可能有短暫影響，建議保持距離並留意後續更新。"],
-                categoryLabel: "意外事件",
-                impactLabel: "安全影響"
+                titles: ["突發意外事件生成", "公共安全事件觸發", "區域異常狀態出現"],
+                contents: ["此區出現突發事件，周邊通行與安全狀態受到影響。", "系統偵測到異常事件，建議保持注意。"],
+                categoryLabel: "突發事件",
+                impactLabel: "注意力提升"
             },
             activity: {
-                titles: ["活動亮點", "城市行程訊號", "精選活動更新"],
-                contents: ["此活動適合做為地圖上的亮點事件，平衡整體視覺節奏。", "活動訊號已整理為代表點，讓地圖不只呈現風險。"],
+                titles: ["城市活動節點開啟", "限時地點事件出現", "人流聚集事件啟動"],
+                contents: ["該地點出現活動節點，可能帶來人流與交通變化。", "城市互動事件開啟，可前往查看現場資訊。"],
                 categoryLabel: "活動事件",
-                impactLabel: "行程亮點"
+                impactLabel: "人流增加"
             }
         };
         const mappedCategory = ["traffic", "disaster", "activity"].includes(category) ? category : "accident";
@@ -2217,8 +2201,8 @@
             categoryLabel: rule.categoryLabel,
             severityLabel,
             impactLabel: rule.impactLabel,
-            primaryAction: "已了解",
-            secondaryAction: "持續追蹤",
+            primaryAction: "已知悉",
+            secondaryAction: "值得注意",
             sourceLabel: formatSourceLabel(event)
         };
     }
@@ -2242,10 +2226,10 @@
         if (currentMapMode === "fortune") {
             const fortune = getEventFortuneLevel(ev);
             const labels = ["great-risk", "risk"].includes(fortune.level)
-                ? ["保持注意", "查看風險"]
+                ? ["已避開", "持續注意"]
                 : ["good", "great-good"].includes(fortune.level)
-                    ? ["適合前往", "加入行程"]
-                    : ["已了解", "先觀察"];
+                    ? ["想前往", "值得看看"]
+                    : ["已知悉", "先觀察"];
             const cls = context === "popup" ? "popup-btn-v2 ghost rating-action" : "card-action-btn rating-action";
             const buttons = labels.map(label => `<button type="button" class="${cls}" onclick="event.stopPropagation();">${label}</button>`).join("");
             const report = makeReportActionHtml(ev, context);
@@ -2256,7 +2240,7 @@
             return `<div class="event-actions event-actions--${context}" data-interaction-type="fortune"><div class="${context === "popup" ? "popup-action-group" : "card-action-group"}">${buttons}${report}${sourceBtn}</div></div>`;
         }
         if (isTwOnlineMode()) {
-            const labels = [options.twCopy?.primaryAction || "已了解", options.twCopy?.secondaryAction || "持續追蹤"];
+            const labels = [options.twCopy?.primaryAction || "已知悉", options.twCopy?.secondaryAction || "值得注意"];
             const buttonsHtml = `${makeRatingActionHtml(ev, labels, context)}${makeReportActionHtml(ev, context)}`;
             return `
                 <div class="event-actions event-actions--${context}" data-interaction-type="tw-online">
@@ -2264,11 +2248,11 @@
                 </div>`;
         }
         const interactionType = getEventInteractionType(ev);
-        let labels = ["已了解", "持續追蹤"];
-        if (interactionType === "major-incident") labels = ["已了解"];
-        if (interactionType === "activity-rating") labels = ["想參加", "收藏", "略過"];
-        if (interactionType === "sports-rating") labels = ["精彩", "普通", "略過"];
-        if (interactionType === "weather-ack") labels = ["已了解"];
+        let labels = ["已知悉", "值得注意"];
+        if (interactionType === "major-incident") labels = ["已知悉"];
+        if (interactionType === "activity-rating") labels = ["值得去", "還好", "不推薦"];
+        if (interactionType === "sports-rating") labels = ["精彩", "普通", "冷場"];
+        if (interactionType === "weather-ack") labels = ["已知悉"];
         const reactionHtml = interactionType === "major-incident"
             ? makeReactionBarHtml(
                 ev.id,
@@ -2294,11 +2278,11 @@
         if (currentMapMode === "fortune") {
             const f = getEventFortuneLevel(ev);
             const mapTitle = {
-                "great-risk": "高風險事件",
-                risk: "注意事件",
-                good: "順行事件",
-                "great-good": "精選亮點",
-                neutral: "一般觀察"
+                "great-risk": "大凶｜高風險事件",
+                risk: "凶｜注意事件",
+                good: "吉｜可前往事件",
+                "great-good": "大吉｜推薦事件",
+                neutral: "觀察｜持續留意"
             }[f.level];
             return `
                 <div class="popup-demo-inner fortune-popup fortune-${f.level}" style="--popup-color:${f.color}">
@@ -2308,7 +2292,7 @@
                     ${renderEventActions(ev, { displayTitle, context: "popup" })}
                 </div>`;
         }
-        const city = ev.city || "未標示地區";
+        const city = ev.city || "未標示城市";
         const timeStr = formatEventTime(ev);
         const sourceLabel = twCopy?.sourceLabel || formatSourceLabel(ev);
         const detailLabel = twCopy?.categoryLabel || getCategoryDetailLabel(ev.category);
@@ -2349,16 +2333,16 @@
             return `
                 <div class="fortune-card fortune-card-${f.level}">
                     <div class="fortune-level-badge">${f.label}</div>
-                    <div class="fortune-card-title">${f.label}：${f.title}</div>
+                    <div class="fortune-card-title">${f.label}｜${f.title}</div>
                     <div class="fortune-card-content">${f.content}</div>
-                    <div class="fortune-card-raw">原始事件：${displayTitle}</div>
+                    <div class="fortune-card-raw">來源資料：${displayTitle}</div>
                     <div class="card-actions">
                         ${renderEventActions(ev, { displayTitle, context: "card" })}
                         ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();">來源</a>` : ""}
                     </div>
                 </div>`;
         }
-        const city = normalizeText(ev.city) || "未標示地區";
+        const city = normalizeText(ev.city) || "未標示城市";
         const timeStr = formatEventTime(ev);
         const sourceLabel = twCopy?.sourceLabel || formatSourceLabel(ev);
         const detailLabel = twCopy?.categoryLabel || getCategoryDetailLabel(ev.category);
@@ -2409,7 +2393,7 @@
             ? "TW Online 視覺模式"
             : (isTaiwanMode ? "台灣地圖" : "統計視圖");
         const categoryLabel = currentMapMode === "fortune"
-            ? getFortuneFilterLabel(getCurrentFortuneFilter())
+            ? getFortuneFilterLabel(activeCategory)
             : (activeCategory === "all" ? "全部事件" : (getCategoryVisual(activeCategory)?.text || activeCategory));
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
         const categoryCount = new Set(events.map(ev => getGroupCategory(normalizeText(ev.groupCategory || ev.category))).filter(Boolean)).size;
@@ -2429,8 +2413,8 @@
         const heroStatus = document.getElementById("hero-status-copy");
         if (heroStatus) {
             heroStatus.textContent = currentMapMode === "online"
-                ? "以 TW Online 視覺層呈現公共事件資料，事件資料本身不變。"
-                : `目前顯示 ${events.length} 筆事件，涵蓋 ${cityCount} 個城市、${categoryCount} 種類別。`;
+                ? "以遊戲化介面觀看同一份公共事件資料｜事件資料不變，僅切換視覺風格"
+                : `共 ${events.length} 筆事件，涵蓋 ${cityCount} 城市、${categoryCount} 類別`;
         }
     }
 
@@ -2485,7 +2469,7 @@
         updateMobileFilterSummary();
     }
 
-    // ???? REACTION ????????????????????????????????????????????????????????????????????????????????????????
+    // ?? REACTION ????????????????????????????????????????????
     async function getReactions(eventId) {
         try {
             const res = await fetch(`/api/reaction?eventId=${eventId}`);
@@ -2509,7 +2493,7 @@
 
     function isMourningEvent(ev) {
         if (ev.hasCasualty !== undefined) return ev.hasCasualty;
-        const keywords = ["甇颱滿", "?瑚滿", "?", "?", "??", "?之鈭?", "撌亙?"];
+        const keywords = ["死亡", "傷亡", "重傷", "送醫", "搜救", "重大事故", "工安"];
         const text = `${ev.title || ""}${ev.content || ""}`;
         return keywords.some(k => text.includes(k));
     }
@@ -2554,16 +2538,16 @@
         }
     };
 
-    // ???? RENDER ????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? RENDER ??????????????????????????????????????????????
     function renderEventActionsV2(ev, options = {}) {
         const context = options.context || "card";
         if (currentMapMode === "fortune") {
             const fortune = getEventFortuneLevel(ev);
             const labels = ["great-risk", "risk"].includes(fortune.level)
-                ? ["保持注意", "查看風險"]
+                ? ["已避開", "持續注意"]
                 : ["good", "great-good"].includes(fortune.level)
-                    ? ["適合前往", "加入行程"]
-                    : ["已了解", "先觀察"];
+                    ? ["想前往", "值得看看"]
+                    : ["已知悉", "先觀察"];
             const cls = context === "popup" ? "popup-btn-v2 ghost rating-action" : "card-action-btn rating-action";
             const buttons = labels.map(label => `<button type="button" class="${cls}" onclick="event.stopPropagation();">${label}</button>`).join("");
             const report = makeReportActionHtml(ev, context);
@@ -2579,11 +2563,11 @@
         if (currentMapMode === "fortune") {
             const f = getEventFortuneLevel(ev);
             const mapTitle = {
-                "great-risk": "高風險事件",
-                risk: "注意事件",
-                good: "順行事件",
-                "great-good": "精選亮點",
-                neutral: "一般觀察"
+                "great-risk": "大凶｜高風險事件",
+                risk: "凶｜注意事件",
+                good: "吉｜可前往事件",
+                "great-good": "大吉｜推薦事件",
+                neutral: "觀察｜持續留意"
             }[f.level];
             return `
                 <div class="popup-demo-inner fortune-popup fortune-${f.level}" style="--popup-color:${f.color}">
@@ -2602,9 +2586,9 @@
             return `
                 <div class="fortune-card fortune-card-${f.level}">
                     <div class="fortune-level-badge">${f.label}</div>
-                    <div class="fortune-card-title">${f.label}：${f.title}</div>
+                    <div class="fortune-card-title">${f.label}｜${f.title}</div>
                     <div class="fortune-card-content">${f.content}</div>
-                    <div class="fortune-card-raw">原始事件：${displayTitle}</div>
+                    <div class="fortune-card-raw">來源資料：${displayTitle}</div>
                     <div class="card-actions">
                         ${renderEventActionsV2(ev, { displayTitle, context: "card" })}
                         ${sourceUrl ? `<a href="${sourceUrl}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();">來源</a>` : ""}
@@ -2614,22 +2598,21 @@
         return buildEventCardHtml(ev, displayTitle, displayContent, catVisual, twCopy);
     }
     function renderEvents(){
-        const filteredEvents = getFilteredEvents({ forMap: true });
+        const mapEvents = getFilteredEvents({ forMap: true });
         const isFortune = currentMapMode === "fortune";
-        const nearbyPreferred = isNearbyMode && userLocation;
-        const visibleEvents = nearbyPreferred
-            ? getEventsNearUser(filteredEvents, nearbyRadiusMeters)
-            : filteredEvents;
-        nearbyEventsCache = nearbyPreferred ? visibleEvents : [];
+        const nearbyPreferred = (isNearbyMode || isFortune) && userLocation;
+        let events = nearbyPreferred
+            ? getEventsNearUser(mapEvents, nearbyRadiusMeters)
+            : mapEvents;
+        nearbyEventsCache = nearbyPreferred ? events : [];
         const isOnline = currentMapMode === "online";
         const isMobile = isMobileViewport();
-        const displayEvents = visibleEvents;
         const markerLimit = isMobile ? MOBILE_MARKER_LIMIT : Infinity;
         const cardLimit = isMobile ? MOBILE_EVENT_CARD_LIMIT : Infinity;
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
 
-        visibleEvents.sort((a,b)=>{
+        events.sort((a,b)=>{
             const aNews=(a.source==="news"||a.source==="RSS")?1:0;
             const bNews=(b.source==="news"||b.source==="RSS")?1:0;
             return bNews-aNews;
@@ -2638,31 +2621,31 @@
         clearRenderedMarkers();
         eventRegistry.clear();
         eventList.innerHTML="";
-        updateCurationMeta(visibleEvents);
+        updateCurationMeta(events);
         updateNearbyButtonsV2();
         setNearbyStatusTextV2();
         let renderedCardCount = 0;
 
-        if(!visibleEvents.length){
+        if(!events.length){
             if (isFortune && !userLocation) {
                 eventList.innerHTML = `
                     <div class="empty-state fortune-empty-state">
                         <i class="fa-solid fa-location-crosshairs"></i>
-                        <p>請先啟用定位</p>
-                        <small>定位後可查看附近的風險與亮點事件</small>
+                        <p>請先啟用我的周邊</p>
+                        <small>趨吉避凶模式會依照你的位置判讀附近事件。</small>
                         <button type="button" id="fortune-nearby-cta" class="card-action-btn primary">啟用定位</button>
                     </div>`;
                 const cta = document.getElementById("fortune-nearby-cta");
                 if (cta) cta.addEventListener("click", () => requestUserLocationV2());
             } else {
                 const emptyText = nearbyPreferred
-                    ? (isFortune ? "附近沒有符合條件的風險事件" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 沒有事件`)
-                    : (isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的事件");
+                    ? (isFortune ? "目前範圍內沒有吉凶事件，可放大搜尋範圍。" : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 目前沒有事件`)
+                    : (isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的台灣即時事件地圖資料");
                 eventList.innerHTML=`<div class="empty-state"><i class="fa-solid fa-map-location-dot"></i><p>${emptyText}</p></div>`;
             }
         }
 
-        displayEvents.forEach((ev, index)=>{
+        mapEvents.forEach((ev, index)=>{
             const mappedCat = mapConfig[ev.category] || ev.category;
             const cat = config[mappedCat]||config.other;
             const latlng = [Number(ev.lat),Number(ev.lng)];
@@ -2670,7 +2653,7 @@
             // Marker
             const twCopy = isTwOnlineMode() ? getTwOnlineEventCopy(ev) : null;
             const displayTitle = twCopy ? twCopy.title : (ev.title || "未命名事件");
-            const displayContent = twCopy ? twCopy.content : (ev.content || "暫無摘要");
+            const displayContent = twCopy ? twCopy.content : (ev.content || "目前尚無內容");
             eventRegistry.set(String(ev.id), { ...ev, displayTitle });
             const severity = getEventSeverity(ev);
             const fortune = isFortune ? getEventFortuneLevel(ev) : null;
@@ -2708,7 +2691,7 @@
             popup.setHTML(popupHtml);
             popup.on("open", () => {
                 activePopup = popup;
-                // Popup HTML is already rendered before opening.
+                // 敲木魚已在 popup HTML 直接渲染。
             });
             popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
@@ -2720,7 +2703,8 @@
                     markerStyle.glow,
                     fortune ? ["great-risk", "great-good"].includes(fortune.level) : pinPulse
                 ),
-                anchor: "bottom",
+                // 讓 Mapbox 以元素中心定位，避免自訂圖釘因尺寸造成偏移。
+                anchor: "center",
                 offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
@@ -2768,7 +2752,13 @@
                     fortune ? ["great-risk", "great-good"].includes(fortune.level) : shouldPinPulse(ev, severity)
                 );
                 const marker = L.marker([latlng[0], latlng[1]], {
-                    icon: makeLeafletMarkerIcon(element)
+                    icon: L.divIcon({
+                        html: element.outerHTML,
+                        className: "leaflet-demo-pin",
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0],
+                        popupAnchor: [0, -42]
+                    })
                 }).addTo(window._fallbackMap)
                     .bindPopup(buildPopupHtmlV2(ev, displayTitle, displayContent, markerStyle), {
                         className: "custom-popup",
@@ -2777,6 +2767,7 @@
                 renderedMarkers.push(marker);
             }
 
+            if (nearbyPreferred && !nearbyEventsCache.some((n) => String(n.id) === String(ev.id))) return;
             if (renderedCardCount >= cardLimit) return;
 
             const card = document.createElement("article");
@@ -2796,183 +2787,258 @@
 
             eventList.appendChild(card);
             renderedCardCount += 1;
-            // Event actions are rendered by renderEventActions().
+            // 敲木魚已在 renderEventActions() 直接渲染，避免 /api/reaction 載入失敗時按鈕消失。
         });
 
         if (isNearbyMode && userLocation) drawUserLocationOverlay();
         const cnt=document.getElementById("mobile-count");
-        if(cnt) cnt.textContent=`${visibleEvents.length} 筆`;
-        lastRenderedEventCount = visibleEvents.length;
-        updateMobileFilterSummary(visibleEvents.length);
+        if(cnt) cnt.textContent=`${events.length} 筆`;
+        lastRenderedEventCount = events.length;
+        updateMobileFilterSummary(events.length);
         if (isNearbyMode) {
-            setStatus(visibleEvents.length > 0 ? `附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${visibleEvents.length} 個事件` : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 沒有事件`);
+            setStatus(events.length > 0 ? `附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${events.length} 件事件` : `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 目前沒有事件`);
         } else {
             setStatus(currentMapMode === "online"
-                ? "TW Online 視覺層啟用中"
-                : `目前顯示 ${visibleEvents.length} 筆事件`);
+                ? "TW Online 視覺層啟用中｜公共事件資料不變"
+                : `已載入 ${events.length} 筆事件`);
         }
     }
 
-    // Demo data. Keep a full pool for stats, filtering, lists, and the map display.
-    const MOCK_EVENTS = [];
+    // ?? MOCK DATA ????????????????????????????????????????????
+    const MOCK_EVENTS = [
+    { id: "m1", title: "國道北上車流回堵", category: "traffic", city: "台北市", lat: 25.07, lng: 121.56, source: "Concept Demo", content: "尖峰車流較高，建議提前改道。" },
+    { id: "m2", title: "新北工地吊掛作業提醒", category: "construction", city: "新北市", lat: 25.02, lng: 121.46, source: "Concept Demo", content: "施工區周邊採單線通行。" },
+    { id: "m3", title: "花蓮近海有感地震", category: "earthquake", city: "花蓮縣", lat: 24.02, lng: 121.62, source: "Concept Demo", content: "目前無重大災情通報。" }
+];
 
-    const DEMO_LOCATIONS = [
-        { city: "台北市", lat: 25.0478, lng: 121.5170 },
-        { city: "新北市", lat: 25.0120, lng: 121.4650 },
-        { city: "基隆市", lat: 25.1283, lng: 121.7392 },
-        { city: "桃園市", lat: 24.9936, lng: 121.3010 },
-        { city: "新竹市", lat: 24.8138, lng: 120.9675 },
-        { city: "苗栗縣", lat: 24.5602, lng: 120.8214 },
-        { city: "台中市", lat: 24.1477, lng: 120.6736 },
-        { city: "彰化縣", lat: 24.0800, lng: 120.5380 },
-        { city: "南投縣", lat: 23.9609, lng: 120.9719 },
-        { city: "雲林縣", lat: 23.7092, lng: 120.4313 },
-        { city: "嘉義市", lat: 23.4801, lng: 120.4491 },
-        { city: "台南市", lat: 22.9997, lng: 120.2270 },
-        { city: "高雄市", lat: 22.6273, lng: 120.3014 },
-        { city: "屏東縣", lat: 22.5519, lng: 120.5487 },
-        { city: "宜蘭縣", lat: 24.7021, lng: 121.7378 },
-        { city: "花蓮縣", lat: 23.9911, lng: 121.6112 },
-        { city: "台東縣", lat: 22.7583, lng: 121.1444 },
-        { city: "澎湖縣", lat: 23.5711, lng: 119.5793 },
-        { city: "金門縣", lat: 24.4321, lng: 118.3171 },
-        { city: "連江縣", lat: 26.1602, lng: 119.9517 }
-    ];
+const DEMO_LOCATIONS = [
+    { city: "台北市", lat: 25.0478, lng: 121.5170 },
+    { city: "新北市", lat: 25.0120, lng: 121.4650 },
+    { city: "基隆市", lat: 25.1283, lng: 121.7392 },
+    { city: "桃園市", lat: 24.9936, lng: 121.3010 },
+    { city: "新竹市", lat: 24.8138, lng: 120.9675 },
+    { city: "苗栗縣", lat: 24.5602, lng: 120.8214 },
+    { city: "台中市", lat: 24.1477, lng: 120.6736 },
+    { city: "彰化縣", lat: 24.0800, lng: 120.5380 },
+    { city: "南投縣", lat: 23.9609, lng: 120.9719 },
+    { city: "雲林縣", lat: 23.7092, lng: 120.4313 },
+    { city: "嘉義市", lat: 23.4801, lng: 120.4491 },
+    { city: "台南市", lat: 22.9997, lng: 120.2270 },
+    { city: "高雄市", lat: 22.6273, lng: 120.3014 },
+    { city: "屏東縣", lat: 22.5519, lng: 120.5487 },
+    { city: "宜蘭縣", lat: 24.7021, lng: 121.7378 },
+    { city: "花蓮縣", lat: 23.9911, lng: 121.6112 },
+    { city: "台東縣", lat: 22.7583, lng: 121.1444 },
+    { city: "澎湖縣", lat: 23.5711, lng: 119.5793 },
+    { city: "金門縣", lat: 24.4321, lng: 118.3171 },
+    { city: "連江縣", lat: 26.1602, lng: 119.9517 }
+];
 
-    const DEMO_CATEGORY_ORDER = ["traffic", "accident", "activity", "disaster", "weather"];
-    const DEMO_EVENT_SCENARIOS = {
-        traffic: {
-            area: "車站周邊",
-            title: (city, area) => `${city}${area}交通管制`,
-            summary: (city, area) => `${city}${area}因施工或車流調整進行短時段管制，建議提早改道。`,
-            severity: 3,
-            impactLevel: "中度影響"
-        },
-        accident: {
-            area: "市區路口",
-            title: (city, area) => `${city}${area}意外事件`,
-            summary: (city, area) => `${city}${area}發生公共安全或道路意外通報，周邊通行可能短暫受影響。`,
-            severity: 4,
-            impactLevel: "高度影響"
-        },
-        activity: {
-            area: "文化園區",
-            title: (city, area) => `${city}${area}週末活動`,
-            summary: (city, area) => `${city}${area}舉辦藝文或市集活動，人潮增加但整體影響較低。`,
-            severity: 1,
-            impactLevel: "低影響"
-        },
-        disaster: {
-            area: "山區道路",
-            title: (city, area) => `${city}${area}災害提醒`,
-            summary: (city, area) => `${city}${area}有落石、積水或邊坡風險，請留意即時公告並避免停留。`,
-            severity: 4,
-            impactLevel: "高度影響"
-        },
-        weather: {
-            area: "沿海地帶",
-            title: (city, area) => `${city}${area}天氣提醒`,
-            summary: (city, area) => `${city}${area}受午後雷雨或強風影響，戶外行程建議預留彈性。`,
-            severity: 2,
-            impactLevel: "輕度影響"
-        }
-    };
+const makeDemoTemplate = (title, category, severity, impactLevel, summary) => ({
+    title,
+    category,
+    severity,
+    impactLevel,
+    summary
+});
 
-    const DEMO_CITY_EVENT_COUNTS = {
-        "台北市": 2,
-        "新北市": 2,
-        "基隆市": 2,
-        "桃園市": 3,
-        "新竹市": 3,
-        "苗栗縣": 3,
-        "台中市": 3,
-        "彰化縣": 3,
-        "南投縣": 3,
-        "雲林縣": 3,
-        "嘉義市": 2,
-        "台南市": 5,
-        "高雄市": 5,
-        "屏東縣": 5,
-        "宜蘭縣": 6,
-        "花蓮縣": 6,
-        "台東縣": 5,
-        "澎湖縣": 3,
-        "金門縣": 3,
-        "連江縣": 3
-    };
-    const getDemoEventCountForCity = location => DEMO_CITY_EVENT_COUNTS[location.city] || 3;
-    const getDemoArea = (location, category, eventIndex) => {
-        const scenario = DEMO_EVENT_SCENARIOS[category] || DEMO_EVENT_SCENARIOS.activity;
-        if (location.lng < 120.15 || location.city === "基隆市" || location.city === "宜蘭縣" || location.city === "花蓮縣" || location.city === "台東縣") {
-            if (category === "weather") return "沿海地帶";
-            if (category === "disaster") return "山區道路";
-        }
-        if (category === "traffic" && eventIndex % 2 === 1) return "交流道周邊";
-        if (category === "activity" && eventIndex % 2 === 1) return "河岸廣場";
-        return scenario.area;
-    };
-    const getDemoCoordinates = (location, cityIndex, eventIndex) => {
-        const compact = location.lng < 120.15 || location.lat > 26;
-        const radius = compact ? 0.012 : 0.028 + (eventIndex % 2) * 0.014;
-        const angle = ((cityIndex * 47) + (eventIndex * 103)) * Math.PI / 180;
-        return {
-            lat: Number((location.lat + Math.sin(angle) * radius).toFixed(6)),
-            lng: Number((location.lng + Math.cos(angle) * radius).toFixed(6))
-        };
-    };
+const TRAFFIC_DEMO_TEMPLATES = [
+    makeDemoTemplate("台北車站周邊公車專用道調整", "traffic", 3, "中度", "尖峰時段車流回堵，警方啟動分流與號誌調整。"),
+    makeDemoTemplate("新北板橋文化路地下道施工壅塞", "traffic", 2, "中度", "施工占用外側車道，通勤車潮行進速度下降。"),
+    makeDemoTemplate("基隆港西岸貨櫃車進出管制", "traffic", 3, "中度", "港區聯外道路車多，建議改走替代路線。"),
+    makeDemoTemplate("桃園機場捷運接駁車延誤", "traffic", 2, "低度", "接駁車班距拉長，旅客轉乘需預留時間。"),
+    makeDemoTemplate("新竹科學園區匝道車流回堵", "traffic", 3, "中度", "下班尖峰匝道排隊，交通隊現場疏導。"),
+    makeDemoTemplate("苗栗台十三線路面刨鋪交管", "traffic", 2, "低度", "局部單線雙向通行，工程車輛進出頻繁。"),
+    makeDemoTemplate("台中台灣大道快捷公車改道", "traffic", 3, "中度", "活動封街導致多線公車改停臨時站位。"),
+    makeDemoTemplate("彰化員林交流道事故排除後仍壅塞", "traffic", 3, "中度", "車流回堵至平面道路，警力持續調節路口。"),
+    makeDemoTemplate("南投台十四甲山區午後車潮增加", "traffic", 2, "低度", "觀光車輛集中上山，部分路段速率偏低。"),
+    makeDemoTemplate("雲林斗六市區道路標線重繪", "traffic", 2, "低度", "夜間施工縮減車道，提醒駕駛減速慢行。"),
+    makeDemoTemplate("嘉義火車站前圓環號誌故障", "traffic", 3, "中度", "員警手控指揮，周邊公車班次略受影響。"),
+    makeDemoTemplate("台南中西區停車場滿位外溢", "traffic", 2, "低度", "商圈車潮增加，市府啟動停車導引資訊。"),
+    makeDemoTemplate("高雄中正路輕軌施工改道", "traffic", 3, "中度", "多處路口縮減車道，機車與公車需依標誌通行。"),
+    makeDemoTemplate("屏東潮州省道水管工程交管", "traffic", 2, "低度", "工程圍籬占用慢車道，尖峰時段易形成瓶頸。"),
+    makeDemoTemplate("宜蘭國五交流道返程車流升高", "traffic", 3, "中度", "高公局建議分散時段，匝道儀控已啟動。"),
+    makeDemoTemplate("花蓮市區觀光巴士臨停熱點管制", "traffic", 2, "低度", "熱門景點周邊設臨停區，減少車輛交織。")
+];
 
-    let demoEventIndex = 0;
-    const DEMO_EVENTS = DEMO_LOCATIONS.flatMap((location, cityIndex) => {
-        const count = getDemoEventCountForCity(location);
-        return Array.from({ length: count }, (_, eventIndex) => {
-            const category = DEMO_CATEGORY_ORDER[demoEventIndex % DEMO_CATEGORY_ORDER.length];
-            const scenario = DEMO_EVENT_SCENARIOS[category];
-            const area = getDemoArea(location, category, eventIndex);
-            const point = getDemoCoordinates(location, cityIndex, eventIndex);
-            demoEventIndex += 1;
-            const hasCasualty = category === "accident" && scenario.severity >= 4;
-            return normalizeDisplayEvent({
-                id: `demo-${String(demoEventIndex).padStart(2, "0")}`,
-                title: scenario.title(location.city, area),
-                summary: scenario.summary(location.city, area),
-                content: scenario.summary(location.city, area),
-                category,
-                city: location.city,
-                area,
-                lat: point.lat,
-                lng: point.lng,
-                severity: scenario.severity,
-                impactLevel: scenario.impactLevel,
-                interactionCount: Math.max(80, 520 - demoEventIndex * 4 + scenario.severity * 17),
-                hasCasualty,
-                source: "disabled-demo-source",
-                sourceName: "disabled-demo-source",
-                sourceUrl: "https://example.com/island-pulse-concept-demo",
-                isDemo: true,
-                publishedAt: new Date(Date.UTC(2026, 4, 30, 0, demoEventIndex * 6)).toISOString()
-            });
-        });
+const MAJOR_DEMO_TEMPLATES = [
+    makeDemoTemplate("台東海岸遊客溺水送醫不治", "accident", 5, "重大", "海域突遇離岸流，搜救人員到場搶救，仍傳出死亡。"),
+    makeDemoTemplate("澎湖漁港吊掛作業工安重傷", "safety", 5, "重大", "吊臂滑落波及作業員，現場啟動工安調查與停工。"),
+    makeDemoTemplate("金門民宅火災延燒一人送醫", "incident", 5, "重大", "深夜火災造成濃煙竄出，住戶吸入性嗆傷送醫。"),
+    makeDemoTemplate("連江碼頭堆高機翻覆事故", "accident", 4, "重大", "堆高機作業時翻覆，駕駛重傷送醫觀察。"),
+    makeDemoTemplate("台北大樓外牆施工墜落意外", "safety", 5, "重大", "施工平台疑固定失效，工人墜落造成重傷。"),
+    makeDemoTemplate("新北工地鷹架倒塌壓傷工人", "safety", 5, "重大", "工安事故造成多人送醫，勞檢單位要求停工改善。"),
+    makeDemoTemplate("基隆倉庫火災濃煙影響鄰里", "incident", 4, "重大", "倉庫火災延燒雜物，消防隊布線灌救並疏散居民。"),
+    makeDemoTemplate("桃園砂石車擦撞機車重傷", "accident", 4, "重大", "路口轉彎視線死角釀禍，騎士重傷送醫。"),
+    makeDemoTemplate("新竹化學槽車洩漏工安事件", "safety", 5, "重大", "槽車閥件異常導致刺鼻氣味外洩，廠區啟動工安應變。"),
+    makeDemoTemplate("苗栗登山步道墜落救援", "accident", 4, "重大", "山友失足墜落邊坡，消防搜救隊以繩索系統吊掛送醫。"),
+    makeDemoTemplate("台中市場瓦斯爆炸多人受傷", "incident", 5, "重大", "疑瓦斯外洩引發爆炸，現場有重傷與輕傷民眾。"),
+    makeDemoTemplate("彰化工廠機台夾傷工安事故", "safety", 5, "重大", "作業員手部遭機台捲入重傷，廠方通報勞檢。"),
+    makeDemoTemplate("南投溪谷戲水溺水搜救", "accident", 5, "重大", "溪水暴漲造成民眾受困，搜救後確認一人死亡。"),
+    makeDemoTemplate("雲林農舍火災波及鄰屋", "incident", 4, "重大", "火災延燒倉儲空間，消防隊阻止火勢擴大。"),
+    makeDemoTemplate("嘉義工人屋頂修繕墜落", "safety", 5, "重大", "屋頂修繕期間失足墜落，傷者重傷送醫。"),
+    makeDemoTemplate("台南夜市攤位油鍋起火", "incident", 4, "重大", "攤位油鍋起火造成驚慌，消防到場後迅速撲滅火災。"),
+    makeDemoTemplate("高雄港區貨櫃車碰撞死亡事故", "accident", 5, "重大", "港區道路發生碰撞，駕駛受困救出後宣告死亡。"),
+    makeDemoTemplate("屏東加工廠電氣火災停工", "safety", 5, "重大", "電氣室火災造成設備受損，工安單位要求檢修後復工。")
+];
+
+const DISASTER_DEMO_TEMPLATES = [
+    makeDemoTemplate("宜蘭山區土石流黃色警戒", "disaster", 4, "重大", "連日降雨使溪水混濁，保全戶名冊已完成更新。"),
+    makeDemoTemplate("花蓮近海規模5.4地震", "earthquake", 4, "重大", "地震造成部分地區有感，交通與水電設施巡檢中。"),
+    makeDemoTemplate("台東縱谷餘震頻繁通報", "earthquake", 3, "中度", "地震後小區域餘震增加，校舍與橋梁進行安全巡查。"),
+    makeDemoTemplate("澎湖強風浪海上警戒", "typhoon", 3, "中度", "颱風外圍環流影響，離島航線視海象調整。"),
+    makeDemoTemplate("金門沿岸暴潮防範通知", "typhoon", 3, "中度", "颱風接近期間沿岸低窪區加強巡查。"),
+    makeDemoTemplate("連江港區防颱加固作業", "typhoon", 4, "重大", "船舶進港避風，港務單位完成纜繩與設施檢查。"),
+    makeDemoTemplate("台北山坡地落石封閉步道", "disaster", 3, "中度", "山區步道邊坡鬆動，市府暫停開放並派員巡檢。"),
+    makeDemoTemplate("新北溪流水位快速上升", "disaster", 4, "重大", "豪雨使溪流水位逼近警戒，區公所通知低窪住戶。"),
+    makeDemoTemplate("基隆短延時強降雨積淹水", "disaster", 3, "中度", "排水系統滿載，市區低窪路段短暫積水。"),
+    makeDemoTemplate("桃園沿海風力達停班課標準邊緣", "typhoon", 3, "中度", "颱風外圍風勢增強，市府評估晚間交通安全。"),
+    makeDemoTemplate("新竹丘陵坡地滑動監測", "disaster", 3, "中度", "監測點位移增加，相關單位加密觀測頻率。"),
+    makeDemoTemplate("苗栗近海地震震度三級", "earthquake", 3, "中度", "地震造成短暫搖晃，消防與電力單位回報正常。")
+];
+
+const WEATHER_DEMO_TEMPLATES = [
+    makeDemoTemplate("台中午後雷陣雨機率升高", "weather", 2, "低度", "氣象單位提醒午後對流旺盛，外出攜帶雨具。"),
+    makeDemoTemplate("彰化沿海空氣濕度偏高", "weather", 2, "低度", "清晨能見度略降，用路人留意視線變化。"),
+    makeDemoTemplate("南投山區午後雲量增多", "weather", 2, "低度", "山區天氣變化快，登山行程建議提早下撤。"),
+    makeDemoTemplate("雲林平原高溫橙色燈號", "weather", 2, "低度", "午後溫度偏高，戶外工作者注意補水休息。"),
+    makeDemoTemplate("嘉義市區紫外線指數偏高", "weather", 2, "低度", "白天日照強，民眾外出建議做好防曬。"),
+    makeDemoTemplate("台南沿海晚間風勢增強", "weather", 2, "低度", "海風明顯，騎乘機車與戶外活動注意風勢。"),
+    makeDemoTemplate("高雄空品擴散條件普通", "weather", 2, "低度", "午後海陸風轉換，敏感族群留意即時空品。"),
+    makeDemoTemplate("屏東恆春半島局部陣風", "weather", 2, "低度", "落山風增強，行經空曠路段注意穩定車速。")
+];
+
+const ACTIVITY_DEMO_TEMPLATES = [
+    makeDemoTemplate("宜蘭童玩市集周末登場", "activity", 1, "低度", "親子攤位與表演活動集中於河岸廣場。"),
+    makeDemoTemplate("花蓮港濱音樂展演開放入場", "activity", 1, "低度", "傍晚安排在地樂團與餐車，周邊設臨時接駁。"),
+    makeDemoTemplate("台東鐵花村手作小旅行", "activity", 1, "低度", "文化工作坊與導覽路線串聯市區店家。"),
+    makeDemoTemplate("澎湖海洋生活節試營運", "activity", 1, "低度", "展區介紹潮間帶生態與海島工藝。"),
+    makeDemoTemplate("金門古城夜間導覽開放報名", "activity", 1, "低度", "導覽路線結合歷史建築與地方小吃。"),
+    makeDemoTemplate("連江藍眼淚觀測季說明會", "activity", 1, "低度", "遊客中心提供觀測時段與交通資訊。"),
+    makeDemoTemplate("台北河岸電影放映活動", "activity", 1, "低度", "戶外放映區採自由入座，現場有交通導引。")
+];
+
+const SPORTS_DEMO_TEMPLATES = [
+    makeDemoTemplate("新北河濱馬拉松分組起跑", "sports", 1, "低度", "賽道沿河岸設補給站，周邊道路採時段管制。"),
+    makeDemoTemplate("基隆港灣自行車挑戰賽", "sports", 1, "低度", "參賽路線串聯港區與海岸景點。"),
+    makeDemoTemplate("桃園棒球主場系列賽", "sports", 1, "低度", "晚間賽事入場人潮增加，捷運加開疏運班次。"),
+    makeDemoTemplate("新竹城市三對三籃球賽", "sports", 1, "低度", "市民廣場設置臨時球場與觀眾區。"),
+    makeDemoTemplate("苗栗山城越野跑", "sports", 1, "低度", "路線經丘陵步道，主辦單位設補給與醫護站。"),
+    makeDemoTemplate("台中洲際青少棒邀請賽", "sports", 1, "低度", "多校隊伍參與，球場周邊停車需求升高。")
+];
+
+const DEMO_EVENT_TEMPLATES = [
+    ...TRAFFIC_DEMO_TEMPLATES,
+    ...MAJOR_DEMO_TEMPLATES,
+    ...DISASTER_DEMO_TEMPLATES,
+    ...WEATHER_DEMO_TEMPLATES,
+    ...ACTIVITY_DEMO_TEMPLATES,
+    ...SPORTS_DEMO_TEMPLATES
+];
+
+const EXTRA_DEMO_EVENTS = [
+    {
+        id: "demo-tn-01",
+        title: "台南小東路車流回堵",
+        content: "小東路與長榮路周邊車流增加，通勤時段可能影響行車速度。",
+        summary: "小東路與長榮路周邊車流增加，通勤時段可能影響行車速度。",
+        category: "traffic",
+        city: "台南市",
+        area: "東區",
+        lat: 22.9996,
+        lng: 120.2218,
+        severity: 3,
+        source: "展示資料",
+        sourceName: "展示資料",
+        isDemo: true,
+        impactLevel: "中度",
+        interactionCount: 246,
+        publishedAt: new Date(Date.UTC(2026, 5, 2, 0, 5)).toISOString()
+    },
+    {
+        id: "demo-tn-02",
+        title: "成大周邊路口事故處理",
+        content: "成功大學周邊路口發生輕微事故，現場處理中，建議行人與車輛小心通行。",
+        summary: "成功大學周邊路口發生輕微事故，現場處理中，建議行人與車輛小心通行。",
+        category: "accident",
+        city: "台南市",
+        area: "東區",
+        lat: 22.9979,
+        lng: 120.2199,
+        severity: 4,
+        source: "展示資料",
+        sourceName: "展示資料",
+        isDemo: true,
+        impactLevel: "高度",
+        interactionCount: 312,
+        hasCasualty: false,
+        publishedAt: new Date(Date.UTC(2026, 5, 2, 0, 12)).toISOString()
+    },
+    {
+        id: "demo-tn-03",
+        title: "台南公園午後市集",
+        content: "台南公園周邊出現午後市集與人流聚集，可前往散步，但需留意周邊交通。",
+        summary: "台南公園周邊出現午後市集與人流聚集，可前往散步，但需留意周邊交通。",
+        category: "activity",
+        city: "台南市",
+        area: "北區",
+        lat: 23.0018,
+        lng: 120.2107,
+        severity: 2,
+        source: "展示資料",
+        sourceName: "展示資料",
+        isDemo: true,
+        impactLevel: "輕度",
+        interactionCount: 198,
+        publishedAt: new Date(Date.UTC(2026, 5, 2, 0, 18)).toISOString()
+    }
+];
+
+const DEMO_EVENTS = [
+    ...DEMO_EVENT_TEMPLATES.slice(0, 67).map((base, i) => {
+    const location = DEMO_LOCATIONS[i % DEMO_LOCATIONS.length];
+    const latOffset = ((i * 37) % 100 - 50) * 0.0018;
+    const lngOffset = ((i * 53) % 100 - 50) * 0.0018;
+    const category = normalizeText(base.category).toLowerCase();
+    const hasCasualty = ["accident", "incident", "safety"].includes(category) && base.severity >= 4;
+    return normalizeDisplayEvent({
+        id: `demo-${String(i + 1).padStart(2, "0")}`,
+        title: base.title,
+        summary: base.summary,
+        content: base.summary,
+        category,
+        city: location.city,
+        lat: Number((location.lat + latOffset).toFixed(6)),
+        lng: Number((location.lng + lngOffset).toFixed(6)),
+        severity: base.severity,
+        impactLevel: base.impactLevel,
+        interactionCount: Math.max(80, 680 - i * 7 + (base.severity * 11)),
+        hasCasualty,
+        source: "Concept Demo",
+        sourceName: "Island Pulse Concept Demo",
+        sourceUrl: "https://example.com/island-pulse-concept-demo",
+        publishedAt: new Date(Date.UTC(2026, 4, 30, 0, i * 7)).toISOString(),
     });
+    }),
+    ...EXTRA_DEMO_EVENTS.map(normalizeDisplayEvent)
+];
+
+console.log("DEMO_EVENTS length", DEMO_EVENTS.length);
+console.log("unique cities", new Set(DEMO_EVENTS.map(e => e.city)).size);
+console.log("unique coords", new Set(DEMO_EVENTS.map(e => `${e.lat},${e.lng}`)).size);
 
 async function syncNewsAndRender(){
-        setStatus("正在載入即時事件...");
-        try {
-            const res = await fetch("/api/events");
-            const raw = await res.text();
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = tryParseJson(raw, []);
-            parsedEvents = deduplicateEvents(Array.isArray(data) ? data : []).map(normalizeDisplayEvent);
-        } catch (e) {
-            console.warn("API無法連線", e);
-            parsedEvents = [];
-        }
+        setStatus("Concept Demo 載入中...");
+        parsedEvents = DEMO_EVENTS.map(normalizeDisplayEvent);
         console.log("parsedEvents length", parsedEvents.length);
         renderCategoryButtons();
         renderEvents();
-        setStatus(parsedEvents.length ? `目前顯示 ${parsedEvents.length} 筆事件` : "目前沒有可顯示的即時事件");
+        setStatus(currentMapMode === "online"
+            ? "TW Online 視覺層啟用中｜公共事件資料不變"
+            : `Golden Pin Concept Edition｜${parsedEvents.length} 筆事件`);
     }
 
-    // City filter sync
+    // ?? CITY SYNC ????????????????????????????????????????????
     function syncCityFilter(value){
         document.getElementById("city-filter").value=value;
         document.getElementById("city-filter-mobile").value=value;
@@ -2995,7 +3061,8 @@ async function syncNewsAndRender(){
             flyToLatLng(centers[match],11,1500);
         }
     }
-    // ???? MODE ??????????????????????????????????????????????????????????????????????????????????????????????????
+
+    // ?? MODE ?????????????????????????????????????????????????
     const BAR_COLORS = ['#4f8cff','#a78bfa','#34d399','#fb923c','#f05a5a','#fbbf24','#5eead4','#c4b5fd','#86efac','#fdba74'];
 
     const CAT_COLORS = {
@@ -3004,7 +3071,7 @@ async function syncNewsAndRender(){
       disaster:   { bg:'rgba(240,90,90,0.15)',   color:'#f05a5a',  text:'災害' },
       weather:    { bg:'rgba(56,189,248,0.15)',  color:'#38bdf8',  text:'天氣' },
       activity:   { bg:'rgba(52,211,153,0.15)',  color:'#34d399',  text:'活動' },
-      sports:     { bg:'rgba(167,139,250,0.15)', color:'#a78bfa',  text:'運動' },
+      sports:     { bg:'rgba(167,139,250,0.15)', color:'#a78bfa',  text:'賽事' },
       other:      { bg:'rgba(107,114,128,0.15)', color:'#6b7280',  text:'其他' },
     };
 
@@ -3056,15 +3123,15 @@ async function syncNewsAndRender(){
       }); 
       updateCurationMeta(events);
  
-      // ?株都??
+      // 蝮賣 
       const totalEl = document.getElementById('stat-total'); 
       if(totalEl) totalEl.textContent = events.length; 
  
-      // ?????? 
+      // ???? 
       const cityMap = {}; 
       events.forEach(ev=>{ 
         if(!ev.city) return; 
-        const city = normalizeText(ev.city || '').replace(/[市縣]$/,'').slice(0,3); 
+        const city = (ev.city||'').replace(/撣?|蝮?/,'').slice(0,3); 
         if(!city) return; 
         cityMap[city] = (cityMap[city]||0) + 1; 
       }); 
@@ -3083,7 +3150,7 @@ async function syncNewsAndRender(){
         `).join(''); 
       } 
  
-      // Reaction ?株都??
+      // Reaction 蝮賣 
       fetch('/api/reactions/total') 
         .then(r=>r.json()) 
         .then(data=>{ 
@@ -3099,6 +3166,7 @@ async function syncNewsAndRender(){
           if(incense) incense.textContent='0'; 
         }); 
  
+      // 讀取熱門事件的互動統計。
       const hotEl = document.getElementById('hot-events'); 
       if(!hotEl) return; 
       hotEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);padding:8px 0;">載入中...</div>'; 
@@ -3134,17 +3202,17 @@ async function syncNewsAndRender(){
           <div style="padding:10px 0;${border}"> 
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;"> 
               <span style="font-size:10px;font-weight:500;padding:2px 7px;border-radius:99px;background:${cat.bg};color:${cat.color};">${cat.text}</span> 
-              <span style="font-size:11px;color:var(--text-secondary);">互動 ${ev.muyu} &nbsp;收藏 ${ev.candle}</span> 
+              <span style="font-size:11px;color:var(--text-secondary);">木魚 ${ev.muyu} &nbsp;上香 ${ev.candle}</span> 
             </div> 
             <div style="font-size:12px;color:var(--text-primary);line-height:1.55;margin-bottom:3px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${title}</div> 
-            <div style="font-size:11px;color:var(--text-muted);">地區 ${city}</div> 
+            <div style="font-size:11px;color:var(--text-muted);">地點 ${city}</div> 
           </div> 
         `; 
       }).join(''); 
     } 
 
 
-    // ???? SEARCH ??????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? SEARCH ???????????????????????????????????????????????
     async function renderStatsView(){
       const events = parsedEvents.filter(ev => {
         const lat = Number(ev.lat), lng = Number(ev.lng);
@@ -3234,7 +3302,7 @@ async function syncNewsAndRender(){
               </div>
               <div class="hot-event-title">${ev.title}</div>
             </div>
-            <div class="hot-event-score">${ev.total.toLocaleString()} 鈭箏歇?釣</div>
+            <div class="hot-event-score">${ev.total.toLocaleString()} 人已關注</div>
           </div>`;
       }).join('');
     }
@@ -3251,7 +3319,7 @@ async function syncNewsAndRender(){
         searchRenderTimer = setTimeout(renderEvents, 150);
     }
 
-    // ???? DRAWER ??????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? DRAWER ???????????????????????????????????????????????
     function toggleDrawer(){
         if(window.innerWidth<768) {
             newsSidebar.classList.toggle("drawer-collapsed");
@@ -3259,7 +3327,7 @@ async function syncNewsAndRender(){
         }
     }
 
-    // ???? MOBILE GESTURES ????????????????????????????????????????????????????????????????????????????
+    // ?? MOBILE GESTURES ??????????????????????????????????????
     let startY = 0;
     let isDragging = false;
     let pendingDrawerDelta = 0;
@@ -3270,7 +3338,7 @@ async function syncNewsAndRender(){
         if (window.innerWidth >= 768) return;
         const touch = e.touches[0];
         const sidebarTop = sidebar.getBoundingClientRect().top;
-        // ?芸?賢??????
+        // 只在抽屜頂部拖曳區啟用手勢
         if (touch.clientY - sidebarTop > 80) return;
         
         isDragging = true;
@@ -3290,10 +3358,12 @@ async function syncNewsAndRender(){
                 sidebar.style.transform = `translateY(${pendingDrawerDelta}px)`;
             });
         }
-        if (delta < 0) return;
+        if (delta < 0) return; // 只處理向下拖曳。
         sidebar.style.transform = `translateY(${delta}px)`;
         
+        // 展開狀態時保留內容捲動。
         if (!sidebar.classList.contains("drawer-collapsed")) {
+            // touchmove 使用 passive listener，不呼叫 preventDefault。
             e.stopPropagation();
         }
     }, { passive: true });
@@ -3318,7 +3388,7 @@ async function syncNewsAndRender(){
         scheduleMapResize();
     });
 
-    // ?綜等??????結?鞈?
+    // 暺??啣??嗉絲?賢?
     map.on("click", () => {
         if (window.innerWidth < 768) {
             sidebar.classList.add("drawer-collapsed");
@@ -3346,12 +3416,12 @@ async function syncNewsAndRender(){
     }
     function getReportOptionsForEvent(ev) {
     const resolvedOption = isActivityEvent(ev) || isSportsEvent(ev)
-        ? "活動資訊不正確"
+        ? "活動資訊錯誤"
         : isTrafficEvent(ev)
-            ? "交通資訊不正確"
-            : "事件資訊不正確";
+            ? "路況資訊錯誤"
+            : "事件資訊錯誤";
 
-    return ["位置不正確", resolvedOption, "重複事件", "不是即時事件", "資料過期", "其他"];
+    return ["位置錯誤", resolvedOption, "重複事件", "不是此類事件", "資料過期", "其他"];
 }
 
 function renderReportTypeOptions(ev) {
@@ -3429,7 +3499,7 @@ function openReportModal(eventOrId) {
 async function submitReport() {
     const ev = currentReportEvent;
     if (!ev) {
-        showReportError("找不到要回報的事件，請重新開啟回報視窗。");
+        showReportError("找不到事件資料，請重新開啟回報。");
         return;
     }
 
@@ -3461,7 +3531,7 @@ async function submitReport() {
                 createdAt: new Date().toISOString()
             })
         });
-        showReportSuccess("已收到回報。");
+        showReportSuccess("已收到回報");
         if (reportCloseTimer) clearTimeout(reportCloseTimer);
         reportCloseTimer = setTimeout(closeReportModal, 900);
     } catch (error) {
@@ -3474,7 +3544,7 @@ async function submitReport() {
         }
     }
 }
-    // CONCEPT DEMO MODAL ??????????????????????????????????????????????????????????????????????
+    // CONCEPT DEMO MODAL ???????????????????????????????????
     function checkBetaModal(){
         localStorage.setItem("beta_accepted", "true");
         betaModal.classList.remove("visible");
@@ -3489,13 +3559,13 @@ async function submitReport() {
         const textPairs = [
             [".brand-title", "島嶼脈搏 Island Pulse"],
             [".brand-sub", isOnline ? "TW Online 視覺模式" : "GOLDEN PIN CONCEPT EDITION"],
-            [".brand-note", "公共事件地圖"],
-            [".sidebar-title", "公共事件清單"],
-            [".toolbar-caption", "公共事件地圖"],
+            [".brand-note", "台灣即時事件地圖｜Concept Demo"],
+            [".sidebar-title", "台灣即時事件清單"],
+            [".toolbar-caption", "台灣即時事件地圖"],
             ["#server-status", "視覺模式啟用中"],
-            ["#player-count", "即時資料"],
-            ["#tw-online-count", "即時資料"],
-            ["#hero-mode-copy", isOnline ? "TW Online 視覺模式" : "公共事件地圖"]
+            ["#player-count", "Concept Demo"],
+            ["#tw-online-count", "Concept Demo"],
+            ["#hero-mode-copy", isOnline ? "TW Online 視覺模式" : "台灣地圖"]
         ];
         textPairs.forEach(([selector, text]) => {
             const el = document.querySelector(selector);
@@ -3508,25 +3578,25 @@ async function submitReport() {
         });
         ["search-input", "event-search", "event-search-mobile"].forEach(id => {
             const searchEl = document.getElementById(id);
-            if (searchEl) searchEl.placeholder = "搜尋事件、地區或關鍵字";
+            if (searchEl) searchEl.placeholder = "搜尋城市、分類或事件";
         });
     }
 
-    // ???? DONATE ??????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? DONATE ???????????????????????????????????????????????
     // Override copy mapper to keep mode labels consistent (normal / fortune / online).
     function applyConceptCopy(){
         const isOnline = currentMapMode === "online";
         const isFortune = currentMapMode === "fortune";
         const textPairs = [
             [".brand-title", "島嶼脈搏 Island Pulse"],
-            [".brand-sub", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "事件風險模式" : "公共事件地圖")],
-            [".brand-note", "公共事件地圖"],
-            [".sidebar-title", isFortune ? "事件風險清單" : "公共事件清單"],
-            [".toolbar-caption", isFortune ? "依風險層級篩選事件" : "公共事件地圖"],
+            [".brand-sub", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo")],
+            [".brand-note", "台灣即時事件地圖｜Concept Demo"],
+            [".sidebar-title", isFortune ? "周邊事件判定" : "台灣即時事件清單"],
+            [".toolbar-caption", isFortune ? "以你的位置為中心判讀附近事件" : "台灣即時事件地圖"],
             ["#server-status", "視覺模式啟用中"],
-            ["#player-count", "即時資料"],
-            ["#tw-online-count", "即時資料"],
-            ["#hero-mode-copy", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "事件風險模式" : "公共事件地圖")]
+            ["#player-count", "Concept Demo"],
+            ["#tw-online-count", "Concept Demo"],
+            ["#hero-mode-copy", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "趨吉避凶模式" : "台灣地圖")]
         ];
         textPairs.forEach(([selector, text]) => {
             const el = document.querySelector(selector);
@@ -3535,7 +3605,7 @@ async function submitReport() {
         const sidebarSubtitle = document.getElementById("sidebar-subtitle");
         if (sidebarSubtitle) {
             sidebarSubtitle.textContent = isFortune
-                ? "依事件性質整理風險與亮點"
+                ? "以目前位置為中心，整理附近值得靠近與需要避開的事件。"
                 : "";
         }
         document.querySelectorAll(".donate-btn").forEach(btn => {
@@ -3546,8 +3616,8 @@ async function submitReport() {
         ["search-input", "event-search", "event-search-mobile"].forEach(id => {
             const searchEl = document.getElementById(id);
             if (searchEl) searchEl.placeholder = currentMapMode === "fortune"
-                ? "搜尋風險事件或地區"
-                : "搜尋事件、地區或關鍵字";
+                ? "搜尋附近事件、地點或分類"
+                : "搜尋城市、分類或事件";
         });
     }
 
@@ -3561,13 +3631,12 @@ async function submitReport() {
             const div=document.createElement('div'); div.innerHTML=html;
             document.body.appendChild(div); div.querySelector('form').submit();
         }catch(e){
-            alert('付款建立失敗，請稍後再試。');
+            alert('付款初始化失敗，請稍後再試。');
             btn.innerHTML='支持作品'; btn.disabled=false;
         }
     }
-    window.handleDonate = handleDonate;
 
-    // ???? EVENTS ??????????????????????????????????????????????????????????????????????????????????????????????
+    // ?? EVENTS ???????????????????????????????????????????????
     window.openReportModal=openReportModal;
 
     document.addEventListener("click", e => {
@@ -3635,285 +3704,6 @@ async function submitReport() {
     });
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
 
-
-
-    // VIDEO DEMO MODE — animated cursor + guided interactions for 18–40s screen recording.
-    function isVideoDemoMode() {
-        try {
-            const params = new URLSearchParams(window.location.search);
-            return params.get("videoDemo") === "1" || params.has("videoDemo");
-        } catch {
-            return false;
-        }
-    }
-
-    function injectVideoDemoStyles() {
-        if (document.getElementById("video-demo-style")) return;
-        const style = document.createElement("style");
-        style.id = "video-demo-style";
-        style.textContent = `
-            body.video-demo-mode * { cursor: none !important; }
-            body.video-demo-mode #app-header,
-            body.video-demo-mode #news-sidebar,
-            body.video-demo-mode #map-stage { transition: filter .35s ease, opacity .35s ease; }
-            .video-demo-cursor {
-                position: fixed;
-                left: 0;
-                top: 0;
-                width: 34px;
-                height: 34px;
-                z-index: 100000;
-                pointer-events: none;
-                transform: translate3d(-80px, -80px, 0);
-                transition: transform .78s cubic-bezier(.18,.82,.2,1);
-                filter: drop-shadow(0 12px 22px rgba(0,0,0,.55));
-            }
-            .video-demo-cursor::before {
-                content: "";
-                position: absolute;
-                left: 7px;
-                top: 4px;
-                width: 18px;
-                height: 24px;
-                background: #f8fbff;
-                clip-path: polygon(0 0, 0 100%, 7px 78%, 13px 96%, 18px 94%, 12px 74%, 27px 74%);
-                border: 1px solid rgba(15,23,42,.85);
-                box-shadow: 0 0 0 1px rgba(255,255,255,.22);
-            }
-            .video-demo-cursor.clicking::after {
-                content: "";
-                position: absolute;
-                left: 50%;
-                top: 50%;
-                width: 54px;
-                height: 54px;
-                border-radius: 999px;
-                border: 2px solid rgba(255,255,255,.78);
-                transform: translate(-50%, -50%) scale(.35);
-                animation: videoDemoClick .52s ease-out forwards;
-            }
-            @keyframes videoDemoClick {
-                0% { opacity: .95; transform: translate(-50%, -50%) scale(.28); }
-                100% { opacity: 0; transform: translate(-50%, -50%) scale(1.35); }
-            }
-            .video-demo-callout {
-                position: fixed;
-                left: 50%;
-                bottom: 30px;
-                z-index: 99999;
-                min-width: 260px;
-                max-width: 520px;
-                transform: translateX(-50%) translateY(18px);
-                opacity: 0;
-                padding: 12px 18px;
-                border-radius: 999px;
-                color: #e8edf8;
-                background: rgba(9, 14, 24, .84);
-                border: 1px solid rgba(138,155,184,.24);
-                box-shadow: 0 18px 50px rgba(0,0,0,.42);
-                backdrop-filter: blur(16px);
-                font-family: var(--font-body, "Noto Sans TC", system-ui, sans-serif);
-                font-size: 14px;
-                font-weight: 700;
-                text-align: center;
-                letter-spacing: .02em;
-                transition: opacity .35s ease, transform .35s ease;
-                pointer-events: none;
-            }
-            .video-demo-callout.visible {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
-            }
-            .video-demo-target-ring {
-                position: fixed;
-                z-index: 99998;
-                pointer-events: none;
-                border-radius: 16px;
-                border: 2px solid rgba(255,255,255,.72);
-                box-shadow: 0 0 0 7px rgba(47,128,237,.18), 0 0 30px rgba(47,128,237,.38);
-                opacity: 0;
-                transition: opacity .2s ease, left .35s ease, top .35s ease, width .35s ease, height .35s ease;
-            }
-            .video-demo-target-ring.visible { opacity: 1; }
-            body.video-demo-mode .filter-chip.video-demo-active,
-            body.video-demo-mode .event-card-v2.video-demo-active,
-            body.video-demo-mode .react-btn.video-demo-active,
-            body.video-demo-mode .popup-btn-v2.video-demo-active {
-                outline: 2px solid rgba(255,255,255,.72);
-                outline-offset: 4px;
-                box-shadow: 0 0 0 7px rgba(47,128,237,.18), 0 0 30px rgba(47,128,237,.38) !important;
-            }
-        `;
-        document.head.appendChild(style);
-    }
-
-    function getVideoDemoUi() {
-        injectVideoDemoStyles();
-        document.body.classList.add("video-demo-mode");
-        let cursor = document.getElementById("video-demo-cursor");
-        if (!cursor) {
-            cursor = document.createElement("div");
-            cursor.id = "video-demo-cursor";
-            cursor.className = "video-demo-cursor";
-            cursor.setAttribute("aria-hidden", "true");
-            document.body.appendChild(cursor);
-        }
-        let callout = document.getElementById("video-demo-callout");
-        if (!callout) {
-            callout = document.createElement("div");
-            callout.id = "video-demo-callout";
-            callout.className = "video-demo-callout";
-            document.body.appendChild(callout);
-        }
-        let ring = document.getElementById("video-demo-target-ring");
-        if (!ring) {
-            ring = document.createElement("div");
-            ring.id = "video-demo-target-ring";
-            ring.className = "video-demo-target-ring";
-            document.body.appendChild(ring);
-        }
-        return { cursor, callout, ring };
-    }
-
-    function videoDemoSleep(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async function videoDemoWaitFor(predicate, timeout = 9000, interval = 120) {
-        const start = Date.now();
-        while (Date.now() - start < timeout) {
-            const value = predicate();
-            if (value) return value;
-            await videoDemoSleep(interval);
-        }
-        return null;
-    }
-
-    function videoDemoSetCallout(text) {
-        const { callout } = getVideoDemoUi();
-        callout.textContent = text || "";
-        callout.classList.toggle("visible", Boolean(text));
-    }
-
-    function videoDemoGetPoint(target) {
-        if (!target || typeof target.getBoundingClientRect !== "function") {
-            return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
-        }
-        const rect = target.getBoundingClientRect();
-        return {
-            x: rect.left + rect.width / 2,
-            y: rect.top + rect.height / 2,
-            rect
-        };
-    }
-
-    async function videoDemoMoveTo(target, options = {}) {
-        const { cursor, ring } = getVideoDemoUi();
-        const { x, y, rect } = videoDemoGetPoint(target);
-        const offsetX = options.offsetX || 0;
-        const offsetY = options.offsetY || 0;
-        cursor.style.transform = `translate3d(${x + offsetX}px, ${y + offsetY}px, 0)`;
-        document.querySelectorAll(".video-demo-active").forEach(el => el.classList.remove("video-demo-active"));
-        if (target && target.classList) target.classList.add("video-demo-active");
-        if (rect) {
-            const pad = options.ringPad ?? 8;
-            ring.style.left = `${rect.left - pad}px`;
-            ring.style.top = `${rect.top - pad}px`;
-            ring.style.width = `${rect.width + pad * 2}px`;
-            ring.style.height = `${rect.height + pad * 2}px`;
-            ring.style.borderRadius = options.ringRadius || "16px";
-            ring.classList.add("visible");
-        } else {
-            ring.classList.remove("visible");
-        }
-        await videoDemoSleep(options.duration || 850);
-    }
-
-    async function videoDemoClick(target, options = {}) {
-        await videoDemoMoveTo(target, options);
-        const { cursor } = getVideoDemoUi();
-        cursor.classList.remove("clicking");
-        void cursor.offsetWidth;
-        cursor.classList.add("clicking");
-        if (target) {
-            target.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true, view: window }));
-            target.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true, view: window }));
-            target.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
-        }
-        await videoDemoSleep(options.after || 520);
-    }
-
-    function videoDemoFindCategoryButton(category) {
-        return document.querySelector(`#category-filters [data-category="${category}"]`);
-    }
-
-    function videoDemoFindBestEventCard() {
-        return document.querySelector("#event-list .event-card-v2") || null;
-    }
-
-    function videoDemoFindSupportButton() {
-        return document.querySelector(".mapboxgl-popup .react-btn.muyu:not(:disabled), .custom-popup .react-btn.muyu:not(:disabled), .event-card-v2.selected .react-btn.muyu:not(:disabled), #event-list .react-btn.muyu:not(:disabled)");
-    }
-
-    async function startVideoDemoMode() {
-        if (!isVideoDemoMode()) return;
-        const runId = Date.now();
-        window.__islandPulseVideoDemoRunId = runId;
-        getVideoDemoUi();
-        console.log("[videoDemo] start", runId);
-
-        await videoDemoWaitFor(() => document.querySelector("#event-list .event-card-v2") && parsedEvents.length > 0, 12000);
-        if (window.__islandPulseVideoDemoRunId !== runId) return;
-
-        // Keep the first beat steady for screen recording.
-        applyMapMode("normal");
-        activeCategory = "all";
-        searchKeyword = "";
-        renderCategoryButtons();
-        renderEvents();
-        closeActivePopup();
-        flyToLatLng(taiwanView.center, taiwanView.zoom, 1200);
-        videoDemoSetCallout("全台事件總覽");
-        await videoDemoSleep(1700);
-
-        const disasterBtn = await videoDemoWaitFor(() => videoDemoFindCategoryButton("disaster"), 4000);
-        videoDemoSetCallout("依事件類型篩選：災害");
-        if (disasterBtn) await videoDemoClick(disasterBtn, { ringRadius: "999px", after: 850 });
-        await videoDemoWaitFor(() => document.querySelector("#event-list .event-card-v2"), 5000);
-        await videoDemoSleep(700);
-
-        const card = videoDemoFindBestEventCard();
-        videoDemoSetCallout("點開事件，查看地點與影響程度");
-        if (card) {
-            card.scrollIntoView({ behavior: "smooth", block: "center" });
-            await videoDemoSleep(450);
-            await videoDemoClick(card, { ringPad: 6, after: 1500 });
-        }
-        await videoDemoSleep(1100);
-
-        const supportBtn = await videoDemoWaitFor(videoDemoFindSupportButton, 4500);
-        if (supportBtn) {
-            videoDemoSetCallout("公眾回應：支持 / 互動訊號");
-            await videoDemoClick(supportBtn, { ringRadius: "12px", after: 900 });
-            await videoDemoSleep(900);
-        }
-
-        const allBtn = await videoDemoWaitFor(() => videoDemoFindCategoryButton("all"), 4000);
-        videoDemoSetCallout("切回全部事件，回到全台同步總覽");
-        if (allBtn) await videoDemoClick(allBtn, { ringRadius: "999px", after: 800 });
-        closeActivePopup();
-        flyToLatLng(taiwanView.center, taiwanView.zoom, 1400);
-        await videoDemoSleep(1900);
-
-        videoDemoSetCallout("Real-time events across Taiwan.");
-        document.querySelectorAll(".video-demo-active").forEach(el => el.classList.remove("video-demo-active"));
-        const { ring } = getVideoDemoUi();
-        ring.classList.remove("visible");
-        await videoDemoSleep(2200);
-        videoDemoSetCallout("");
-        console.log("[videoDemo] complete", runId);
-    }
-
     document.addEventListener("DOMContentLoaded",()=>{
         populateCityFilters();
         removeMapOverlays();
@@ -3922,15 +3712,15 @@ async function submitReport() {
         updateResponsiveControlsPlacement();
         updateMobileDrawerVisibilityForMode();
         checkBetaModal();
-        parsedEvents = [];
+        parsedEvents = DEMO_EVENTS.map(normalizeDisplayEvent);
         applyMapMode(currentMapMode);
         applyConceptCopy();
         syncNewsAndRender();
-        if (isVideoDemoMode()) {
-            window.setTimeout(startVideoDemoMode, 950);
-        }
         updateNearbyButtonsV2();
         syncNearbyRadiusSelectors();
         setNearbyStatusTextV2();
         loadTwGeoJSON();
     });
+
+
+
