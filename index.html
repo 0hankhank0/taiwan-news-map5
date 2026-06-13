@@ -1979,6 +1979,66 @@
      content: none; 
  }
 
+
+
+/* === Category filter chips: match compact two-row reference === */
+#category-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 9px;
+    margin-bottom: 14px;
+}
+.filter-chip,
+.filter-chip-v2 {
+    min-height: 38px;
+    padding: 0 17px 0 13px;
+    border-radius: 999px;
+    gap: 8px;
+    background: rgba(16, 28, 50, 0.92);
+    border: 1px solid rgba(122, 145, 184, 0.24);
+    color: #9fb2cf;
+    font-family: "Noto Sans TC", "Space Grotesk", sans-serif;
+    font-size: 13.5px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.045),
+        0 8px 20px rgba(0,0,0,0.12);
+}
+.filter-chip:hover,
+.filter-chip-v2:hover {
+    border-color: rgba(148, 170, 210, 0.38);
+    color: #d6e3f7;
+    background: rgba(21, 36, 62, 0.96);
+    transform: translateY(-1px);
+}
+.filter-chip.active,
+.filter-chip-v2.active {
+    background: var(--chip-bg, #64748B) !important;
+    border-color: rgba(255,255,255,0.14) !important;
+    color: #fff !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.16),
+        0 10px 24px color-mix(in srgb, var(--chip-bg, #64748B) 34%, transparent) !important;
+}
+.filter-chip .chip-icon,
+.filter-chip-v2 .chip-icon {
+    width: 16px;
+    height: 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: currentColor;
+    opacity: 0.9;
+}
+.filter-chip .chip-icon svg,
+.filter-chip-v2 .chip-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 1.65px;
+}
+
     </style>
 </head>
 <body>
@@ -2238,17 +2298,17 @@
         criminal:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>`,
         medical:      `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>`,
         activity:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>`,
+        accident:     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
         other:        `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     };
 
     const CATEGORY_CONFIG = {
-        all:          { text: "全部",     icon: "fa-list",                color: "#4A5878" },
-        disaster:     { text: "災害事故", icon: "fa-triangle-exclamation", color: "#C0392B" },
-        criminal:     { text: "刑事案件", icon: "fa-handcuffs",           color: "#8E44AD" },
-        traffic:      { text: "交通事故", icon: "fa-car-burst",           color: "#2471A3" },
-        medical:      { text: "醫療緊急", icon: "fa-truck-medical",       color: "#D35400" },
+        all:          { text: "全部事件", icon: "fa-list",                color: "#64748B" },
+        traffic:      { text: "交通",     icon: "fa-car-burst",           color: "#2F80ED" },
+        disaster:     { text: "災害",     icon: "fa-triangle-exclamation", color: "#C0392B" },
+        accident:     { text: "意外",     icon: "fa-kit-medical",         color: "#F97316" },
         activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
-        other:        { text: "其他事件", icon: "fa-circle-info",         color: "#4A5878" }
+        other:        { text: "其他",     icon: "fa-circle-info",         color: "#64748B" }
     };
 
     const ALERT_COLOR_MAP = {
@@ -2500,16 +2560,22 @@
 
     const CATEGORY_MAP = {
         normal: {
-            all: "all", disaster: "disaster", criminal: "criminal", traffic: "traffic", 
-            medical: "medical", activity: "activity", other: "other"
+            all: "all", traffic: "traffic", construction: "traffic",
+            accident: "accident", incident: "accident", safety: "accident", criminal: "accident", medical: "accident", fire: "accident", publicsafety: "accident", "public-safety": "accident",
+            disaster: "disaster", typhoon: "disaster", earthquake: "disaster", weather: "disaster", climate: "disaster",
+            activity: "activity", event: "activity", market: "activity", exhibition: "activity", sports: "activity",
+            other: "other"
         },
         online: {
-            all: "all", disaster: "disaster", criminal: "accident", traffic: "traffic", 
-            medical: "construction", activity: "activity", other: "other"
+            all: "all", traffic: "traffic", construction: "traffic",
+            accident: "accident", incident: "accident", safety: "accident", criminal: "accident", medical: "accident", fire: "accident", publicsafety: "accident", "public-safety": "accident",
+            disaster: "disaster", typhoon: "disaster", earthquake: "disaster", weather: "disaster", climate: "disaster",
+            activity: "activity", event: "activity", market: "activity", exhibition: "activity", sports: "activity",
+            other: "other"
         }
     };
 
-    const FIXED_CATEGORY_ORDER = ["all", "disaster", "criminal", "traffic", "medical", "activity", "other"];
+    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity"];
 
     const SOURCE_CONFIG = {
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
@@ -2998,7 +3064,8 @@
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
             if(!isValidTaiwanCoord(lat, lng)) return false;
 
-            if(activeCategory!=="all"&&ev.category!==activeCategory) return false;
+            const mappedCategory = (CATEGORY_MAP.normal[ev.category] || ev.category || "other");
+            if(activeCategory!=="all" && mappedCategory!==activeCategory) return false;
             if(cityFilter!=="all"){
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
             }

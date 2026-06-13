@@ -26,13 +26,12 @@
     };
 
     const CATEGORY_CONFIG = {
-        all:          { text: "全部事件", icon: "fa-list",                color: "#4A5878" },
+        all:          { text: "全部事件", icon: "fa-list",                color: "#64748B" },
+        traffic:      { text: "交通",     icon: "fa-car-burst",           color: "#2F80ED" },
         disaster:     { text: "災害",     icon: "fa-triangle-exclamation", color: "#C0392B" },
-        criminal:     { text: "治安",     icon: "fa-handcuffs",           color: "#8E44AD" },
-        traffic:      { text: "交通",       icon: "fa-car-burst",           color: "#2471A3" },
-        medical:      { text: "醫療",       icon: "fa-truck-medical",       color: "#D35400" },
+        accident:     { text: "意外",     icon: "fa-kit-medical",         color: "#F97316" },
         activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
-        other:        { text: "其他",     icon: "fa-circle-info",         color: "#4A5878" }
+        other:        { text: "其他",     icon: "fa-circle-info",         color: "#64748B" }
     };
 
     const ALERT_COLOR_MAP = {
@@ -319,7 +318,7 @@
         }
     };
 
-    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity"];
+    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity", "other"];
     const FORTUNE_CATEGORY_ORDER = ["all", "great-risk", "risk", "good", "great-good"];
     const FORTUNE_CONFIG = {
         "great-risk": { label: "大凶", color: "#EF4444", icon: "fa-triangle-exclamation", actionText: "持續注意" },
