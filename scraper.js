@@ -5,6 +5,7 @@ const mode = process.argv.includes("--mode=news") ? "news" :
              process.argv.includes("--mode=traffic") ? "traffic" : "all";
 
 const { Redis } = require("@upstash/redis");
+const { normalizeEventsForFrontend } = require("./api/event-normalizer");
 
 const kv = new Redis({
   url: process.env.KV_REST_API_URL,
@@ -1931,8 +1932,7 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
 
     // --- TW Online 文案改寫 (針對新事件或尚未改寫的事件) ---
     console.log("📝 開始進行事件驗證與 TW Online 文案改寫...");
-    const oldEventsRaw = await kv.get("taiwan_traffic_events");
-    const oldEvents = oldEventsRaw ? (typeof oldEventsRaw === "string" ? JSON.parse(oldEventsRaw) : oldEventsRaw) : [];
+    const oldEvents = normalizeEventsForFrontend(await kv.get("taiwan_traffic_events"));
     
     const validatedMerged = [];
     for (let i = 0; i < finalMerged.length; i++) {
@@ -1976,14 +1976,15 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
         validatedMerged.push(enriched);
       }
   
-      await kv.set("taiwan_traffic_events", JSON.stringify(validatedMerged));
+      const eventsForFrontend = normalizeEventsForFrontend(validatedMerged);
+      await kv.set("taiwan_traffic_events", eventsForFrontend);
       if ((mode === "traffic" || mode === "all") && !trafficRefreshHealthy) {
         console.error(
           `TRAFFIC_REFRESH_FAILED status=${trafficSummary.status} liveSource=${trafficSummary.liveSource || "none"} pbs=${trafficSummary.pbs.count} tdx=${trafficSummary.tdx.count} cache=${trafficSummary.cacheCount}`
         );
         process.exitCode = 1;
       }
-      console.log(`💾 全部完工！最終合計: ${validatedMerged.length} 筆 (原始: ${initialEvents.length} 筆)`);
+      console.log(`💾 全部完工！最終合計: ${eventsForFrontend.length} 筆 (原始: ${initialEvents.length} 筆)`);
 
   } catch (error) {
     console.error("💥 錯誤:", error);
