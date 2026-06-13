@@ -3208,3 +3208,30 @@ body.tw-online-mode .donate-btn:hover {
         min-width: 0 !important;
     }
 }
+
+/* === Stable marker anchor fix: Mapbox/Leaflet marker coordinate is the pin tip. === */
+.map-pin.event-marker,
+.mapboxgl-marker.map-pin {
+    width: 0 !important;
+    height: 0 !important;
+    overflow: visible !important;
+    transform-origin: 0 0 !important;
+}
+.map-pin.event-marker .map-pin-visual,
+.mapboxgl-marker.map-pin .map-pin-visual,
+.leaflet-demo-pin .map-pin-visual {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    transform: translate(-50%, -100%) !important;
+    transform-origin: center bottom !important;
+    overflow: visible !important;
+}
+.leaflet-demo-pin {
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    overflow: visible !important;
+}
