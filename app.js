@@ -506,13 +506,7 @@
                         shouldPinPulse(ev, severity)
                     );
                     const marker = L.marker([latlng[0], latlng[1]], {
-                        icon: L.divIcon({
-                            html: element.outerHTML,
-                            className: "leaflet-demo-pin",
-                            iconSize: [0, 0],
-                            iconAnchor: [0, 0],
-                            popupAnchor: [0, -42]
-                        })
+                        icon: makeLeafletMarkerIcon(element)
                     }).addTo(fallbackMap)
                         .bindPopup(buildPopupHtml(ev, displayTitle, displayContent, markerStyle), {
                             className: "custom-popup",
@@ -1765,6 +1759,8 @@
         const wrapper = document.createElement("div");
         const band = severity >= 4 ? "high" : severity >= 2 ? "medium" : "low";
         wrapper.className = `map-pin marker-severity-${severity} marker-${band}${isMobile ? " marker-mobile-simple" : ""}`;
+        wrapper.style.width = `${outerW}px`;
+        wrapper.style.height = `${outerH}px`;
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
         const svgFilter = isMobile ? "" : ` style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});"`;
@@ -1778,6 +1774,18 @@
                 <span class="map-pin-icon" style="width:${iconSize}px;height:${iconSize}px;"><span class="marker-svg-icon">${svg}</span></span>
             </span>`;
         return wrapper;
+    }
+
+    function makeLeafletMarkerIcon(element) {
+        const width = parseInt(element.style.width, 10) || 44;
+        const height = parseInt(element.style.height, 10) || 64;
+        return L.divIcon({
+            html: element.outerHTML,
+            className: "leaflet-demo-pin",
+            iconSize: [width, height],
+            iconAnchor: [Math.round(width / 2), height],
+            popupAnchor: [0, -height]
+        });
     }
 
     function spawnMeritEffect(btn) {
@@ -2708,7 +2716,7 @@
                     markerStyle.glow,
                     fortune ? ["great-risk", "great-good"].includes(fortune.level) : pinPulse
                 ),
-                anchor: "center",
+                anchor: "bottom",
                 offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
@@ -2756,13 +2764,7 @@
                     fortune ? ["great-risk", "great-good"].includes(fortune.level) : shouldPinPulse(ev, severity)
                 );
                 const marker = L.marker([latlng[0], latlng[1]], {
-                    icon: L.divIcon({
-                        html: element.outerHTML,
-                        className: "leaflet-demo-pin",
-                        iconSize: [0, 0],
-                        iconAnchor: [0, 0],
-                        popupAnchor: [0, -42]
-                    })
+                    icon: makeLeafletMarkerIcon(element)
                 }).addTo(window._fallbackMap)
                     .bindPopup(buildPopupHtmlV2(ev, displayTitle, displayContent, markerStyle), {
                         className: "custom-popup",
