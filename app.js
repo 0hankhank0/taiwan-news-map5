@@ -509,8 +509,8 @@
                         icon: L.divIcon({
                             html: element.outerHTML,
                             className: "leaflet-demo-pin",
-                            iconSize: [pinW, pinH],
-                            iconAnchor: [pinW / 2, pinH],
+                            iconSize: [0, 0],
+                            iconAnchor: [0, 0],
                             popupAnchor: [0, -pinH]
                         })
                     }).addTo(fallbackMap)
@@ -1778,7 +1778,7 @@
         }
     }
     function makeMarkerElement(color, svg, severity = 2, glowColor = null, showPulse = false){
-        const isMobile = isMobileViewport();
+        const isMobile = typeof isMobileViewport === "function" ? isMobileViewport() : false;
         const pinSizes = { 1: 34, 2: 38, 3: 42, 4: 46, 5: 52 };
         const glowPx = { 1: 6, 2: 10, 3: 14, 4: 20, 5: 28 };
         const bodySize = pinSizes[severity] || 38;
@@ -1787,18 +1787,26 @@
         const outerW = Math.round(bodySize * 1.18);
         const outerH = Math.round(bodySize * 1.7);
         const iconSize = Math.round(bodySize * 0.42);
-        const wrapper = document.createElement("div");
         const band = severity >= 4 ? "high" : severity >= 2 ? "medium" : "low";
-        wrapper.className = `map-pin marker-severity-${severity} marker-${band}${isMobile ? " marker-mobile-simple" : ""}`;
+        const wrapper = document.createElement("div");
+        wrapper.className = `map-pin event-marker marker-severity-${severity} marker-${band}${isMobile ? " marker-mobile-simple" : ""}`;
         wrapper.dataset.pinWidth = String(outerW);
         wrapper.dataset.pinHeight = String(outerH);
-        wrapper.style.width = `${outerW}px`;
-        wrapper.style.height = `${outerH}px`;
+
+        // 重要：外層只代表地圖座標點，維持 0x0；真正圖釘由內層視覺元素往左上偏移。
+        // 這樣縮放、拖曳、pitch 時，Mapbox 錨點不會再受圖釘尺寸影響而漂移。
+        wrapper.style.position = "relative";
+        wrapper.style.display = "block";
+        wrapper.style.width = "0px";
+        wrapper.style.height = "0px";
+        wrapper.style.overflow = "visible";
+        wrapper.style.pointerEvents = "auto";
+        wrapper.style.transformOrigin = "0 0";
         wrapper.style.setProperty("--pin-color", color);
         wrapper.style.setProperty("--pin-glow", g);
         const svgFilter = isMobile ? "" : ` style="filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45)) drop-shadow(0 0 ${glowR}px ${g});"`;
         wrapper.innerHTML = `
-            <span class="map-pin-visual" style="position:relative;display:block;width:${outerW}px;height:${outerH}px;">
+            <span class="map-pin-visual" style="position:absolute;left:0;top:0;display:block;width:${outerW}px;height:${outerH}px;transform:translate(-50%,-100%);transform-origin:center bottom;overflow:visible;">
                 ${showPulse && !isMobile ? `<span class="pin-pulse" style="background:${color};width:${bodySize}px;height:${bodySize}px;"></span>` : ""}
                 <svg class="map-pin-svg" viewBox="0 0 64 92" aria-hidden="true"${svgFilter}>
                     <path class="map-pin-shape" d="M32 4C15.432 4 2 17.432 2 34c0 26.148 30 58 30 58s30-31.852 30-58C62 17.432 48.568 4 32 4z"></path>
@@ -2711,7 +2719,7 @@
             const marker = new mapboxgl.Marker({
                 element: markerElement,
                 // 圖釘座標要鎖在「尖端」，縮放時才不會看起來漂移。
-                anchor: "bottom",
+                anchor: "center",
                 offset: [0, 0]
             });
             enableSubpixelPositioning(marker);
@@ -2764,8 +2772,8 @@
                     icon: L.divIcon({
                         html: element.outerHTML,
                         className: "leaflet-demo-pin",
-                        iconSize: [pinW, pinH],
-                        iconAnchor: [pinW / 2, pinH],
+                        iconSize: [0, 0],
+                        iconAnchor: [0, 0],
                         popupAnchor: [0, -pinH]
                     })
                 }).addTo(window._fallbackMap)
