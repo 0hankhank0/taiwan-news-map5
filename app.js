@@ -26,12 +26,12 @@
     };
 
     const CATEGORY_CONFIG = {
-        all:          { text: "全部事件", icon: "fa-list",                color: "#64748B" },
-        traffic:      { text: "交通",     icon: "fa-car-burst",           color: "#2F80ED" },
-        disaster:     { text: "災害",     icon: "fa-triangle-exclamation", color: "#C0392B" },
-        accident:     { text: "意外",     icon: "fa-kit-medical",         color: "#F97316" },
-        activity:     { text: "活動",     icon: "fa-users",               color: "#1E8449" },
-        other:        { text: "其他",     icon: "fa-circle-info",         color: "#64748B" }
+        all:      { text: "全部事件", icon: "fa-list", color: "#64748B" },
+        traffic:  { text: "交通", icon: "fa-car-burst", color: "#2F80ED" },
+        disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#C0392B" },
+        accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
+        activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
+        other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     };
 
     const ALERT_COLOR_MAP = {
@@ -91,19 +91,38 @@
         incense: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5c-1.5 1-1.5 2.2 0 3.2s1.5 2.2 0 3.2"/><path d="M12 4c-1.5 1.1-1.5 2.4 0 3.5s1.5 2.4 0 3.5"/><path d="M16 5c-1.5 1-1.5 2.2 0 3.2s1.5 2.2 0 3.2"/><line x1="9" y1="12" x2="9" y2="21"/><line x1="12" y1="12" x2="12" y2="21"/><line x1="15" y1="12" x2="15" y2="21"/><line x1="7" y1="21" x2="17" y2="21"/></svg>`,
     };
 
-    function getCategoryVisual(category) {
-        const isOnline = currentMapMode === "online";
-        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
-        const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
-        const baseCat = CATEGORY_GROUP_MAP[category] || category;
-        const mappedCat = mapConfig[baseCat] || baseCat;
-        const c = config[mappedCat] || config.other;
-        const meta = CAT_META[mappedCat] || CAT_META.other;
-        return { ...c, mappedCat, meta, color: c.color };
+    function getEventCategoryText(ev) {
+        if (!ev || typeof ev !== "object") return "";
+        return normalizeText([ev.title, ev.summary, ev.content, ev.text, ev.location, ev.city, ev.source].filter(Boolean).join(" ")).toLowerCase();
+    }
+
+    function inferEventGroupCategory(ev) {
+        const raw = normalizeText(typeof ev === "string" ? ev : (ev?.category || ev?.groupCategory || ev?.type || "other")).toLowerCase();
+        const mapped = CATEGORY_GROUP_MAP[raw] || raw || "other";
+        const text = typeof ev === "object" ? getEventCategoryText(ev) : "";
+
+        if (["activity", "event", "market", "exhibition", "sports"].includes(raw) || /(活動|展覽|市集|演唱會|球賽|賽事|路跑|表演|節慶)/.test(text)) return "activity";
+        if (["disaster", "earthquake", "typhoon", "weather", "climate"].includes(raw) || /(地震|颱風|豪雨|大雨|淹水|積水|土石流|落石|坍方|災害|災情|強風|停班停課)/.test(text)) return "disaster";
+        if (["traffic", "construction", "road", "congestion", "jam"].includes(raw)) {
+            if (/(車禍|交通事故|追撞|擦撞|對撞|自撞|撞上|翻車|摔車|肇事|事故.*(傷|死|送醫)|死亡|傷亡)/.test(text)) return "accident";
+            return "traffic";
+        }
+        if (["accident", "incident", "safety", "criminal", "medical", "fire", "arson", "publicsafety", "public-safety"].includes(raw) || /(意外|事故|傷亡|死亡|送醫|火災|火警|爆炸|氣爆|工安|墜落|溺水|刑案|搶劫|殺人|攻擊)/.test(text)) return "accident";
+        if (mapped === "all") return "all";
+        return ["traffic", "disaster", "accident", "activity", "other"].includes(mapped) ? mapped : "other";
     }
 
     function getGroupCategory(category) {
-        return CATEGORY_GROUP_MAP[category] || category || "other";
+        return inferEventGroupCategory(category);
+    }
+
+    function getCategoryVisual(category) {
+        const isOnline = currentMapMode === "online";
+        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
+        const mappedCat = inferEventGroupCategory(category);
+        const c = config[mappedCat] || config.other;
+        const meta = CAT_META[mappedCat] || CAT_META.other;
+        return { ...c, mappedCat, meta, color: c.color };
     }
 
     function getCategoryDetailLabel(category) {
@@ -259,26 +278,33 @@
     };
 
     const CATEGORY_GROUP_MAP = {
+        all: "all",
         traffic: "traffic",
+        road: "traffic",
+        congestion: "traffic",
+        jam: "traffic",
         construction: "traffic",
+        roadwork: "traffic",
         accident: "accident",
         incident: "accident",
         safety: "accident",
         criminal: "accident",
         medical: "accident",
         fire: "accident",
+        arson: "accident",
         publicsafety: "accident",
         "public-safety": "accident",
         disaster: "disaster",
         earthquake: "disaster",
         typhoon: "disaster",
         climate: "disaster",
-        weather: "weather",
+        weather: "disaster",
         activity: "activity",
         event: "activity",
         market: "activity",
         exhibition: "activity",
-        sports: "activity"
+        sports: "activity",
+        other: "other"
     };
 
     const SUBCATEGORY_LABELS = {
@@ -304,18 +330,8 @@
     };
 
     const CATEGORY_MAP = {
-        normal: {
-            all: "all", traffic: "traffic", construction: "traffic",
-            accident: "accident", incident: "accident", safety: "accident", criminal: "accident", medical: "accident", fire: "accident", publicsafety: "accident", "public-safety": "accident",
-            disaster: "disaster", typhoon: "disaster", earthquake: "disaster",
-            weather: "disaster", climate: "disaster", activity: "activity", event: "activity", market: "activity", exhibition: "activity", sports: "activity", other: "other"
-        },
-        online: {
-            all: "all", traffic: "traffic", construction: "traffic",
-            accident: "accident", incident: "accident", safety: "accident", criminal: "accident", medical: "accident", fire: "accident", publicsafety: "accident", "public-safety": "accident",
-            disaster: "disaster", typhoon: "disaster", earthquake: "disaster",
-            weather: "disaster", climate: "disaster", activity: "activity", event: "activity", market: "activity", exhibition: "activity", sports: "activity", other: "other"
-        }
+        normal: { ...CATEGORY_GROUP_MAP },
+        online: { ...CATEGORY_GROUP_MAP }
     };
 
     const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity", "other"];
@@ -357,11 +373,9 @@
     Object.assign(CATEGORY_CONFIG, {
         all: { text: "全部事件", icon: "fa-list", color: "#64748B" },
         traffic: { text: "交通", icon: "fa-car-burst", color: "#2F80ED" },
-        accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
         disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#C0392B" },
-        weather: { text: "災害", icon: "fa-cloud-showers-heavy", color: "#38BDF8" },
-        activity: { text: "活動", icon: "fa-users", color: "#1E8449" },
-        sports: { text: "活動", icon: "fa-trophy", color: "#A3A948" },
+        accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
+        activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
         other: { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     });
 
@@ -369,9 +383,9 @@
         traffic: { rgba: "47,128,237", tint: "#93C5FD", cssVar: "--cat-traffic" },
         accident: { rgba: "249,115,22", tint: "#FDBA74", cssVar: "--cat-accident" },
         disaster: { rgba: "192,57,43", tint: "#E8856A", cssVar: "--cat-disaster" },
-        weather: { rgba: "56,189,248", tint: "#BAE6FD", cssVar: "--cat-weather" },
-        activity: { rgba: "30,132,73", tint: "#86EFAC", cssVar: "--cat-activity" },
-        sports: { rgba: "163,169,72", tint: "#D9F99D", cssVar: "--cat-sports" },
+        weather: { rgba: "192,57,43", tint: "#E8856A", cssVar: "--cat-disaster" },
+        activity: { rgba: "34,197,94", tint: "#86EFAC", cssVar: "--cat-activity" },
+        sports: { rgba: "34,197,94", tint: "#86EFAC", cssVar: "--cat-activity" },
         other: { rgba: "100,116,139", tint: "#CBD5E1", cssVar: "--cat-other" },
     });
 
@@ -497,7 +511,7 @@
                     const displayContent = getEventSummary(ev);
                     const element = makeMarkerElement(
                         markerStyle.color,
-                        CAT_SVG[ev.category] || CAT_SVG.other,
+                        CAT_SVG[inferEventGroupCategory(ev)] || CAT_SVG.other,
                         severity,
                         markerStyle.glow,
                         shouldPinPulse(ev, severity)
@@ -1753,7 +1767,7 @@
             ? getFortuneFilterLabel(activeCategory)
             : (activeCategory === "all" ? "全部事件" : (getCategoryVisual(activeCategory)?.text || activeCategory));
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
-        const categoryCount = new Set(events.map(ev => getGroupCategory(normalizeText(ev.groupCategory || ev.category))).filter(Boolean)).size;
+        const categoryCount = new Set(events.map(ev => inferEventGroupCategory(ev)).filter(Boolean)).size;
 
         [
             ["sidebar-summary-count", String(events.length)],
@@ -2003,11 +2017,12 @@
     }
 
     function normalizeDisplayEvent(ev) {
-        const category = normalizeText(ev.category || "other").toLowerCase();
-        const groupCategory = getGroupCategory(normalizeText(ev.groupCategory || category).toLowerCase());
+        const originalCategory = normalizeText(ev.category || ev.type || "other").toLowerCase();
+        const groupCategory = inferEventGroupCategory({ ...ev, category: originalCategory });
         return {
             ...ev,
-            category,
+            originalCategory,
+            category: groupCategory,
             groupCategory,
             displayCategory: getCategoryVisual(groupCategory)?.text || "其他"
         };
@@ -2022,7 +2037,7 @@
             if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
             if(!isValidTaiwanCoord(lat, lng)) return false;
 
-            const groupCategory = getGroupCategory(ev.groupCategory || ev.category);
+            const groupCategory = inferEventGroupCategory(ev);
             if (currentMapMode === "fortune") {
                 if (!eventMatchesFortuneFilter(ev, activeCategory)) return false;
             } else if(activeCategory!=="all"&&groupCategory!==activeCategory) return false;
@@ -2077,9 +2092,10 @@
     }
 
     function getEventAlertType(ev) {
-        if (["disaster", "earthquake", "typhoon", "safety"].includes(ev.category)) return "disaster";
-        if (["traffic", "construction"].includes(ev.category)) return "traffic";
-        if (ev.category === "weather") return "weather";
+        const cat = inferEventGroupCategory(ev);
+        if (cat === "disaster") return "disaster";
+        if (cat === "traffic") return "traffic";
+        if (cat === "accident") return "accident";
         return null;
     }
 
@@ -2089,8 +2105,10 @@
         if (raw === "high") return 5;
         if (raw === "medium") return 3;
         if (raw === "low") return 1;
-        if (["disaster", "earthquake", "typhoon", "safety"].includes(ev.category)) return 4;
-        if (["traffic", "construction", "weather"].includes(ev.category)) return 3;
+        const cat = inferEventGroupCategory(ev);
+        if (cat === "disaster") return 4;
+        if (cat === "accident") return 3;
+        if (cat === "traffic") return 2;
         return 1;
     }
 
@@ -2102,15 +2120,15 @@
     }
 
     function resolveMarkerStyle(ev, fallbackColor) {
-        const visual = getCategoryVisual(ev.category);
-        const color = visual?.color || fallbackColor || "#2F80ED";
+        const visual = getCategoryVisual(inferEventGroupCategory(ev));
+        const color = visual?.color || fallbackColor || "#64748B";
         const meta = visual?.meta || CAT_META.other;
-        const severity = getSeverityBand(ev);
-        const glow = severity === "high"
-            ? `rgba(${meta.rgba},0.68)`
-            : severity === "medium"
-                ? `rgba(${meta.rgba},0.42)`
-                : `rgba(${meta.rgba},0.2)`;
+        const band = getSeverityBand(ev);
+        const glow = band === "high"
+            ? `rgba(${meta.rgba},0.62)`
+            : band === "medium"
+                ? `rgba(${meta.rgba},0.38)`
+                : `rgba(${meta.rgba},0.18)`;
         return { color, glow };
     }
 
@@ -2409,7 +2427,7 @@
             ? getFortuneFilterLabel(activeCategory)
             : (activeCategory === "all" ? "全部事件" : (getCategoryVisual(activeCategory)?.text || activeCategory));
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
-        const categoryCount = new Set(events.map(ev => getGroupCategory(normalizeText(ev.groupCategory || ev.category))).filter(Boolean)).size;
+        const categoryCount = new Set(events.map(ev => inferEventGroupCategory(ev)).filter(Boolean)).size;
         [
             ["sidebar-summary-count", String(events.length)],
             ["sidebar-mode-label", categoryLabel],
@@ -2659,7 +2677,7 @@
         }
 
         mapEvents.forEach((ev, index)=>{
-            const mappedCat = mapConfig[ev.category] || ev.category;
+            const mappedCat = inferEventGroupCategory(ev);
             const cat = config[mappedCat]||config.other;
             const latlng = [Number(ev.lat),Number(ev.lng)];
 
@@ -2684,7 +2702,7 @@
                     "great-good": `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2.8l2.7 5.5 6 .9-4.3 4.2 1 6-5.4-2.9-5.4 2.9 1-6-4.3-4.2 6-.9L12 2.8z"></path></svg>`,
                     neutral: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"></circle><path d="M12 8.5h.01"></path><path d="M11.2 11.5H12v4"></path></svg>`
                 }[fortune.level])
-                : (CAT_SVG[getGroupCategory(ev.category)] || CAT_SVG[ev.category] || CAT_SVG.other);
+                : (CAT_SVG[inferEventGroupCategory(ev)] || CAT_SVG.other);
 
             const catVisual = getCategoryVisual(ev.category);
             let popup = null;
@@ -3268,7 +3286,7 @@ async function syncNewsAndRender(){
 
       const catMap = {};
       events.forEach(ev => {
-        const key = getGroupCategory(ev.groupCategory || ev.category) || "other";
+        const key = inferEventGroupCategory(ev) || "other";
         catMap[key] = (catMap[key] || 0) + 1;
       });
       const sortedCats = FIXED_CATEGORY_ORDER
