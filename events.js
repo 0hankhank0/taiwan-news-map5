@@ -1,10 +1,5 @@
-const { Redis } = require("@upstash/redis");
 const { normalizeEventsForFrontend } = require("./event-normalizer");
-
-const kv = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+const { getCachedEvents } = require("./event-store");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -17,7 +12,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const storedEvents = await kv.get("taiwan_traffic_events");
+    const storedEvents = await getCachedEvents();
     const events = normalizeEventsForFrontend(storedEvents);
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
     return res.status(200).json(events);
