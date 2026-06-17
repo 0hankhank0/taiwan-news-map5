@@ -2,7 +2,7 @@
   "name": "just-happened",
   "version": "1.0.0",
   "scripts": {
-    "start": "node api/events.js",
+    "start": "node server.js",
     "scraper": "node scraper.js"
   },
   "dependencies": {
