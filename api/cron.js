@@ -1,13 +1,14 @@
 require("dotenv").config();
-const { Redis } = require("@upstash/redis");
-const kv = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-}); // 引入 Vercel KV
+const { getCachedEvents, getCachedValue, setCachedEvents, setCachedValue } = require("../event-store");
 
 const Parser = require("rss-parser");
 const axios = require("axios");
-const { OpenAI } = require("openai");
+let OpenAI = null;
+try {
+  ({ OpenAI } = require("openai"));
+} catch {
+  OpenAI = null;
+}
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
@@ -18,7 +19,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const parser = new Parser();
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
-const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+const openai = openaiApiKey && OpenAI ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
@@ -32,9 +33,13 @@ const OPENAI_TIMEOUT_MS = 5000;
 const MAX_NEWS_FOR_AI = 8;
 const SOFT_DEADLINE_MS = 7000;
 const TDX_PUBLIC_SOURCE_LIMIT = 2;
-const TDX_STATIC_CACHE_MS = 1000 * 60 * 30;
-const TDX_LIVE_CACHE_MS = 1000 * 60 * 3;
-const TDX_BACKOFF_MS = 1000 * 60 * 10;
+const TDX_STATIC_CACHE_MS = 1000 * 60 * Number(process.env.TDX_STATIC_CACHE_MINUTES || 360);
+const TDX_LIVE_CACHE_MS = 1000 * 60 * Number(process.env.TDX_LIVE_CACHE_MINUTES || 30);
+const TDX_CONSTRUCTION_CACHE_MS = 1000 * 60 * Number(process.env.TDX_CONSTRUCTION_CACHE_MINUTES || 360);
+const TDX_BACKOFF_MS = 1000 * 60 * Number(process.env.TDX_BACKOFF_MINUTES || 60);
+const TDX_STATIC_CACHE_KEY = "tdx:static_cms";
+const TDX_LIVE_CACHE_KEY = "tdx:live_cms_events";
+const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 
@@ -112,6 +117,15 @@ function setBackoffUntil(key, until) {
 let tdxConstructionCache = { expiresAt: 0, events: [] };
 let tdxStaticCmsCache = { expiresAt: 0, bySource: new Map() };
 let tdxLiveCmsCache = { expiresAt: 0, events: [] };
+
+function mapStaticCacheToRows(bySource) {
+  return Array.from(bySource.entries()).map(([key, records]) => [key, Array.from(records.entries())]);
+}
+
+function rowsToStaticCacheMap(rows) {
+  if (!Array.isArray(rows)) return new Map();
+  return new Map(rows.map(([key, records]) => [key, new Map(Array.isArray(records) ? records : [])]));
+}
 
 const CITY_FALLBACKS = Object.fromEntries(
   TDX_CITY_SOURCES.map((item) => [item.city, { city: item.city, lat: item.lat, lng: item.lng }])
@@ -333,6 +347,13 @@ async function loadStaticCmsCache(accessToken, startedAt) {
   if (now < getBackoffUntil("staticCms")) return tdxStaticCmsCache.bySource;
   if (now < tdxStaticCmsCache.expiresAt && tdxStaticCmsCache.bySource.size > 0) return tdxStaticCmsCache.bySource;
 
+  const persistedRows = await getCachedValue(TDX_STATIC_CACHE_KEY);
+  const persistedMap = rowsToStaticCacheMap(persistedRows);
+  if (persistedMap.size > 0) {
+    tdxStaticCmsCache = { bySource: persistedMap, expiresAt: now + TDX_STATIC_CACHE_MS };
+    return persistedMap;
+  }
+
   const headers = getTdxHeaders(accessToken);
   const bySource = new Map();
   const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
@@ -358,6 +379,7 @@ async function loadStaticCmsCache(accessToken, startedAt) {
   if (sawRateLimit) setBackoffUntil("staticCms", now + TDX_BACKOFF_MS);
 
   tdxStaticCmsCache = { bySource, expiresAt: now + TDX_STATIC_CACHE_MS };
+  await setCachedValue(TDX_STATIC_CACHE_KEY, mapStaticCacheToRows(bySource), { ex: Math.floor(TDX_STATIC_CACHE_MS / 1000) });
   return bySource;
 }
 
@@ -369,6 +391,13 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     const now = Date.now();
     if (now < getBackoffUntil("liveCms")) return tdxLiveCmsCache.events;
     if (now < tdxLiveCmsCache.expiresAt && tdxLiveCmsCache.events.length > 0) return tdxLiveCmsCache.events;
+
+    const persistedLive = await getCachedValue(TDX_LIVE_CACHE_KEY);
+    const persistedLiveEvents = Array.isArray(persistedLive?.events) ? persistedLive.events : persistedLive;
+    if (Array.isArray(persistedLiveEvents)) {
+      tdxLiveCmsCache = { events: persistedLiveEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
+      return persistedLiveEvents;
+    }
 
     let accessToken = preloadedToken;
     const headers = getTdxHeaders(accessToken);
@@ -398,6 +427,7 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     if (sawRateLimit) setBackoffUntil("liveCms", now + TDX_BACKOFF_MS);
 
     tdxLiveCmsCache = { events: filteredEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
+    await setCachedValue(TDX_LIVE_CACHE_KEY, { events: filteredEvents, fetchedAt: now }, { ex: Math.floor(TDX_LIVE_CACHE_MS / 1000) });
     return filteredEvents;
   } catch (error) {
     console.error("[cron] TDX fetch failed:", error.message);
@@ -413,6 +443,13 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     const now = Date.now();
     if (now < getBackoffUntil("construction")) return tdxConstructionCache.events;
     if (now < tdxConstructionCache.expiresAt && tdxConstructionCache.events.length > 0) return tdxConstructionCache.events;
+
+    const persistedConstruction = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
+    const persistedConstructionEvents = Array.isArray(persistedConstruction?.events) ? persistedConstruction.events : persistedConstruction;
+    if (Array.isArray(persistedConstructionEvents)) {
+      tdxConstructionCache = { events: persistedConstructionEvents, expiresAt: now + TDX_CONSTRUCTION_CACHE_MS };
+      return persistedConstructionEvents;
+    }
 
     const headers = getTdxHeaders(accessToken);
     let sawRateLimit = false;
@@ -437,7 +474,8 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
 
     if (sawRateLimit) setBackoffUntil("construction", now + TDX_BACKOFF_MS);
 
-    tdxConstructionCache = { events: constructionEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
+    tdxConstructionCache = { events: constructionEvents, expiresAt: now + TDX_CONSTRUCTION_CACHE_MS };
+    await setCachedValue(TDX_CONSTRUCTION_CACHE_KEY, { events: constructionEvents, fetchedAt: now }, { ex: Math.floor(TDX_CONSTRUCTION_CACHE_MS / 1000) });
     return constructionEvents;
   } catch (error) {
     console.error("[cron] TDX construction fetch failed:", error.message);
@@ -605,12 +643,12 @@ module.exports = async (req, res) => {
     const startedAt = Date.now();
     console.log("[cron] 開始執行背景資料抓取...");
 
-    let sharedAccessToken = await kv.get("tdx_access_token");
+    let sharedAccessToken = await getCachedValue("tdx_access_token");
     if (!sharedAccessToken && process.env.TDX_CLIENT_ID && process.env.TDX_CLIENT_SECRET) {
       try {
         sharedAccessToken = await fetchTDXAccessToken(startedAt);
         if (sharedAccessToken) {
-          await kv.set("tdx_access_token", sharedAccessToken, { ex: 43200 }); 
+          await setCachedValue("tdx_access_token", sharedAccessToken, { ex: 43200 }); 
         }
       } catch (error) {
         console.warn("[cron] Failed to get TDX token:", error.message);
@@ -635,7 +673,7 @@ module.exports = async (req, res) => {
 
     // --- 內部寫入 KV 前加強去重 (同一事件只保留一筆) ---
     // 獲取現有資料進行比對
-    const existingEvents = (await kv.get("taiwan_traffic_events")) || [];
+    const existingEvents = await getCachedEvents();
 
     function isDuplicateEvent(newEvent, existingEventsList) {
         const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
@@ -683,7 +721,7 @@ module.exports = async (req, res) => {
     const now = Date.now();
     const activeEvents = mergedEvents.filter(ev => (now - (ev.createdAt || 0)) < 48 * 60 * 60 * 1000);
 
-    await kv.set("taiwan_traffic_events", activeEvents, { ex: 600 });
+    await setCachedEvents(activeEvents, { ex: 600 });
 
     return res.status(200).json({ success: true, count: activeEvents.length });
   } catch (error) {

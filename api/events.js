@@ -1,9 +1,5 @@
-const { Redis } = require("@upstash/redis");
-
-const kv = new Redis({
-  url: process.env.KV_REST_API_URL,
-  token: process.env.KV_REST_API_TOKEN,
-});
+const { normalizeEventsForFrontend } = require("./event-normalizer");
+const { getCachedEvents } = require("../event-store");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -16,11 +12,12 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const events = await kv.get("taiwan_traffic_events");
+    const storedEvents = await getCachedEvents();
+    const events = normalizeEventsForFrontend(storedEvents);
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
-    return res.status(200).json(Array.isArray(events) ? events : []);
+    return res.status(200).json(events);
   } catch (error) {
-    console.error("[events] Redis fetch failed:", error.message);
+    console.error("[events] cache fetch failed:", error.message);
     return res.status(500).json([]);
   }
 };
