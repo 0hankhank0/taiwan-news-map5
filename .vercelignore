@@ -1,0 +1,9 @@
+node_modules
+exports
+.git
+.agents
+.codex
+.vercel
+0607.mp4
+*.log
+*.tmp
