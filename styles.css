@@ -3426,3 +3426,257 @@ body.tw-online-mode .donate-btn:hover {
     height: 16px;
     stroke-width: 1.65px;
 }
+
+/* === Larger desktop event list === */
+@media (min-width: 1181px) {
+    #news-sidebar {
+        width: 520px;
+        max-width: 42vw;
+    }
+    .sidebar-header {
+        padding: 18px 20px 14px;
+    }
+    .sidebar-top-row {
+        margin-bottom: 10px;
+    }
+    .sidebar-kpis {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .sidebar-kpi {
+        padding: 9px 10px 8px;
+        border-radius: 12px;
+    }
+    .sidebar-kpi-label {
+        margin-bottom: 4px;
+    }
+    .data-trust-panel {
+        margin-bottom: 10px;
+        padding: 8px 10px;
+    }
+    .data-trust-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 7px;
+    }
+    .toolbar-caption {
+        margin-bottom: 6px;
+    }
+    #category-filters {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+    .filter-chip,
+    .filter-chip-v2 {
+        min-height: 38px;
+        padding: 0 14px 0 11px;
+        font-size: 13px;
+    }
+    .search-wrap {
+        margin-bottom: 0;
+    }
+    .search-input {
+        min-height: 42px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+    }
+    #event-list {
+        padding: 14px 16px 22px;
+        gap: 14px;
+    }
+    .event-card-v2 {
+        padding: 20px 22px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 16px;
+        border-radius: 16px;
+    }
+    .card-v2-meta {
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .cat-badge-v2,
+    .time-tag,
+    .city-tag,
+    .src-badge-v2 {
+        font-size: 12px;
+    }
+    .card-v2-title {
+        font-size: 18px;
+        line-height: 1.45;
+        margin-bottom: 8px;
+    }
+    .card-v2-content {
+        font-size: 15px;
+        line-height: 1.75;
+        -webkit-line-clamp: 3;
+        margin-bottom: 12px;
+    }
+    .event-trust-row {
+        font-size: 12px;
+        gap: 8px;
+    }
+    .event-trust-row span {
+        padding: 5px 9px;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 1180px) {
+    #news-sidebar {
+        width: 460px;
+        max-width: 48vw;
+    }
+    .sidebar-header {
+        padding: 16px 18px 12px;
+    }
+    .sidebar-kpis,
+    #category-filters {
+        margin-bottom: 10px;
+    }
+    .data-trust-panel {
+        margin-bottom: 10px;
+        padding: 8px 10px;
+    }
+    #event-list {
+        padding: 12px 14px 20px;
+        gap: 12px;
+    }
+    .event-card-v2 {
+        padding: 18px 20px;
+    }
+    .card-v2-title {
+        font-size: 16px;
+    }
+    .card-v2-content {
+        font-size: 14px;
+        -webkit-line-clamp: 3;
+    }
+}
+
+/* === Larger mobile event list === */
+@media (max-width: 767px) {
+    #news-sidebar {
+        height: min(82vh, 720px);
+    }
+
+    #news-sidebar.drawer-collapsed {
+        transform: translateY(calc(min(82vh, 720px) - 118px));
+    }
+
+    .sidebar-header {
+        padding: 12px 14px 10px;
+    }
+
+    #news-sidebar.filters-collapsed .mobile-filter-summary {
+        display: flex;
+    }
+
+    #news-sidebar.filters-collapsed .sidebar-kpis,
+    #news-sidebar.filters-collapsed .data-trust-panel,
+    #news-sidebar.filters-collapsed #category-filters,
+    #news-sidebar.filters-collapsed .toolbar-caption,
+    #news-sidebar.filters-collapsed .search-wrap {
+        display: none !important;
+    }
+
+    #news-sidebar.filters-collapsed .sidebar-header {
+        padding: 10px 14px;
+    }
+
+    .sidebar-top-row {
+        margin-bottom: 9px;
+    }
+
+    .sidebar-title {
+        font-size: 15px;
+    }
+
+    .count-pill {
+        font-size: 12px;
+        padding: 4px 11px;
+    }
+
+    .sidebar-kpis {
+        gap: 8px;
+        margin-bottom: 10px;
+    }
+
+    .sidebar-kpi {
+        padding: 10px 9px;
+        border-radius: 12px;
+    }
+
+    .sidebar-kpi-label {
+        font-size: 10.5px;
+    }
+
+    .sidebar-kpi-value {
+        font-size: 20px;
+    }
+
+    .data-trust-panel {
+        margin-bottom: 10px;
+        padding: 9px 10px;
+    }
+
+    #event-list {
+        padding: 12px 12px 24px;
+        gap: 13px;
+    }
+
+    .event-card-v2 {
+        padding: 18px 18px;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+        border-radius: 16px;
+    }
+
+    .card-v2-right {
+        align-items: flex-start;
+        flex-direction: row;
+        order: -1;
+    }
+
+    .card-v2-meta {
+        gap: 8px;
+        margin-bottom: 9px;
+    }
+
+    .cat-badge-v2,
+    .time-tag,
+    .city-tag,
+    .src-badge-v2 {
+        font-size: 11.5px;
+    }
+
+    .card-v2-title {
+        font-size: 16.5px;
+        line-height: 1.5;
+        margin-bottom: 8px;
+    }
+
+    .card-v2-content {
+        font-size: 14px;
+        line-height: 1.75;
+        -webkit-line-clamp: 3;
+        margin-bottom: 12px;
+    }
+
+    .event-trust-row {
+        font-size: 11.5px;
+        gap: 7px;
+    }
+
+    .event-trust-row span {
+        padding: 5px 8px;
+    }
+
+    .card-actions,
+    .card-action-group {
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+
+    .card-action-btn {
+        font-size: 12px;
+    }
+}
