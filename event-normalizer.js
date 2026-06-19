@@ -291,11 +291,40 @@ function isDemoEvent(event) {
     || url.includes("example.com");
 }
 
+function isInstitutionalNewsEvent(event) {
+  const source = normalizeText(`${event.source || ""} ${event.sourceName || ""}`).toLowerCase();
+  if (source.includes("kktix") || source.includes("tdx") || source.includes("pbs") || source.includes("ubike")) return false;
+
+  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.summary || ""}`);
+  const institutionalPattern = new RegExp([
+    "\\u885b\\u6559", "\\u5ba3\\u5c0e", "\\u88dc\\u52a9", "\\u5165\\u5e33", "\\u7533\\u8acb",
+    "\\u53d7\\u7406", "\\u8cc7\\u683c", "\\u65b0\\u5236", "\\u5236\\u5ea6", "\\u653f\\u7b56",
+    "\\u6cd5\\u898f", "\\u4fee\\u6cd5", "\\u689d\\u4f8b", "\\u9810\\u7b97", "\\u7d93\\u8cbb",
+    "\\u7f3a\\u53e3", "\\u8a08\\u756b", "\\u65b9\\u6848", "\\u63a8\\u52d5", "\\u7814\\u8b70",
+    "\\u6703\\u8b70", "\\u8ad6\\u58c7", "\\u8a55\\u6bd4", "\\u7d71\\u8a08", "\\u8abf\\u67e5",
+    "\\u6392\\u884c", "\\u9577\\u7167", "\\u793e\\u798f", "\\u6d25\\u8cbc", "\\u516c\\u544a",
+    "\\u8868\\u63da", "\\u9812\\u734e",
+  ].join("|"));
+  if (!institutionalPattern.test(text)) return false;
+
+  const liveImpactPattern = new RegExp([
+    "\\u8eca\\u798d", "\\u4e8b\\u6545", "\\u706b\\u707d", "\\u706b\\u8b66", "\\u7206\\u70b8",
+    "\\u6c23\\u7206", "\\u6df9\\u6c34", "\\u7a4d\\u6c34", "\\u574d\\u65b9", "\\u571f\\u77f3\\u6d41",
+    "\\u5730\\u9707", "\\u505c\\u96fb", "\\u505c\\u6c34", "\\u5c01\\u9589", "\\u5c01\\u8def",
+    "\\u7ba1\\u5236", "\\u6539\\u9053", "\\u758f\\u6563", "\\u64a4\\u96e2", "\\u6436\\u4fee",
+    "\\u6551\\u63f4", "\\u50b7\\u4ea1", "\\u6b7b\\u4ea1", "\\u8eab\\u4ea1", "\\u7f79\\u96e3",
+    "\\u55aa\\u751f", "\\u91cd\\u50b7", "\\u81ea\\u649e", "\\u8ffd\\u649e", "\\u8f3e\\u58d3",
+    "\\u649e",
+  ].join("|"));
+  return !liveImpactPattern.test(text);
+}
+
 function normalizeEventsForFrontend(value) {
   const seen = new Set();
   return parseStoredEvents(value)
     .map(normalizeEvent)
     .filter(Boolean)
+    .filter((event) => !isInstitutionalNewsEvent(event))
     .filter((event) => {
       const key = normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();
       if (seen.has(key)) return false;

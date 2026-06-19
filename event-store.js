@@ -48,11 +48,22 @@ function shouldSkipLocalCache() {
   return process.env.DISABLE_LOCAL_EVENT_CACHE === "1";
 }
 
+function decodeCachedValue(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("[") && !trimmed.startsWith("{"))) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 async function getKvValue(key) {
   if (!kv) return undefined;
   try {
     const value = await kv.get(key);
-    return value === null ? undefined : value;
+    return value === null ? undefined : decodeCachedValue(value);
   } catch (error) {
     console.warn(`[event-store] KV get failed for ${key}:`, error.message);
     return undefined;
@@ -85,10 +96,38 @@ function getSqliteValue(key) {
       return undefined;
     }
 
-    return JSON.parse(row.value);
+    return decodeCachedValue(JSON.parse(row.value));
   } catch (error) {
     console.warn(`[event-store] SQLite get failed for ${key}:`, error.message);
     return undefined;
+  }
+}
+
+function getSqliteEntryMeta(key) {
+  if (shouldSkipLocalCache()) return null;
+
+  try {
+    const db = getSqliteDb();
+    const row = db
+      .prepare("SELECT value, updated_at, expires_at FROM cache_entries WHERE key = ?")
+      .get(key);
+    if (!row) return null;
+
+    let count = null;
+    try {
+      const value = decodeCachedValue(JSON.parse(row.value));
+      if (Array.isArray(value)) count = value.length;
+    } catch {}
+
+    return {
+      key,
+      count,
+      updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : null,
+      expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    };
+  } catch (error) {
+    console.warn(`[event-store] SQLite meta failed for ${key}:`, error.message);
+    return null;
   }
 }
 
@@ -140,6 +179,22 @@ async function getCachedEvents() {
   return Array.isArray(legacyEvents) ? legacyEvents : [];
 }
 
+async function getEventCacheStatus() {
+  const keys = [MERGED_EVENT_CACHE_KEY, ...EVENT_BUCKET_KEYS, EVENT_CACHE_KEY];
+  const entries = keys.map((key) => getSqliteEntryMeta(key)).filter(Boolean);
+  const lastLocalUpdate = entries
+    .map((entry) => Date.parse(entry.updatedAt || ""))
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0];
+  const events = await getCachedEvents();
+  return {
+    hasKv: Boolean(kv),
+    localEntries: entries,
+    lastLocalUpdate: lastLocalUpdate ? new Date(lastLocalUpdate).toISOString() : null,
+    eventCount: Array.isArray(events) ? events.length : 0,
+  };
+}
+
 async function setCachedEvents(events, options = {}) {
   const safeEvents = Array.isArray(events) ? events : [];
   const legacyOk = await setCachedValue(EVENT_CACHE_KEY, safeEvents, options);
@@ -170,6 +225,7 @@ module.exports = {
   MERGED_EVENT_CACHE_KEY,
   EVENT_BUCKET_KEYS,
   getCachedEvents,
+  getEventCacheStatus,
   getCachedValue,
   setCachedEvents,
   setCachedValue,

@@ -405,6 +405,14 @@
     const EMPTY_GEOJSON = { type:"FeatureCollection", features:[] };
 
     let parsedEvents = [];
+    let dataSyncState = {
+        status: "loading",
+        total: 0,
+        lastUpdated: "",
+        sources: [],
+        store: "",
+        message: "正在同步事件資料"
+    };
     let activeCategory = "all";
     let searchKeyword = "";
     let isTaiwanMode = true;
@@ -425,6 +433,128 @@
     const demoLayers = new Set();
     const demoSources = new Set();
     const demoMarkers = [];
+
+    function getEventTimestampValue(ev) {
+        const raw = ev?.updatedAt || ev?.publishedAt || ev?.time || ev?.createdAt || ev?.startsAt || ev?.startAt;
+        const timestamp = Date.parse(raw || "");
+        return Number.isFinite(timestamp) ? timestamp : 0;
+    }
+
+    function formatDataTimestamp(value) {
+        const timestamp = typeof value === "number" ? value : Date.parse(value || "");
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return "尚無更新時間";
+        return new Date(timestamp).toLocaleString("zh-TW", {
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        });
+    }
+
+    function formatRelativeTime(value) {
+        const timestamp = typeof value === "number" ? value : Date.parse(value || "");
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return "";
+        const diffMinutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+        if (diffMinutes < 1) return "剛剛更新";
+        if (diffMinutes < 60) return `${diffMinutes} 分鐘前`;
+        const hours = Math.round(diffMinutes / 60);
+        if (hours < 24) return `${hours} 小時前`;
+        return `${Math.round(hours / 24)} 天前`;
+    }
+
+    function getEventSourceLabel(ev) {
+        const source = normalizeText(ev?.sourceName || ev?.source);
+        if (!source) return "來源未標示";
+        if (/concept demo|island pulse/i.test(source)) return "展示資料";
+        if (/tdx/i.test(source)) return "TDX 交通資料";
+        if (/rss/i.test(source)) return "RSS 新聞";
+        if (/news/i.test(source)) return "新聞資料";
+        return source;
+    }
+
+    function getEventTrustMeta(ev) {
+        const timestamp = getEventTimestampValue(ev);
+        const relative = formatRelativeTime(timestamp);
+        return {
+            source: getEventSourceLabel(ev),
+            updated: timestamp ? formatDataTimestamp(timestamp) : "時間未標示",
+            relative
+        };
+    }
+
+    function readHeaderList(headers, name) {
+        const raw = headers.get(name) || "";
+        if (!raw) return [];
+        return decodeURIComponent(raw)
+            .split(",")
+            .map(item => item.trim())
+            .filter(Boolean);
+    }
+
+    function buildDataStateFromEvents(events, fallback = {}) {
+        const newest = events
+            .map(getEventTimestampValue)
+            .filter(Boolean)
+            .sort((a, b) => b - a)[0] || "";
+        const sources = Array.from(new Set(events.map(getEventSourceLabel).filter(Boolean))).slice(0, 6);
+        return {
+            status: events.length ? "ready" : "empty",
+            total: events.length,
+            lastUpdated: newest ? new Date(newest).toISOString() : "",
+            sources,
+            store: fallback.store || "",
+            message: events.length ? "事件資料已同步" : "資料源目前沒有回傳事件",
+            ...fallback
+        };
+    }
+
+    function setDataSyncState(nextState = {}) {
+        dataSyncState = { ...dataSyncState, ...nextState };
+        updateDataTrustPanel(lastRenderedEventCount);
+    }
+
+    function ensureDataTrustPanel() {
+        const header = newsSidebar?.querySelector(".sidebar-header");
+        if (!header) return null;
+        let panel = document.getElementById("data-trust-panel");
+        if (!panel) {
+            panel = document.createElement("div");
+            panel.id = "data-trust-panel";
+            panel.className = "data-trust-panel";
+            const kpis = header.querySelector(".sidebar-kpis");
+            if (kpis?.nextSibling) header.insertBefore(panel, kpis.nextSibling);
+            else header.appendChild(panel);
+        }
+        return panel;
+    }
+
+    function updateDataTrustPanel(visibleCount = lastRenderedEventCount) {
+        const panel = ensureDataTrustPanel();
+        if (!panel) return;
+        const lastUpdated = dataSyncState.lastUpdated ? formatDataTimestamp(dataSyncState.lastUpdated) : "尚無更新時間";
+        const relative = dataSyncState.lastUpdated ? formatRelativeTime(dataSyncState.lastUpdated) : "";
+        const sourceLabel = dataSyncState.sources?.length ? dataSyncState.sources.slice(0, 3).join("、") : "尚無來源";
+        const statusLabel = {
+            loading: "同步中",
+            ready: "已同步",
+            empty: "目前無資料",
+            error: "讀取異常",
+            demo: "展示資料"
+        }[dataSyncState.status] || "資料狀態";
+        panel.dataset.status = dataSyncState.status || "loading";
+        panel.innerHTML = `
+            <div class="data-trust-main">
+                <span class="data-trust-dot"></span>
+                <strong>${statusLabel}</strong>
+                <span>${dataSyncState.message || ""}</span>
+            </div>
+            <div class="data-trust-grid">
+                <span>顯示 ${Number(visibleCount || 0).toLocaleString()} / ${Number(dataSyncState.total || 0).toLocaleString()} 筆</span>
+                <span>更新 ${lastUpdated}${relative ? `（${relative}）` : ""}</span>
+                <span>來源 ${sourceLabel}</span>
+            </div>`;
+    }
 
     // ?? THEME ???????????????????????????????????????????????
     const MAPBOX_STYLES = {
@@ -2369,6 +2499,7 @@
         }
         const city = ev.city || "未標示城市";
         const timeStr = formatEventTime(ev);
+        const trustMeta = getEventTrustMeta(ev);
         const sourceLabel = twCopy?.sourceLabel || formatSourceLabel(ev);
         const detailLabel = twCopy?.categoryLabel || getCategoryDetailLabel(ev.category);
         const impactLabel = twCopy?.impactLabel || getImpactLabel(ev);
@@ -2428,6 +2559,7 @@
         const badgeHtml = twCopy
             ? `<span class="cat-badge-v2" style="background:rgba(${catVisualMeta(ev.category).rgba},0.15);border:1px solid rgba(${catVisualMeta(ev.category).rgba},0.3);color:${catVisualMeta(ev.category).tint};">${twCopy.categoryLabel}</span>`
             : makeCatBadgeV2(ev.category);
+        const trustMeta = getEventTrustMeta(ev);
         const sourceUrl = ev.sourceUrl || ev.url || "";
         const sourcesHtml = sourceUrl ? `
             <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
@@ -2448,6 +2580,11 @@
                 </div>
                 <div class="card-v2-title">${displayTitle}</div>
                 <div class="card-v2-content">${displayContent}</div>
+                <div class="event-trust-row">
+                    <span><i class="fa-solid fa-database"></i>${trustMeta.source}</span>
+                    <span><i class="fa-regular fa-clock"></i>${trustMeta.relative || trustMeta.updated}</span>
+                    <span><i class="fa-solid fa-shield-halved"></i>${dataSyncState.store || "資料快取"}</span>
+                </div>
                 ${detailsHtml}
                 <div class="event-impact-row">
                     <span class="impact-chip impact-${getSeverityBand(ev)}">${impactLabel}</span>
@@ -2676,6 +2813,39 @@
         }
         return buildEventCardHtml(ev, displayTitle, displayContent, catVisual, twCopy);
     }
+
+    function getDataEmptyStateHtml(nearbyPreferred = false) {
+        let icon = "fa-map-location-dot";
+        let title = "目前沒有可顯示的事件";
+        let body = "資料源目前沒有回傳事件，或事件尚未通過座標與分類整理。";
+
+        if (dataSyncState.status === "loading") {
+            icon = "fa-rotate";
+            title = "正在同步事件資料";
+            body = "正在讀取交通、新聞與活動資料，完成後會自動更新地圖與清單。";
+        } else if (dataSyncState.status === "error") {
+            icon = "fa-triangle-exclamation";
+            title = "暫時讀不到事件資料";
+            body = "可能是資料服務或網路暫時異常，請稍後重新整理。";
+        } else if (nearbyPreferred) {
+            icon = "fa-location-crosshairs";
+            title = `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 沒有事件`;
+            body = "可以放大附近範圍，或切回全台事件查看其他區域。";
+        } else if (parsedEvents.length > 0) {
+            icon = "fa-filter";
+            title = "沒有符合目前條件的事件";
+            body = "試著清除搜尋、改選全部分類，或切回全台範圍。";
+        }
+
+        return `
+            <div class="empty-state data-empty-state">
+                <i class="fa-solid ${icon}"></i>
+                <strong>${title}</strong>
+                <p>${body}</p>
+                <small>最後更新：${dataSyncState.lastUpdated ? formatDataTimestamp(dataSyncState.lastUpdated) : "尚無更新時間"}</small>
+            </div>`;
+    }
+
     function renderEvents(){
         const mapEvents = getFilteredEvents({ forMap: true });
         const isFortune = currentMapMode === "fortune";
@@ -2701,6 +2871,7 @@
         eventRegistry.clear();
         eventList.innerHTML="";
         updateCurationMeta(events);
+        updateDataTrustPanel(events.length);
         updateNearbyButtonsV2();
         setNearbyStatusTextV2();
         let renderedCardCount = 0;
@@ -2722,6 +2893,9 @@
                     : (isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的台灣即時事件地圖資料");
                 eventList.innerHTML=`<div class="empty-state"><i class="fa-solid fa-map-location-dot"></i><p>${emptyText}</p></div>`;
             }
+        }
+        if (!events.length && !(isFortune && !userLocation)) {
+            eventList.innerHTML = getDataEmptyStateHtml(nearbyPreferred);
         }
 
         mapEvents.forEach((ev, index)=>{
@@ -3121,6 +3295,49 @@ async function syncNewsAndRender(){
     }
 
     // ?? CITY SYNC ????????????????????????????????????????????
+    async function syncLiveEventsAndRender(){
+        setStatus("正在同步事件資料...");
+        setDataSyncState({ status: "loading", message: "正在同步事件資料" });
+
+        try {
+            const response = await fetch("/api/events", { cache: "no-store" });
+            if (!response.ok) throw new Error(`events api ${response.status}`);
+            const records = await response.json();
+            const events = Array.isArray(records) ? records.map(normalizeDisplayEvent) : [];
+            const headerSources = readHeaderList(response.headers, "X-Data-Sources");
+            const total = Number(response.headers.get("X-Event-Total") || events.length);
+            const lastEventTime = response.headers.get("X-Last-Event-Time") || "";
+            const cacheUpdatedTime = response.headers.get("X-Cache-Updated-Time") || "";
+            const store = response.headers.get("X-Data-Store") || "";
+
+            parsedEvents = deduplicateEvents(events);
+            setDataSyncState(buildDataStateFromEvents(parsedEvents, {
+                total: Number.isFinite(total) ? total : parsedEvents.length,
+                sources: headerSources.length ? headerSources : undefined,
+                lastUpdated: lastEventTime || cacheUpdatedTime || undefined,
+                store,
+                message: parsedEvents.length ? "事件資料已同步" : "資料源目前沒有回傳事件"
+            }));
+        } catch (error) {
+            console.warn("events sync failed", error);
+            parsedEvents = [];
+            setDataSyncState({
+                status: "error",
+                total: 0,
+                lastUpdated: "",
+                sources: [],
+                message: "暫時讀不到事件資料，請稍後再試"
+            });
+        }
+
+        console.log("parsedEvents length", parsedEvents.length);
+        renderCategoryButtons();
+        renderEvents();
+        if (parsedEvents.length) setStatus(`已同步 ${parsedEvents.length} 筆事件`);
+        else if (dataSyncState.status === "error") setStatus("事件資料讀取失敗");
+        else setStatus("目前沒有可顯示的事件資料");
+    }
+
     function syncCityFilter(value){
         document.getElementById("city-filter").value=value;
         document.getElementById("city-filter-mobile").value=value;
@@ -3797,10 +4014,9 @@ async function submitReport() {
         parsedEvents = DEMO_EVENTS.map(normalizeDisplayEvent);
         applyMapMode(currentMapMode);
         applyConceptCopy();
-        syncNewsAndRender();
+        syncLiveEventsAndRender();
         updateNearbyButtonsV2();
         syncNearbyRadiusSelectors();
         setNearbyStatusTextV2();
         loadTwGeoJSON();
     });
-

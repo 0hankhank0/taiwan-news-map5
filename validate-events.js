@@ -28,6 +28,17 @@ function summarizeEvent(event) {
   };
 }
 
+function decodeCachedValue(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || (!trimmed.startsWith("[") && !trimmed.startsWith("{"))) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
 function validateEvent(event, index) {
   const reasons = [];
   const warnings = [];
@@ -95,7 +106,7 @@ async function main() {
     process.exit(1);
   }
 
-  const raw = await kv.get("taiwan_traffic_events");
+  const raw = decodeCachedValue(await kv.get("taiwan_traffic_events"));
 
   if (!Array.isArray(raw)) {
     console.error('KV key "taiwan_traffic_events" is not an array');

@@ -600,6 +600,63 @@
             font-size: 18px;
             line-height: 1;
         }
+        .data-trust-panel {
+            margin: -2px 0 14px;
+            padding: 10px 11px;
+            border: 1px solid rgba(138, 155, 184, 0.12);
+            border-radius: 10px;
+            background: rgba(7, 12, 22, 0.46);
+            color: var(--text-secondary);
+        }
+        .data-trust-main {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+            font-size: 12px;
+            line-height: 1.35;
+        }
+        .data-trust-main strong {
+            color: var(--text-primary);
+            white-space: nowrap;
+        }
+        .data-trust-main span:last-child {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .data-trust-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #34d399;
+            box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.12);
+            flex: 0 0 auto;
+        }
+        .data-trust-panel[data-status="loading"] .data-trust-dot {
+            background: #fbbf24;
+            box-shadow: 0 0 0 4px rgba(251, 191, 36, 0.12);
+        }
+        .data-trust-panel[data-status="empty"] .data-trust-dot,
+        .data-trust-panel[data-status="error"] .data-trust-dot {
+            background: #f87171;
+            box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.12);
+        }
+        .data-trust-grid {
+            display: grid;
+            gap: 4px;
+            margin-top: 8px;
+            font-size: 10.5px;
+            line-height: 1.35;
+            color: var(--text-muted);
+        }
+        .data-trust-grid span {
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
 
         .drawer-handle {
             display: none;
@@ -837,6 +894,34 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
             margin-bottom: 10px;
+        }
+        .event-trust-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 10px;
+            color: var(--text-muted);
+            font-size: 10.5px;
+            line-height: 1.35;
+        }
+        .event-trust-row span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+            max-width: 100%;
+            padding: 3px 7px;
+            border: 1px solid rgba(138, 155, 184, 0.1);
+            border-radius: 999px;
+            background: rgba(7, 12, 22, 0.34);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .event-trust-row i {
+            font-size: 10px;
+            color: var(--accent);
+            flex: 0 0 auto;
         }
         .card-v2-right {
             display: flex;
@@ -1745,7 +1830,19 @@
             color: var(--text-muted);
         }
         .empty-state i { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+        .empty-state strong {
+            display: block;
+            font-size: 14px;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
         .empty-state p { font-size: 13px; }
+        .empty-state small {
+            display: block;
+            margin-top: 8px;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
 
         /* ── MAPBOX OVERRIDES ────────────────────────────────── */
         .mapboxgl-map { background: var(--bg-void); }
