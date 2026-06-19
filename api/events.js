@@ -1,5 +1,5 @@
 const { normalizeEventsForFrontend } = require("./event-normalizer");
-const { getCachedEvents } = require("../event-store");
+const { getCachedEvents, getEventCacheStatus } = require("../event-store");
 
 function normalizeQueryValue(value) {
   return String(Array.isArray(value) ? value[0] : value || "").trim();
@@ -44,6 +44,33 @@ function applyEventQueryFilters(events, query = {}) {
   return limit > 0 ? filtered.slice(0, limit) : filtered;
 }
 
+function getEventTimestamp(event) {
+  const raw = event?.updatedAt || event?.publishedAt || event?.time || event?.createdAt || event?.startsAt || event?.startAt;
+  const timestamp = Date.parse(raw || "");
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getEventStatusSummary(events, cacheStatus) {
+  const newestEvent = events
+    .map(getEventTimestamp)
+    .filter(Boolean)
+    .sort((a, b) => b - a)[0];
+  const sourceNames = Array.from(new Set(events
+    .map((event) => event.sourceName || event.source)
+    .filter(Boolean)
+    .map((source) => String(source).trim())
+    .filter(Boolean)))
+    .slice(0, 8);
+
+  return {
+    total: events.length,
+    sources: sourceNames,
+    newestEventAt: newestEvent ? new Date(newestEvent).toISOString() : "",
+    cacheUpdatedAt: cacheStatus?.lastLocalUpdate || "",
+    hasKv: Boolean(cacheStatus?.hasKv),
+  };
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -56,8 +83,16 @@ module.exports = async (req, res) => {
 
   try {
     const storedEvents = await getCachedEvents();
-    const events = applyEventQueryFilters(normalizeEventsForFrontend(storedEvents), req.query);
+    const normalizedEvents = normalizeEventsForFrontend(storedEvents);
+    const events = applyEventQueryFilters(normalizedEvents, req.query);
+    const cacheStatus = await getEventCacheStatus();
+    const summary = getEventStatusSummary(normalizedEvents, cacheStatus);
     res.setHeader("X-Event-Count", String(events.length));
+    res.setHeader("X-Event-Total", String(summary.total));
+    res.setHeader("X-Data-Sources", encodeURIComponent(summary.sources.join(",")));
+    res.setHeader("X-Last-Event-Time", summary.newestEventAt);
+    res.setHeader("X-Cache-Updated-Time", summary.cacheUpdatedAt);
+    res.setHeader("X-Data-Store", summary.hasKv ? "kv+local" : "local");
     res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
     return res.status(200).json(events);
   } catch (error) {

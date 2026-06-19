@@ -602,6 +602,45 @@ function inferCategoryFromText(text) {
   return matched?.category || "other";
 }
 
+function legacyInstitutionalNewsText(text = "") {
+  const source = cleanNewsText(text);
+  const institutional = /衛教|宣導|補助|入帳|申請|受理|資格|新制|制度|政策|法規|修法|條例|預算|經費|缺口|計畫|方案|推動|研議|會議|論壇|評比|統計|調查|排行|長照|社福|津貼|公告|表揚|頒獎/.test(source);
+  if (!institutional) return false;
+  const liveImpact = /車禍|事故|火災|火警|爆炸|氣爆|淹水|積水|坍方|土石流|地震|停電|停水|封閉|封路|管制|改道|疏散|撤離|搶修|救援|傷亡|死亡|重傷/.test(source);
+  return !liveImpact;
+}
+
+function isInstitutionalNewsText(text = "") {
+  const source = cleanNewsText(text);
+  const institutionalPattern = new RegExp([
+    "\\u885b\\u6559", "\\u5ba3\\u5c0e", "\\u88dc\\u52a9", "\\u5165\\u5e33", "\\u7533\\u8acb",
+    "\\u53d7\\u7406", "\\u8cc7\\u683c", "\\u65b0\\u5236", "\\u5236\\u5ea6", "\\u653f\\u7b56",
+    "\\u6cd5\\u898f", "\\u4fee\\u6cd5", "\\u689d\\u4f8b", "\\u9810\\u7b97", "\\u7d93\\u8cbb",
+    "\\u7f3a\\u53e3", "\\u8a08\\u756b", "\\u65b9\\u6848", "\\u63a8\\u52d5", "\\u7814\\u8b70",
+    "\\u6703\\u8b70", "\\u8ad6\\u58c7", "\\u8a55\\u6bd4", "\\u7d71\\u8a08", "\\u8abf\\u67e5",
+    "\\u6392\\u884c", "\\u9577\\u7167", "\\u793e\\u798f", "\\u6d25\\u8cbc", "\\u516c\\u544a",
+    "\\u8868\\u63da", "\\u9812\\u734e",
+  ].join("|"));
+  if (!institutionalPattern.test(source)) return false;
+
+  const liveImpactPattern = new RegExp([
+    "\\u8eca\\u798d", "\\u4e8b\\u6545", "\\u706b\\u707d", "\\u706b\\u8b66", "\\u7206\\u70b8",
+    "\\u6c23\\u7206", "\\u6df9\\u6c34", "\\u7a4d\\u6c34", "\\u574d\\u65b9", "\\u571f\\u77f3\\u6d41",
+    "\\u5730\\u9707", "\\u505c\\u96fb", "\\u505c\\u6c34", "\\u5c01\\u9589", "\\u5c01\\u8def",
+    "\\u7ba1\\u5236", "\\u6539\\u9053", "\\u758f\\u6563", "\\u64a4\\u96e2", "\\u6436\\u4fee",
+    "\\u6551\\u63f4", "\\u50b7\\u4ea1", "\\u6b7b\\u4ea1", "\\u8eab\\u4ea1", "\\u7f79\\u96e3",
+    "\\u55aa\\u751f", "\\u91cd\\u50b7", "\\u81ea\\u649e", "\\u8ffd\\u649e", "\\u8f3e\\u58d3",
+    "\\u649e",
+  ].join("|"));
+  return !liveImpactPattern.test(source);
+}
+
+function isInstitutionalEvent(event) {
+  const source = String(`${event.source || ""} ${event.sourceName || ""}`).toLowerCase();
+  if (source.includes("kktix") || source.includes("tdx") || source.includes("pbs") || source.includes("ubike")) return false;
+  return isInstitutionalNewsText(`${event.title || ""} ${event.content || ""} ${event.summary || ""}`);
+}
+
 function extractRuleBasedEvents(newsItems) {
   const seen = new Set();
   return newsItems
@@ -612,6 +651,7 @@ function extractRuleBasedEvents(newsItems) {
       const cityInfo = inferCityFromText(combinedText);
 
       if (!cityInfo || !title) return null;
+      if (isInstitutionalNewsText(combinedText)) return null;
 
       const dedupeKey = `${cityInfo.city}:${title.slice(0, 40)}`.toLowerCase();
       if (seen.has(dedupeKey)) return null;
@@ -814,6 +854,7 @@ function normalizeFinalEvents(events) {
       lng: Number(item.lng),
     }))
     .map(enrichCronEvent)
+    .filter((item) => !isInstitutionalEvent(item))
     .filter((item) => {
       const key = item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
       if (dedupe.has(key)) return false;
