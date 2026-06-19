@@ -40,6 +40,12 @@ const TDX_BACKOFF_MS = 1000 * 60 * Number(process.env.TDX_BACKOFF_MINUTES || 60)
 const TDX_STATIC_CACHE_KEY = "tdx:static_cms";
 const TDX_LIVE_CACHE_KEY = "tdx:live_cms_events";
 const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
+const EVENT_BUCKET_KEYS = {
+  traffic: "events:traffic",
+  news: "events:news",
+  activities: "events:activities",
+};
+const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 
@@ -487,6 +493,101 @@ function cleanNewsText(text) {
   return String(text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
+function cleanMultilineText(text) {
+  return String(text || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li)>/gi, "\n")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s+/g, "\n")
+    .trim();
+}
+
+function extractDistrict(text = "") {
+  const source = cleanNewsText(text).replace(/臺/g, "台");
+  const matches = [...source.matchAll(/([\u4e00-\u9fff]{1,4}(?:區|鄉|鎮|市))/g)].map((match) => match[1]);
+  return matches.find((name) => /(?:區|鄉|鎮)$/.test(name))
+    || matches.find((name) => /市$/.test(name) && !["台北市", "新北市", "桃園市", "台中市", "台南市", "高雄市", "基隆市", "新竹市", "嘉義市"].includes(name))
+    || "";
+}
+
+function parseEventTime(value) {
+  if (!value) return null;
+  const ts = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function inferEventStatus(event, now = Date.now()) {
+  const startAt = parseEventTime(event.startsAt || event.startAt);
+  const endAt = parseEventTime(event.endsAt || event.endAt || event.expiresAt);
+  if (endAt && endAt < now) return "expired";
+  if (startAt && startAt > now) return "upcoming";
+  return "active";
+}
+
+function inferImpact(event) {
+  const category = event.category || "";
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (category === "activity") return "活動期間周邊可能有人潮與交通變化。";
+  if (category === "traffic" || category === "construction") return "周邊道路可能壅塞或受管制影響。";
+  if (category === "accident") return "現場周邊通行與安全可能受影響。";
+  if (category === "disaster" || /火災|淹水|坍方|地震|停電|停水/.test(text)) return "周邊民生、交通或安全可能受影響。";
+  if (category === "police" || category === "criminal") return "周邊公共安全需留意。";
+  return "此事件可能影響周邊活動與通行。";
+}
+
+function inferAdvice(event) {
+  const category = event.category || "";
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (category === "activity") return "前往前請確認活動頁公告、交通方式與入場時間。";
+  if (category === "traffic" || category === "construction" || /封閉|管制|壅塞|塞車/.test(text)) return "行經附近請放慢車速，必要時提前改道。";
+  if (category === "accident") return "避開事故現場，依警方或現場人員指揮通行。";
+  if (category === "disaster" || /火災|淹水|坍方|土石流|地震/.test(text)) return "避免靠近危險區域，留意官方最新公告。";
+  if (category === "police" || category === "criminal") return "避免靠近現場，留意警方與地方政府公告。";
+  return "前往附近前先確認最新資訊。";
+}
+
+function inferSeverity(event) {
+  if (Number.isFinite(Number(event.severity))) return Number(event.severity);
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (/死亡|身亡|罹難|重傷|氣爆|爆炸|大火|土石流|封閉|停班|停課/.test(text)) return 4;
+  if (/車禍|事故|淹水|坍方|火災|槍擊|命案|管制|壅塞/.test(text)) return 3;
+  if ((event.category || "") === "activity") return 1;
+  return 2;
+}
+
+function enrichCronEvent(event) {
+  const now = Date.now();
+  const title = String(event.title || event.text || "").trim();
+  const content = String(event.content || event.summary || event.text || title).trim();
+  const locationText = `${event.address || ""} ${event.location || ""} ${event.city || ""} ${title} ${content}`;
+  const publishedAt = event.publishedAt || event.pubDate || event.createdAt || now;
+  const createdAt = Number(event.createdAt) || parseEventTime(publishedAt) || now;
+  const sourceUrl = String(event.sourceUrl || event.url || event.link || "").trim();
+
+  return {
+    ...event,
+    title,
+    content,
+    summary: event.summary || content || title,
+    sourceName: event.sourceName || event.source || "cron",
+    sourceUrl,
+    url: event.url || sourceUrl,
+    district: event.district || extractDistrict(locationText),
+    address: event.address || event.location || "",
+    venue: event.venue || "",
+    publishedAt: new Date(parseEventTime(publishedAt) || createdAt).toISOString(),
+    updatedAt: new Date(now).toISOString(),
+    createdAt,
+    status: event.status || inferEventStatus(event, now),
+    severity: inferSeverity(event),
+    impact: event.impact || inferImpact(event),
+    advice: event.advice || inferAdvice(event),
+    tags: event.tags || [event.category, event.city, event.district].filter(Boolean),
+  };
+}
+
 function inferCityFromText(text) {
   const sourceText = String(text || "");
   const matched = CITY_ALIASES.find(({ keywords }) => keywords.some((keyword) => sourceText.includes(keyword)));
@@ -529,6 +630,95 @@ function extractRuleBasedEvents(newsItems) {
     })
     .filter(Boolean)
     .slice(0, 40);
+}
+
+function parseKktixDate(value = "") {
+  const match = String(value).match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, mo, d, h, mi] = match;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:00+08:00`;
+  const ts = Date.parse(iso);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function parseKktixMeta(item) {
+  const text = cleanMultilineText(`${item.content || ""}\n${item.contentSnippet || ""}`);
+  const timeLine = text.match(/時間[:：]\s*([^\n]+)/)?.[1]?.trim() || "";
+  const locationLine = text.match(/地點[:：]\s*([^\n]+)/)?.[1]?.trim() || "";
+  const [startText, endText] = timeLine.split(/\s*~\s*/);
+  const locationParts = locationLine.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
+  return {
+    timeLine,
+    startAt: parseKktixDate(startText),
+    endAt: parseKktixDate(endText || startText),
+    venue: locationParts[0] || "",
+    address: locationParts[1] || locationParts[0] || "",
+    location: locationLine,
+  };
+}
+
+async function fetchKktixActivityEvents(startedAt) {
+  try {
+    if (getRemainingTime(startedAt) < 1200) return [];
+    const response = await fetch(KKTIX_ACTIVITY_FEED, {
+      signal: AbortSignal.timeout(Math.max(800, Math.min(RSS_TIMEOUT_MS, getRemainingTime(startedAt) - 200))),
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+      },
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const feed = await parser.parseString(await response.text());
+    const now = Date.now();
+    const windowEnd = now + 30 * 24 * 60 * 60 * 1000;
+    const events = [];
+
+    for (const item of (feed.items || []).slice(0, 60)) {
+      const meta = parseKktixMeta(item);
+      if (!item.title || !item.link || !meta.endAt) continue;
+      if (meta.endAt < now) continue;
+      if (meta.startAt && meta.startAt > windowEnd) continue;
+
+      const cityInfo = inferCityFromText(`${meta.address} ${meta.location} ${item.title} ${item.contentSnippet || ""}`);
+      if (!cityInfo?.city || !Number.isFinite(cityInfo.lat) || !Number.isFinite(cityInfo.lng)) continue;
+
+      const expiresAt = Math.min(meta.endAt + 2 * 60 * 60 * 1000, now + 30 * 24 * 60 * 60 * 1000);
+      const title = String(item.title || "").trim().slice(0, 120);
+      const content = [
+        meta.timeLine ? `時間：${meta.timeLine}` : "",
+        meta.location ? `地點：${meta.location}` : "",
+        item.creator ? `主辦：${item.creator}` : "",
+      ].filter(Boolean).join("｜");
+
+      events.push(enrichCronEvent({
+        id: `KKTIX_${Buffer.from(item.link).toString("base64").slice(0, 20)}`,
+        title,
+        content,
+        category: "activity",
+        url: item.link,
+        sourceUrl: item.link,
+        lat: cityInfo.lat,
+        lng: cityInfo.lng,
+        city: cityInfo.city,
+        district: extractDistrict(meta.address || meta.location || ""),
+        address: meta.address,
+        venue: meta.venue,
+        location: meta.address || meta.location || cityInfo.city,
+        source: "KKTIX",
+        sourceName: "KKTIX",
+        eventFingerprint: `${cityInfo.city}_activity_${title.slice(0, 24)}`,
+        startsAt: meta.startAt ? new Date(meta.startAt).toISOString() : null,
+        endsAt: meta.endAt ? new Date(meta.endAt).toISOString() : null,
+        expiresAt,
+        createdAt: now,
+      }));
+    }
+
+    return events.slice(0, 30);
+  } catch (error) {
+    console.warn("[cron] KKTIX activity fetch failed:", error.message);
+    return [];
+  }
 }
 
 async function extractAiEvents(newsItems) {
@@ -623,12 +813,31 @@ function normalizeFinalEvents(events) {
       lat: Number(item.lat),
       lng: Number(item.lng),
     }))
+    .map(enrichCronEvent)
     .filter((item) => {
       const key = item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
       if (dedupe.has(key)) return false;
       dedupe.add(key);
       return true;
     });
+}
+
+function isFreshEvent(event, now = Date.now()) {
+  const expiresAt = parseEventTime(event.expiresAt);
+  if (expiresAt) return expiresAt > now;
+  return (now - (event.createdAt || 0)) < 48 * 60 * 60 * 1000;
+}
+
+async function writeEventBuckets(events) {
+  const trafficEvents = events.filter((event) => ["traffic", "construction", "accident"].includes(event.category));
+  const activityEvents = events.filter((event) => event.category === "activity");
+  const newsEvents = events.filter((event) => !trafficEvents.includes(event) && event.category !== "activity");
+
+  await Promise.all([
+    setCachedValue(EVENT_BUCKET_KEYS.traffic, trafficEvents, { ex: 600 }),
+    setCachedValue(EVENT_BUCKET_KEYS.news, newsEvents, { ex: 600 }),
+    setCachedValue(EVENT_BUCKET_KEYS.activities, activityEvents, { ex: 600 }),
+  ]);
 }
 
 // ---------- 這裡是 Cron 排程的主進入點 ----------
@@ -662,13 +871,14 @@ module.exports = async (req, res) => {
     const tdxEvents = await fetchTDXTrafficEvents(startedAt, sharedAccessToken);
     await delay(1000); // 抓完路況，休息 1 秒
     const constructionEvents = await fetchTDXConstructionEvents(sharedAccessToken, startedAt);
+    const activityEvents = await fetchKktixActivityEvents(startedAt);
     
     const rssItems = rssResults.flat();
     const ruleBasedEvents = extractRuleBasedEvents(rssItems);
     const aiEvents = await extractAiEvents(rssItems);
     
     const finalEvents = normalizeFinalEvents(
-      [...tdxEvents, ...constructionEvents, ...aiEvents, ...ruleBasedEvents]
+      [...tdxEvents, ...constructionEvents, ...activityEvents, ...aiEvents, ...ruleBasedEvents]
     );
 
     // --- 內部寫入 KV 前加強去重 (同一事件只保留一筆) ---
@@ -690,7 +900,7 @@ module.exports = async (req, res) => {
             if (newContent === existContent && newContent.length > 10) return true;
             
             // 同城市 + 同類別 + 標題有5個以上相同字
-            if (ev.city === newEvent.city && ev.category === newEvent.category) {
+            if (ev.city === newEvent.city && ev.category === newEvent.category && ev.category !== "activity") {
                 let sameCount = 0;
                 for (const char of newTitle) {
                     if (existTitle.includes(char)) sameCount++;
@@ -704,7 +914,7 @@ module.exports = async (req, res) => {
     const mergedEvents = [...existingEvents];
     finalEvents.forEach(newEv => {
         if (!isDuplicateEvent(newEv, mergedEvents)) {
-            mergedEvents.push({ ...newEv, createdAt: Date.now() });
+            mergedEvents.push(enrichCronEvent({ ...newEv, createdAt: newEv.createdAt || Date.now() }));
         } else {
             // 如果是重複的，嘗試更新現有事件的內容或標題
             const existing = mergedEvents.find(m => 
@@ -719,11 +929,20 @@ module.exports = async (req, res) => {
 
     // 過濾掉過期事件 (例如 48 小時前)
     const now = Date.now();
-    const activeEvents = mergedEvents.filter(ev => (now - (ev.createdAt || 0)) < 48 * 60 * 60 * 1000);
+    const activeEvents = mergedEvents.map(enrichCronEvent).filter(ev => isFreshEvent(ev, now));
 
     await setCachedEvents(activeEvents, { ex: 600 });
+    await writeEventBuckets(activeEvents);
 
-    return res.status(200).json({ success: true, count: activeEvents.length });
+    return res.status(200).json({
+      success: true,
+      count: activeEvents.length,
+      buckets: {
+        traffic: activeEvents.filter((event) => ["traffic", "construction", "accident"].includes(event.category)).length,
+        news: activeEvents.filter((event) => !["traffic", "construction", "accident", "activity"].includes(event.category)).length,
+        activities: activeEvents.filter((event) => event.category === "activity").length,
+      },
+    });
   } catch (error) {
     console.error("[cron] Handler failed:", error.message);
     return res.status(500).json({ error: "Cron execution failed" });
