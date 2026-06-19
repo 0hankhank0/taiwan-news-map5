@@ -2925,6 +2925,41 @@ body.tw-online-mode .donate-btn:hover {
     gap: 6px;
     margin-top: 12px;
 }
+.event-detail-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+.event-detail-item {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    padding: 7px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.28);
+}
+.event-detail-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+.event-detail-value {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.event-detail-list--card {
+    margin-top: 8px;
+}
+.event-detail-list--card .event-detail-item {
+    padding: 6px 8px;
+}
 .impact-chip,
 .severity-chip,
 .interaction-chip {

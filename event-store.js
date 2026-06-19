@@ -4,6 +4,8 @@ const path = require("path");
 const { Redis } = require("@upstash/redis");
 
 const EVENT_CACHE_KEY = "taiwan_traffic_events";
+const MERGED_EVENT_CACHE_KEY = "events:merged";
+const EVENT_BUCKET_KEYS = ["events:traffic", "events:news", "events:activities"];
 
 function createKvClient() {
   const url = process.env.KV_REST_API_URL;
@@ -127,17 +129,46 @@ async function setCachedValue(key, value, options = {}) {
 }
 
 async function getCachedEvents() {
-  const events = await getCachedValue(EVENT_CACHE_KEY);
-  return Array.isArray(events) ? events : [];
+  const mergedEvents = await getCachedValue(MERGED_EVENT_CACHE_KEY);
+  if (Array.isArray(mergedEvents) && mergedEvents.length > 0) return mergedEvents;
+
+  const buckets = await Promise.all(EVENT_BUCKET_KEYS.map((key) => getCachedValue(key)));
+  const bucketEvents = dedupeEvents(buckets.flatMap((value) => (Array.isArray(value) ? value : [])));
+  if (bucketEvents.length > 0) return bucketEvents;
+
+  const legacyEvents = await getCachedValue(EVENT_CACHE_KEY);
+  return Array.isArray(legacyEvents) ? legacyEvents : [];
 }
 
 async function setCachedEvents(events, options = {}) {
   const safeEvents = Array.isArray(events) ? events : [];
-  return setCachedValue(EVENT_CACHE_KEY, safeEvents, options);
+  const legacyOk = await setCachedValue(EVENT_CACHE_KEY, safeEvents, options);
+  const mergedOk = await setCachedValue(MERGED_EVENT_CACHE_KEY, safeEvents, options);
+  return legacyOk || mergedOk;
+}
+
+function eventDedupeKey(event) {
+  return String(
+    event?.eventFingerprint
+      || event?.id
+      || `${event?.city || ""}:${event?.category || ""}:${event?.title || event?.text || ""}`
+  ).trim().toLowerCase();
+}
+
+function dedupeEvents(events) {
+  const seen = new Set();
+  return events.filter((event) => {
+    const key = eventDedupeKey(event);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 module.exports = {
   EVENT_CACHE_KEY,
+  MERGED_EVENT_CACHE_KEY,
+  EVENT_BUCKET_KEYS,
   getCachedEvents,
   getCachedValue,
   setCachedEvents,

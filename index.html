@@ -1035,6 +1035,26 @@
             flex-shrink: 0;
         }
 
+        .mobile-icon-btn {
+            width: 40px;
+            height: 40px;
+            flex: 0 0 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: rgba(15,21,37,0.92);
+            color: var(--text-secondary);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            backdrop-filter: blur(12px);
+            cursor: pointer;
+        }
+
+        .mobile-icon-btn:active {
+            transform: translateY(1px);
+        }
+
         /* ── POPUP demo（設計稿 §07）──────────────────────────── */
         .custom-popup.mapboxgl-popup { max-width: 336px !important; }
         .custom-popup .mapboxgl-popup-content {
@@ -2039,6 +2059,365 @@
     stroke-width: 1.65px;
 }
 
+/* UX polish layer: preserve the map-first product while tightening contrast, spacing, and states. */
+body::before,
+body::after {
+    display: none;
+}
+
+#app-header {
+    height: 76px;
+    padding-inline: clamp(18px, 2.4vw, 34px);
+    background: rgba(7, 12, 22, 0.92);
+    box-shadow: 0 14px 42px rgba(0, 0, 0, 0.26);
+}
+
+.header-brand {
+    max-width: 360px;
+}
+
+.brand-title {
+    font-size: 19px;
+}
+
+.brand-note {
+    color: #9aa7c0;
+}
+
+.header-center {
+    border-radius: var(--radius-md);
+    background: rgba(10, 16, 29, 0.72);
+}
+
+#app-body {
+    height: calc(100dvh - 76px);
+}
+
+#news-sidebar {
+    width: 380px;
+    max-width: 40vw;
+    background:
+        linear-gradient(180deg, rgba(14, 22, 39, 0.98), rgba(8, 13, 24, 0.98));
+}
+
+.sidebar-header {
+    padding: 18px 18px 16px;
+}
+
+.sidebar-kpi {
+    background: rgba(7, 12, 22, 0.64);
+    border-color: rgba(138, 155, 184, 0.12);
+}
+
+.toolbar-caption {
+    color: #6f7d98;
+}
+
+.filter-chip,
+.filter-chip-v2,
+.styled-select,
+.search-input,
+.mobile-search,
+.mobile-city-select,
+.mobile-pill {
+    min-height: 40px;
+}
+
+.filter-chip,
+.filter-chip-v2 {
+    padding: 8px 14px 8px 11px;
+    border-color: rgba(138, 155, 184, 0.18);
+}
+
+.filter-chip.active,
+.filter-chip-v2.active {
+    box-shadow: 0 8px 22px color-mix(in srgb, var(--chip-bg, #64748b) 30%, transparent);
+}
+
+.event-card-v2 {
+    border-color: rgba(138, 155, 184, 0.14);
+    box-shadow: none;
+}
+
+.event-card-v2:hover {
+    border-color: rgba(138, 155, 184, 0.28);
+    transform: translateY(-1px);
+}
+
+.card-v2-title {
+    font-family: "Noto Sans TC", var(--font-body);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.card-v2-content {
+    color: #a4b0c8;
+}
+
+.event-detail-list {
+    display: grid;
+    gap: 6px;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.event-detail-item {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+    padding: 7px 8px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    background: rgba(15, 23, 42, 0.28);
+}
+
+.event-detail-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.event-detail-value {
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.event-detail-list--card {
+    margin-top: 8px;
+}
+
+.event-detail-list--card .event-detail-item {
+    padding: 6px 8px;
+}
+
+.card-action-btn,
+.popup-btn-v2,
+.nearby-btn,
+.donate-btn,
+.btn {
+    min-height: 36px;
+}
+
+.sidebar-footer {
+    background: rgba(7, 12, 22, 0.72);
+}
+
+.sidebar-footer .donate-btn {
+    background: rgba(125, 45, 0, 0.84);
+    box-shadow: none;
+}
+
+.empty-state,
+.list-loading-state {
+    margin: 18px 8px;
+    padding: 26px 22px;
+    text-align: left;
+    color: var(--text-secondary);
+    border: 1px solid rgba(138, 155, 184, 0.14);
+    border-radius: var(--radius-lg);
+    background:
+        linear-gradient(180deg, rgba(16, 24, 40, 0.82), rgba(9, 15, 27, 0.92));
+}
+
+.empty-state i,
+.list-loading-state i {
+    display: inline-flex;
+    width: 36px;
+    height: 36px;
+    align-items: center;
+    justify-content: center;
+    margin: 0 0 14px;
+    border-radius: 12px;
+    background: rgba(36, 113, 163, 0.14);
+    color: #9bd1ff;
+    font-size: 16px;
+    opacity: 1;
+}
+
+.empty-state strong,
+.list-loading-state strong {
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.45;
+}
+
+.empty-state p,
+.list-loading-state p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.75;
+}
+
+.empty-state small {
+    display: block;
+    margin-top: 12px;
+    color: var(--text-muted);
+    line-height: 1.65;
+}
+
+.empty-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+    flex-wrap: wrap;
+}
+
+.empty-action-btn {
+    border: 1px solid rgba(138, 155, 184, 0.2);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    background: rgba(22, 32, 53, 0.84);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.empty-action-btn.primary {
+    background: var(--accent);
+    border-color: transparent;
+    color: #fff;
+}
+
+.mobile-filter-summary {
+    display: none;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 10px;
+    border: 1px solid rgba(138, 155, 184, 0.16);
+    border-radius: var(--radius-md);
+    padding: 10px 12px;
+    background: rgba(7, 12, 22, 0.62);
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    font-size: 12px;
+    text-align: left;
+}
+
+.mobile-filter-summary strong {
+    flex-shrink: 0;
+    color: var(--text-primary);
+}
+
+.loading-line {
+    height: 10px;
+    margin-top: 12px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(90deg, rgba(138,155,184,0.12), rgba(138,155,184,0.3), rgba(138,155,184,0.12));
+    background-size: 200% 100%;
+    animation: loadingShimmer 1.4s linear infinite;
+}
+
+.loading-line.short {
+    width: 62%;
+}
+
+@keyframes loadingShimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
+
+.modal-overlay {
+    background: rgba(3, 7, 14, 0.62);
+    backdrop-filter: blur(5px);
+}
+
+.modal-box {
+    border-color: rgba(138, 155, 184, 0.18);
+    background:
+        linear-gradient(180deg, rgba(17, 27, 47, 0.98), rgba(10, 16, 29, 0.98));
+}
+
+.beta-box {
+    max-width: 480px;
+    padding: 34px 32px 32px;
+}
+
+.beta-desc {
+    color: #a6b2ca;
+}
+
+@media (max-width: 767px) {
+    body {
+        height: 100dvh;
+    }
+
+    #app-body {
+        height: 100dvh;
+    }
+
+    #news-sidebar {
+        width: 100%;
+        max-width: 100%;
+        height: min(74vh, 620px);
+        border-radius: 22px 22px 0 0;
+        box-shadow: 0 -22px 54px rgba(0, 0, 0, 0.54);
+    }
+
+    #news-sidebar.drawer-collapsed {
+        transform: translateY(calc(min(74vh, 620px) - 116px));
+    }
+
+    .drawer-handle {
+        padding: 12px 0 8px;
+    }
+
+    .handle-bar {
+        width: 54px;
+        height: 5px;
+        background: #a8b4c9;
+    }
+
+    .sidebar-header {
+        padding: 12px 14px 14px;
+    }
+
+    .mobile-filter-summary {
+        display: flex;
+    }
+
+    .sidebar-kpis {
+        gap: 7px;
+        margin-bottom: 12px;
+    }
+
+    .sidebar-kpi {
+        padding: 9px 8px;
+    }
+
+    #event-list {
+        padding-inline: 10px;
+    }
+
+    .empty-state,
+    .list-loading-state {
+        margin: 12px 0;
+        padding: 20px 18px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+    }
+}
+
     </style>
 </head>
 <body>
@@ -2125,6 +2504,9 @@
             <button id="btn-dark-mobile" class="mode-btn active">🌙</button>
             <button id="btn-light-mobile" class="mode-btn">☀️</button>
         </div>
+        <button id="settings-btn-mobile" class="mobile-icon-btn" aria-label="設定">
+            <i class="fa-solid fa-gear"></i>
+        </button>
     </div>
 </div>
 
@@ -2421,6 +2803,50 @@
         return d.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit", hour12: false });
     }
 
+    function formatEventDateTime(value) {
+        if (!value) return "";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toLocaleString("zh-TW", {
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        });
+    }
+
+    function formatEventDateRange(ev) {
+        const start = formatEventDateTime(ev.startsAt || ev.startAt);
+        const end = formatEventDateTime(ev.endsAt || ev.endAt);
+        if (start && end && start !== end) return `${start} - ${end}`;
+        return start || end || "";
+    }
+
+    function makeEventDetailRows(ev, context = "card") {
+        const rows = [];
+        const isActivity = inferEventGroupCategory(ev) === "activity" || ev.category === "activity";
+        const timeRange = formatEventDateRange(ev);
+        const place = normalizeText([ev.venue, ev.address || ev.location].filter(Boolean).join("｜"));
+        const area = normalizeText([ev.city, ev.district].filter(Boolean).join(" "));
+
+        if (isActivity && timeRange) rows.push(["時間", timeRange]);
+        if (place) rows.push([isActivity ? "場地" : "地點", place]);
+        else if (area) rows.push(["地區", area]);
+        if (ev.impact) rows.push(["影響", ev.impact]);
+        if (ev.advice) rows.push(["建議", ev.advice]);
+
+        if (!rows.length) return "";
+        const maxRows = context === "popup" ? 4 : 3;
+        return `<div class="event-detail-list event-detail-list--${context}">
+            ${rows.slice(0, maxRows).map(([label, value]) => `
+                <div class="event-detail-item">
+                    <span class="event-detail-label">${label}</span>
+                    <span class="event-detail-value">${value}</span>
+                </div>`).join("")}
+        </div>`;
+    }
+
     function makeCatBadgeV2(category) {
         const { text, meta, mappedCat } = getCategoryVisual(category);
         const svg = CAT_SVG[category] || CAT_SVG[mappedCat] || CAT_SVG.other;
@@ -2473,6 +2899,7 @@
             ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${ev.id}"></div>`
             : "";
         const reportArg = encodeURIComponent(displayTitle);
+        const detailsHtml = makeEventDetailRows(ev, "popup");
 
         return `
             <div class="popup-demo-inner" style="--popup-color:${markerStyle.color}">
@@ -2487,6 +2914,7 @@
                     </div>
                 </div>
                 <div class="popup-summary">${displayContent}</div>
+                ${detailsHtml}
                 ${reactionSlot}
                 <div class="popup-footer">
                     ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="popup-btn-v2 primary">
@@ -2516,6 +2944,7 @@
             ? `<div class="card-v2-extra"><div class="reaction-container" data-event-id="${ev.id}"></div></div>`
             : "";
         const reportArg = encodeURIComponent(displayTitle);
+        const detailsHtml = makeEventDetailRows(ev, "card");
 
         return `
             <div class="card-bar" style="background:${catVisual.color};"></div>
@@ -2527,6 +2956,7 @@
                 </div>
                 <div class="card-v2-title">${displayTitle}</div>
                 <div class="card-v2-content">${displayContent}</div>
+                ${detailsHtml}
             </div>
             <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
             ${reactionSlot}
@@ -3166,6 +3596,86 @@
 
     window.handleReaction = window.handleReactClick;
 
+    function renderLoadingState() {
+        if (!eventList) return;
+        eventList.innerHTML = `
+            <div class="list-loading-state" role="status" aria-live="polite">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <strong>正在同步最新事件</strong>
+                <p>地圖正在讀取交通、災害與活動資料。完成後會自動更新清單與標記。</p>
+                <div class="loading-line"></div>
+                <div class="loading-line short"></div>
+            </div>`;
+    }
+
+    function resetVisibleFilters() {
+        activeCategory = "all";
+        searchKeyword = "";
+        ["event-search", "event-search-mobile"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "";
+        });
+        ["city-filter", "city-filter-mobile"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "all";
+        });
+        drawCityBoundary("all");
+        renderCategoryButtons();
+        renderEvents();
+        flyToLatLng([23.698, 120.961], 7, 900);
+    }
+
+    function buildEmptyStateHtml() {
+        const hasSourceEvents = Array.isArray(parsedEvents) && parsedEvents.length > 0;
+        const filtered = activeCategory !== "all" || searchKeyword || currentCityFilter() !== "all";
+        const title = hasSourceEvents && filtered ? "沒有符合目前條件的事件" : "目前沒有可顯示的事件";
+        const copy = hasSourceEvents && filtered
+            ? "試著放寬分類、城市或關鍵字，清單會立即重新整理。"
+            : "資料源目前沒有回傳事件。你仍可切換模式、查看地圖，或稍後重新同步。";
+        const hint = currentMapMode === "online"
+            ? "TW Online 模式會保留相同的篩選邏輯，方便比較不同資料視角。"
+            : "一般模式會優先顯示台灣交通、災害、意外與活動資料。";
+        return `
+            <div class="empty-state">
+                <i class="fa-solid fa-map-location-dot"></i>
+                <strong>${title}</strong>
+                <p>${copy}</p>
+                <small>${hint}</small>
+                ${filtered ? `
+                    <div class="empty-actions">
+                        <button type="button" class="empty-action-btn primary" id="reset-filters-btn">清除篩選</button>
+                    </div>` : ""}
+            </div>`;
+    }
+
+    function getCurrentCategoryLabel() {
+        if (currentMapMode === "fortune" && typeof getFortuneFilterLabel === "function") return getFortuneFilterLabel(activeCategory);
+        if (activeCategory === "all") return "全部事件";
+        const visual = getCategoryVisual(activeCategory);
+        return visual?.text || activeCategory || "全部事件";
+    }
+
+    function ensureMobileFilterSummary() {
+        if (!newsSidebar) return null;
+        const header = newsSidebar.querySelector(".sidebar-header");
+        if (!header) return null;
+        let summary = header.querySelector(".mobile-filter-summary");
+        if (!summary) {
+            summary = document.createElement("button");
+            summary.type = "button";
+            summary.className = "mobile-filter-summary";
+            summary.setAttribute("aria-label", "目前篩選摘要");
+            header.appendChild(summary);
+        }
+        return summary;
+    }
+
+    function updateMobileFilterSummary(count = 0) {
+        const summary = ensureMobileFilterSummary();
+        if (!summary) return;
+        summary.innerHTML = `<span>目前篩選：${getCurrentCategoryLabel()}</span><strong>${count} 筆</strong>`;
+    }
+
     // ── RENDER ──────────────────────────────────────────────
     function renderEvents(){
         let events = getFilteredEvents();
@@ -3183,8 +3693,8 @@
         updateCurationMeta(events);
 
         if(!events.length){
-            const emptyText = isOnline ? TW_ONLINE_TEXT.emptyState : "目前沒有符合條件的事件";
-            eventList.innerHTML=`<div class="empty-state"><i class="fa-solid fa-map-location-dot"></i><p>${emptyText}</p></div>`;
+            eventList.innerHTML = buildEmptyStateHtml();
+            document.getElementById("reset-filters-btn")?.addEventListener("click", resetVisibleFilters);
         }
 
         events.forEach(ev=>{
@@ -3290,6 +3800,7 @@
         const cnt=document.getElementById("mobile-count");
         if(cnt) cnt.textContent=`${events.length} 筆`;
         setStatus(`顯示 ${events.length} 筆事件`);
+        updateMobileFilterSummary(events.length);
     }
 
     // ── MOCK DATA ────────────────────────────────────────────
@@ -3305,6 +3816,7 @@
     // ── FETCH ────────────────────────────────────────────────
     async function syncNewsAndRender(){
         setStatus("正在抓取事件資料...");
+        renderLoadingState();
         try{
             const res = await fetch("/api/events");
             const raw = await res.text();
@@ -3637,6 +4149,9 @@
     document.getElementById("settings-btn").addEventListener("click", () => {
         settingsModal.classList.add("visible");
     });
+    document.getElementById("settings-btn-mobile")?.addEventListener("click", () => {
+        settingsModal.classList.add("visible");
+    });
     document.getElementById("settings-close-btn").addEventListener("click", () => {
         settingsModal.classList.remove("visible");
     });
@@ -3659,7 +4174,3 @@
 </script>
 </body>
 </html>
-
-
-
-

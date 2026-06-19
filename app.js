@@ -2141,6 +2141,50 @@
         return ev.summary || ev.content || "目前尚無摘要資訊。";
     }
 
+    function formatEventDateTime(value) {
+        if (!value) return "";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return "";
+        return d.toLocaleString("zh-TW", {
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false
+        });
+    }
+
+    function formatEventDateRange(ev) {
+        const start = formatEventDateTime(ev.startsAt || ev.startAt);
+        const end = formatEventDateTime(ev.endsAt || ev.endAt);
+        if (start && end && start !== end) return `${start} - ${end}`;
+        return start || end || "";
+    }
+
+    function makeEventDetailRows(ev, context = "card") {
+        const rows = [];
+        const isActivity = inferEventGroupCategory(ev) === "activity" || ev.category === "activity";
+        const timeRange = formatEventDateRange(ev);
+        const place = normalizeText([ev.venue, ev.address || ev.location].filter(Boolean).join("｜"));
+        const area = normalizeText([ev.city, ev.district].filter(Boolean).join(" "));
+
+        if (isActivity && timeRange) rows.push(["時間", timeRange]);
+        if (place) rows.push([isActivity ? "場地" : "地點", place]);
+        else if (area) rows.push(["地區", area]);
+        if (ev.impact) rows.push(["影響", ev.impact]);
+        if (ev.advice) rows.push(["建議", ev.advice]);
+
+        if (!rows.length) return "";
+        const maxRows = context === "popup" ? 4 : 3;
+        return `<div class="event-detail-list event-detail-list--${context}">
+            ${rows.slice(0, maxRows).map(([label, value]) => `
+                <div class="event-detail-item">
+                    <span class="event-detail-label">${label}</span>
+                    <span class="event-detail-value">${value}</span>
+                </div>`).join("")}
+        </div>`;
+    }
+
     function getImpactLabel(ev) {
         const raw = normalizeText(ev.impactLevel);
         if (raw) return raw;
@@ -2332,6 +2376,7 @@
         const badgeHtml = twCopy
             ? `<span class="cat-badge-v2" style="background:rgba(${catVisualMeta(ev.category).rgba},0.15);border:1px solid rgba(${catVisualMeta(ev.category).rgba},0.3);color:${catVisualMeta(ev.category).tint};">${twCopy.categoryLabel}</span>`
             : makeCatBadgeV2(ev.category);
+        const detailsHtml = makeEventDetailRows(ev, "popup");
         return `
             <div class="popup-demo-inner" style="--popup-color:${markerStyle.color}">
                 <div class="popup-header">
@@ -2346,6 +2391,7 @@
                     </div>
                 </div>
                 <div class="popup-summary">${displayContent}</div>
+                ${detailsHtml}
                 <div class="event-impact-row">
                     <span class="impact-chip impact-${getSeverityBand(ev)}">${impactLabel}</span>
                     <span class="severity-chip">${severityLabel}</span>
@@ -2390,6 +2436,7 @@
             <div class="card-sources-list">
                 <a href="${sourceUrl}" target="_blank" rel="noreferrer" onclick="event.stopPropagation();">${sourceLabel}</a>
             </div>` : "";
+        const detailsHtml = makeEventDetailRows(ev, "card");
         return `
             <div class="card-bar" style="background:${catVisual.color};"></div>
             <div class="card-v2-left">
@@ -2401,6 +2448,7 @@
                 </div>
                 <div class="card-v2-title">${displayTitle}</div>
                 <div class="card-v2-content">${displayContent}</div>
+                ${detailsHtml}
                 <div class="event-impact-row">
                     <span class="impact-chip impact-${getSeverityBand(ev)}">${impactLabel}</span>
                     <span class="severity-chip">${severityLabel}</span>
@@ -3755,6 +3803,4 @@ async function submitReport() {
         setNearbyStatusTextV2();
         loadTwGeoJSON();
     });
-
-
 

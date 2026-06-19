@@ -81,6 +81,15 @@ const CATEGORY_GROUPS = {
   other: "other",
 };
 
+const CITY_ALIASES = {
+  "臺北市": "台北市",
+  "臺中市": "台中市",
+  "臺南市": "台南市",
+  "臺東縣": "台東縣",
+};
+
+const DISTRICT_PATTERN = /([\u4e00-\u9fff]{1,4}(?:區|鄉|鎮|市))/g;
+
 function parseStoredEvents(value) {
   if (Array.isArray(value)) return value;
   if (value?.events && Array.isArray(value.events)) return value.events;
@@ -105,15 +114,64 @@ function normalizeCategory(value) {
 }
 
 function normalizeCity(value) {
-  const raw = normalizeText(value, "台灣");
+  const raw = normalizeText(value, "台灣").replace(/臺/g, "台");
   const match = TAIWAN_CITY_COORDS[raw];
   if (match?.city) return match.city;
-  return raw;
+  const city = Object.keys(TAIWAN_CITY_COORDS)
+    .filter((cityName) => cityName.length >= 3)
+    .find((cityName) => raw.includes(cityName.replace(/臺/g, "台")));
+  return CITY_ALIASES[city] || city || raw;
 }
 
 function inferCityFromText(text) {
-  const source = normalizeText(text);
-  return Object.keys(TAIWAN_CITY_COORDS).find((city) => source.includes(city)) || "";
+  const source = normalizeText(text).replace(/臺/g, "台");
+  const city = Object.keys(TAIWAN_CITY_COORDS)
+    .filter((cityName) => cityName.length >= 3)
+    .find((cityName) => source.includes(cityName.replace(/臺/g, "台")));
+  return CITY_ALIASES[city] || city || "";
+}
+
+function extractDistrict(text = "") {
+  const source = normalizeText(text).replace(/臺/g, "台");
+  const matches = [...source.matchAll(DISTRICT_PATTERN)].map((match) => match[1]);
+  return matches.find((name) => /(?:區|鄉|鎮)$/.test(name))
+    || matches.find((name) => /市$/.test(name) && !TAIWAN_CITY_COORDS[name])
+    || "";
+}
+
+function parseTime(value) {
+  if (!value) return null;
+  const ts = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function inferStatus(event) {
+  const now = Date.now();
+  const startAt = parseTime(event.startsAt || event.startAt);
+  const endAt = parseTime(event.endsAt || event.endAt || event.expiresAt);
+  if (endAt && endAt < now) return "expired";
+  if (startAt && startAt > now) return "upcoming";
+  return "active";
+}
+
+function inferImpact(event, category) {
+  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.text || ""}`);
+  if (category === "activity") return "活動期間周邊可能有人潮與交通變化。";
+  if (category === "traffic" || category === "construction") return "周邊道路可能壅塞或受管制影響。";
+  if (category === "accident") return "現場周邊通行與安全可能受影響。";
+  if (category === "disaster" || /火災|淹水|坍方|地震|停電|停水/.test(text)) return "周邊民生、交通或安全可能受影響。";
+  if (category === "criminal") return "周邊公共安全需留意。";
+  return "此事件可能影響周邊活動與通行。";
+}
+
+function inferAdvice(event, category) {
+  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.text || ""}`);
+  if (category === "activity") return "前往前請確認活動頁公告、交通方式與入場時間。";
+  if (category === "traffic" || category === "construction" || /封閉|管制|壅塞|塞車/.test(text)) return "行經附近請放慢車速，必要時提前改道。";
+  if (category === "accident") return "避開事故現場，依警方或現場人員指揮通行。";
+  if (category === "disaster" || /火災|淹水|坍方|土石流|地震/.test(text)) return "避免靠近危險區域，留意官方最新公告。";
+  if (category === "criminal") return "避免靠近現場，留意警方與地方政府公告。";
+  return "前往附近前先確認最新資訊。";
 }
 
 function resolveCoordinates(event, city) {
@@ -183,6 +241,7 @@ function normalizeEvent(event, index = 0) {
   const sourceUrl = normalizeText(event.sourceUrl || event.url || event.link);
   const publishedAt = event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString();
   const createdAt = Number(event.createdAt) || Date.parse(publishedAt) || Date.now();
+  const district = normalizeText(event.district || extractDistrict(`${event.address || ""} ${event.location || ""} ${title} ${content}`));
 
   return {
     ...event,
@@ -194,6 +253,9 @@ function normalizeEvent(event, index = 0) {
     rawCategory,
     groupCategory,
     city,
+    district,
+    address: normalizeText(event.address || event.location || ""),
+    venue: normalizeText(event.venue || ""),
     lat,
     lng,
     severity: inferSeverity(event, rawCategory),
@@ -202,7 +264,15 @@ function normalizeEvent(event, index = 0) {
     sourceUrl,
     url: sourceUrl,
     publishedAt: new Date(publishedAt).toString() === "Invalid Date" ? new Date(createdAt).toISOString() : new Date(publishedAt).toISOString(),
+    updatedAt: new Date(event.updatedAt || createdAt).toString() === "Invalid Date" ? new Date(createdAt).toISOString() : new Date(event.updatedAt || createdAt).toISOString(),
     createdAt,
+    startsAt: event.startsAt || event.startAt || null,
+    endsAt: event.endsAt || event.endAt || null,
+    expiresAt: event.expiresAt || null,
+    status: normalizeText(event.status || inferStatus(event)),
+    impact: normalizeText(event.impact || inferImpact(event, rawCategory)),
+    advice: normalizeText(event.advice || inferAdvice(event, rawCategory)),
+    tags: Array.isArray(event.tags) ? event.tags : [rawCategory, city, district].filter(Boolean),
     interactionCount: Number(event.interactionCount || event.reactionCount || event.count || 0),
     hasCasualty: Boolean(event.hasCasualty),
   };

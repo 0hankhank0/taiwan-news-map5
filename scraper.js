@@ -19,6 +19,8 @@ if (process.argv.includes('--clear-cache')) {
     await kv.del('taiwan_traffic_events');
     await kv.del('events:news');
     await kv.del('events:traffic');
+    await kv.del('events:activities');
+    await kv.del('events:merged');
     console.log('✅ KV 快取已清除 (包含新聞、交通及合併事件)');
     process.exit(0);
   })();
@@ -128,6 +130,89 @@ function cleanRSSContent(text) {
     .replace(/&quot;/g, '"')
     .replace(/&nbsp;/g, ' ')
     .trim();
+}
+
+const TAIWAN_DISTRICT_PATTERN = /([\u4e00-\u9fff]{1,4}(?:區|鄉|鎮|市))/;
+
+function extractDistrict(text = "") {
+  const normalized = cleanRSSContent(text).replace(/臺/g, "台");
+  const matches = [...normalized.matchAll(new RegExp(TAIWAN_DISTRICT_PATTERN.source, "g"))].map(match => match[1]);
+  return matches.find(name => /(?:區|鄉|鎮)$/.test(name))
+    || matches.find(name => /市$/.test(name) && !Object.keys(TAIWAN_CITY_COORDS).includes(name))
+    || "";
+}
+
+function parseEventTime(value) {
+  if (!value) return null;
+  const ts = typeof value === "number" ? value : Date.parse(value);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function inferEventStatus(event, now = Date.now()) {
+  const startAt = parseEventTime(event.startsAt || event.startAt);
+  const endAt = parseEventTime(event.endsAt || event.endAt || event.expiresAt);
+  if (endAt && endAt < now) return "expired";
+  if (startAt && startAt > now) return "upcoming";
+  return "active";
+}
+
+function inferEventSeverity(event) {
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (/死亡|身亡|罹難|重傷|氣爆|爆炸|大火|土石流|封閉|停班|停課/.test(text)) return 4;
+  if (/車禍|事故|淹水|坍方|火災|槍擊|命案|管制|壅塞/.test(text)) return 3;
+  if ((event.category || "") === "activity") return 1;
+  return 2;
+}
+
+function inferImpact(event) {
+  const cat = event.category || "";
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (cat === "activity") return "活動期間周邊可能有人潮與交通變化。";
+  if (cat === "traffic" || cat === "construction") return "周邊道路可能壅塞或受管制影響。";
+  if (cat === "accident") return "現場周邊通行與安全可能受影響。";
+  if (cat === "disaster" || /火災|淹水|坍方|地震|停電|停水/.test(text)) return "周邊民生、交通或安全可能受影響。";
+  if (cat === "criminal") return "周邊公共安全需留意。";
+  return "此事件可能影響周邊活動與通行。";
+}
+
+function inferAdvice(event) {
+  const cat = event.category || "";
+  const text = `${event.title || ""} ${event.content || ""} ${event.text || ""}`;
+  if (cat === "activity") return "前往前請確認活動頁公告、交通方式與入場時間。";
+  if (cat === "traffic" || cat === "construction" || /封閉|管制|壅塞|塞車/.test(text)) return "行經附近請放慢車速，必要時提前改道。";
+  if (cat === "accident") return "避開事故現場，依警方或現場人員指揮通行。";
+  if (cat === "disaster" || /火災|淹水|坍方|土石流|地震/.test(text)) return "避免靠近危險區域，留意官方最新公告。";
+  if (cat === "criminal") return "避免靠近現場，留意警方與地方政府公告。";
+  return "前往附近前先確認最新資訊。";
+}
+
+function enrichEvent(event) {
+  const now = Date.now();
+  const sourceUrl = event.sourceUrl || event.url || event.link || "";
+  const locationText = event.location || event.address || event.venue || event.city || "";
+  const district = event.district || extractDistrict(`${locationText} ${event.title || ""} ${event.content || ""} ${event.text || ""}`);
+  const publishedAt = event.publishedAt || event.pubDate || event.createdAt || now;
+  const createdAt = Number(event.createdAt) || parseEventTime(publishedAt) || now;
+  const updatedAt = event.updatedAt || new Date(now).toISOString();
+
+  return {
+    ...event,
+    city: normalizeTaiwanCityName(event.city || extractTaiwanCity(`${locationText} ${event.title || ""}`) || "台灣"),
+    district,
+    address: event.address || event.location || "",
+    venue: event.venue || "",
+    sourceName: event.sourceName || event.source || "unknown",
+    sourceUrl,
+    url: event.url || sourceUrl,
+    publishedAt: new Date(parseEventTime(publishedAt) || createdAt).toISOString(),
+    updatedAt: new Date(parseEventTime(updatedAt) || now).toISOString(),
+    createdAt,
+    status: event.status || inferEventStatus(event, now),
+    severity: event.severity || inferEventSeverity(event),
+    impact: event.impact || inferImpact(event),
+    advice: event.advice || inferAdvice(event),
+    tags: event.tags || [event.category, event.city, district].filter(Boolean),
+  };
 }
 
 async function getTDXToken() {
@@ -457,50 +542,220 @@ function parseRSS(xml) {
   const items = [];
   const itemRegex = /<item>([\s\S]*?)<\/item>/g;
   let match;
+  const readTag = (block, tag) => {
+    const m = block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
+    return m ? cleanRSSContent(m[1] || m[2] || "") : "";
+  };
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1];
-    const get = (tag) => {
-      const m = block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>|<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`));
-      return m ? (m[1] || m[2] || "").trim() : "";
-    };
-    const title = get("title");
-    const link = get("link");
-    const description = get("description").replace(/<[^>]+>/g, "").trim();
-    const pubDate = get("pubDate");
+    const title = readTag(block, "title");
+    const link = readTag(block, "link");
+    const description = readTag(block, "description");
+    const pubDate = readTag(block, "pubDate");
+    const id = readTag(block, "guid") || link;
     if (title && link) {
-      items.push({ title, link, description, pubDate });
+      items.push({ id, title, link, description, pubDate });
     }
   }
+
+  const entryRegex = /<entry\b[^>]*>([\s\S]*?)<\/entry>/g;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const title = readTag(block, "title");
+    const href = block.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*>/i)?.[1] || "";
+    const link = readTag(block, "link") || href;
+    const summary = readTag(block, "summary");
+    const content = readTag(block, "content");
+    const description = [summary, content].filter(Boolean).join("\n");
+    const pubDate = readTag(block, "published") || readTag(block, "updated");
+    const id = readTag(block, "id") || link;
+    const authorBlock = block.match(/<author\b[^>]*>([\s\S]*?)<\/author>/i)?.[1] || "";
+    const author = readTag(authorBlock, "name");
+    if (title && link) {
+      items.push({ id, title, link, description, pubDate, author });
+    }
+  }
+
   return items;
 }
 
+function extractTaiwanCity(text = "") {
+  const normalizedText = String(text || "").replace(/臺/g, "台");
+  const city = Object.keys(TAIWAN_CITY_COORDS)
+    .filter(cityName => cityName.length >= 3)
+    .find(cityName => normalizedText.includes(cityName.replace(/臺/g, "台"))) || "";
+  return normalizeTaiwanCityName(city);
+}
+
+function inferNewsCategory(text = "") {
+  if (/火災|失火|大火|爆炸|氣爆|濃煙|災害|淹水|積水|土石流|坍方|地震|停電|停水/.test(text)) return "disaster";
+  if (/車禍|事故|撞|追撞|翻車|國道|省道|封閉|管制|塞車|交通/.test(text)) return "traffic";
+  if (/殺人|命案|搶劫|強盜|槍擊|砍人|鬥毆|傷人|詐騙|逮捕|通緝/.test(text)) return "criminal";
+  if (/演唱會|活動|展覽|遶境|煙火|賽事|封街/.test(text)) return "activity";
+  return null;
+}
+
+function heuristicAnalyzeNews(article) {
+  const text = `${article.title || ""} ${article.description || ""}`;
+  const category = inferNewsCategory(text);
+  const city = extractTaiwanCity(text);
+  if (!category || !city) return null;
+
+  const lowValue = /開罰|稽查|酒駕取締|議員|立委|選舉|民調|股市|財報/.test(text);
+  if (lowValue) return null;
+
+  const importance = /死亡|身亡|重傷|多人|封閉|停班|停課|大規模|土石流|淹水|氣爆|爆炸/.test(text) ? 6 : 3;
+  return {
+    title: cleanRSSContent(article.title).slice(0, 24),
+    content: cleanRSSContent(article.description || article.title).slice(0, 80),
+    category,
+    location: city,
+    importance,
+    eventFingerprint: `${city}_${category}_${cleanRSSContent(article.title).slice(0, 12)}`,
+    ttl_hours: category === "activity" ? 12 : 6,
+    fallback: true,
+  };
+}
+
+function parseKktixDate(value = "") {
+  const match = String(value).match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, mo, d, h, mi] = match;
+  const iso = `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}T${h.padStart(2, "0")}:${mi}:00+08:00`;
+  const ts = Date.parse(iso);
+  return Number.isFinite(ts) ? ts : null;
+}
+
+function parseKktixActivityMeta(description = "") {
+  const text = cleanRSSContent(description).replace(/\r/g, "");
+  const timeLine = text.match(/時間[:：]\s*([^\n]+)/)?.[1]?.trim() || "";
+  const locationLine = text.match(/地點[:：]\s*([^\n]+)/)?.[1]?.trim() || "";
+  const [startText, endText] = timeLine.split(/\s*~\s*/);
+  const locationParts = locationLine.split(/\s*\/\s*/).map(part => part.trim()).filter(Boolean);
+  const venue = locationParts[0] || "";
+  const address = locationParts[1] || venue;
+
+  return {
+    timeLine,
+    startAt: parseKktixDate(startText),
+    endAt: parseKktixDate(endText || startText),
+    venue,
+    address,
+    location: locationLine,
+  };
+}
+
+async function fetchActivities() {
+  console.log("🎪 [活動] 開始抓取 KKTIX 活動資訊...");
+  const url = "https://kktix.com/events.atom";
+  const now = Date.now();
+  const windowEnd = now + 30 * 24 * 60 * 60 * 1000;
+
+  try {
+    const res = await fetch(url, fetchOptions);
+    if (!res.ok) {
+      console.log(`⚠️ [活動] KKTIX HTTP ${res.status}，跳過`);
+      return [];
+    }
+
+    const xml = await res.text();
+    const items = parseRSS(xml);
+    const candidates = items
+      .map(item => ({ item, meta: parseKktixActivityMeta(item.description) }))
+      .filter(({ item, meta }) => {
+        if (!item.title || !item.link || !meta.endAt) return false;
+        if (meta.endAt < now) return false;
+        if (meta.startAt && meta.startAt > windowEnd) return false;
+        return true;
+      })
+      .slice(0, 30);
+
+    const events = [];
+    for (const { item, meta } of candidates) {
+      const city = extractTaiwanCity(`${meta.address} ${meta.location} ${item.title} ${item.description}`);
+      if (!city) continue;
+
+      const coords = await geocodeWithCity(meta.address || meta.location || city, city);
+      if (!coords) continue;
+
+      const title = cleanRSSContent(item.title).slice(0, 28);
+      const timeText = meta.timeLine ? `時間：${meta.timeLine}` : "";
+      const locationText = meta.location ? `地點：${meta.location}` : `地點：${city}`;
+      const organizerText = item.author ? `主辦：${cleanRSSContent(item.author)}` : "";
+      const content = [timeText, locationText, organizerText].filter(Boolean).join("｜");
+      const expiresAt = Math.min(meta.endAt + 2 * 60 * 60 * 1000, now + 30 * 24 * 60 * 60 * 1000);
+
+      events.push(enrichEvent({
+        id: `KKTIX_${Buffer.from(item.link).toString("base64").slice(0, 20)}`,
+        title,
+        content,
+        summary: content,
+        category: "activity",
+        source: "KKTIX",
+        sourceName: "KKTIX",
+        url: item.link,
+        sourceUrl: item.link,
+        lat: coords.lat,
+        lng: coords.lng,
+        city,
+        district: extractDistrict(meta.address || meta.location || ""),
+        address: meta.address || "",
+        venue: meta.venue || "",
+        location: meta.address || meta.location || city,
+        isReal: true,
+        importance: 2,
+        eventFingerprint: `${city}_activity_${title.slice(0, 12)}`,
+        ttl_hours: Math.max(12, Math.ceil((expiresAt - now) / (60 * 60 * 1000))),
+        pubDate: item.pubDate || new Date(meta.startAt || now).toISOString(),
+        publishedAt: item.pubDate || new Date(meta.startAt || now).toISOString(),
+        startsAt: meta.startAt ? new Date(meta.startAt).toISOString() : null,
+        endsAt: meta.endAt ? new Date(meta.endAt).toISOString() : null,
+        createdAt: now,
+        expiresAt,
+        sources: [{ outlet: "KKTIX", title: item.title, url: item.link, id: item.id || item.link }],
+      }));
+
+      await delay(200);
+    }
+
+    console.log(`✅ [活動] KKTIX 篩選後新增 ${events.length} 筆`);
+    return events;
+  } catch (e) {
+    console.error("❌ [活動] KKTIX 抓取失敗:", e.message);
+    return [];
+  }
+}
+
 async function aiAnalyzeSingleNews(article) {
-  const prompt = `你是台灣新聞事件分析器。今天日期是【${todayStr}】。
-請分析以下這則單筆新聞，判斷是否符合「嚴格發文審核標準」。
+  const prompt = `你是台灣即時事件分析器。今天日期是【${todayStr}】。
+請分析以下這則單筆新聞，判斷是否適合放到「台灣新聞事件地圖」。
 
 新聞內容：
 標題：${sanitizeText(article.title)}
 摘要：${sanitizeText(article.description?.slice(0, 200) || "")}
+發布時間：${sanitizeText(article.pubDate || article.publishedAt || "")}
 
-【審核標準】（以下全部符合才發文，只要有任何一點不符合，importance 務必設為 0）：
-1. 【嚴重性】必須是以下其中之一：
-   - 火災／爆炸／氣爆（有傷亡或重大財損）
-   - 交通重大事故（死亡、多人受傷、道路封閉）
-   - 天災（地震有感、土石流、淹水影響居民）
-   - 刑事重大案件（殺人、搶劫、綁架、重傷）
-   - 公共安全威脅（毒化災、工安、停電大規模）
+【審核標準】：
+1. 【事件性】只要是已發生或正在發生、能對地圖使用者產生即時參考價值的台灣本地事件，就可以收錄：
+   - 火災／爆炸／氣爆／工安／停電停水
+   - 交通事故、道路封閉、淹水、坍方、管制、重大壅塞
+   - 天災、地震有感、土石流、淹水影響居民
+   - 刑事或公共安全事件
+   - 大型活動、封街、群聚、生活異動
 2. 【排除清單】以下一律不發：
-   - 輕微違規、開罰、稽查、動物事件、政治、財經、選舉、社會議題、無明確地點的新聞。
-3. 【時效性】5小時前以上的舊新聞不發。
+   - 純政治、財經、選舉、評論、人物專訪、國際新聞、無台灣地點的新聞。
+   - 單純開罰、例行稽查、法院判決回顧，除非正在影響交通或公共安全。
+3. 【時效性】24小時內可收錄；超過 24 小時或沒有即時影響才設為 0。
+4. 【重要度】輕微但可定位的即時事件 importance 可給 1-3；重大傷亡、封路、災害給 5-10。不要因為不夠重大就直接設為 0。
 
 【地點解析規則】（非常重要）：
 請從這則新聞的標題 and 內容中，找出事件發生的精確地點：
 - 優先從「標題」抓取地點，標題有地點就以標題為主。
 - 標題沒有地點時，才從內容（摘要）中抓取。
 - 只抓取事件的「發生地點」，絕對不是人物的來源地、目的地、戶籍地或就醫地點。
-- 地點必須精確到街道或地標，禁止只填縣市名。
+- 地點優先精確到街道或地標；若新聞只明確寫到縣市或行政區，仍可填該縣市/行政區，不要設為 null。
 - 格式：縣市 + 區 + 詳細地點（例如：台北市松山區台鐵松山火車站）。
-- 如果標題與內容完全找不到台灣具體地點，或只能確定到縣市，location 請填 null，不要亂猜，importance 務必設為 0。
+- 如果標題與內容完全找不到台灣地點，location 請填 null，不要亂猜，importance 務必設為 0。
 - 絕對不要猜測或捏造地點。
 
 【回傳格式】：
@@ -529,10 +784,13 @@ async function aiAnalyzeSingleNews(article) {
 // 台灣縣市中心座標對照表（Nominatim 429 時的 fallback）
 const TAIWAN_CITY_COORDS = {
   "台北市": { lat: 25.0330, lng: 121.5654 },  // 台北市中心（忠孝東路）
+  "臺北市": { lat: 25.0330, lng: 121.5654 },
   "新北市": { lat: 25.0120, lng: 121.4628 },  // 板橋市中心
   "桃園市": { lat: 24.9936, lng: 121.3010 },  // 桃園市中心
   "台中市": { lat: 24.1477, lng: 120.6736 },  // 台中市中心
+  "臺中市": { lat: 24.1477, lng: 120.6736 },
   "台南市": { lat: 23.1728, lng: 120.2793 },  // 台南市中心（來源：月沙生活通）
+  "臺南市": { lat: 23.1728, lng: 120.2793 },
   "高雄市": { lat: 22.6273, lng: 120.3014 },  // 高雄市中心
   "基隆市": { lat: 25.1276, lng: 121.7392 },  // 基隆市中心
   "新竹市": { lat: 24.8138, lng: 120.9675 },  // 新竹市中心
@@ -547,6 +805,7 @@ const TAIWAN_CITY_COORDS = {
   "宜蘭縣": { lat: 24.7021, lng: 121.7377 },  // 宜蘭縣中心
   "花蓮縣": { lat: 23.9871, lng: 121.6015 },  // 花蓮縣中心
   "台東縣": { lat: 22.7583, lng: 121.1444 },  // 台東縣中心
+  "臺東縣": { lat: 22.7583, lng: 121.1444 },
   "澎湖縣": { lat: 23.5711, lng: 119.5793 },  // 澎湖縣中心
   "金門縣": { lat: 24.4493, lng: 118.3765 },  // 金門縣中心
   "連江縣": { lat: 26.1505, lng: 119.9289 },  // 連江縣中心
@@ -554,12 +813,31 @@ const TAIWAN_CITY_COORDS = {
   "省道":   { lat: 24.0, lng: 121.0 },
 };
 
+const TAIWAN_CITY_ALIASES = {
+  "臺北市": "台北市",
+  "臺中市": "台中市",
+  "臺南市": "台南市",
+  "臺東縣": "台東縣",
+};
+
+function normalizeTaiwanCityName(city = "") {
+  const raw = String(city || "").replace(/臺/g, "台").trim();
+  if (!raw) return "";
+  if (TAIWAN_CITY_ALIASES[raw]) return TAIWAN_CITY_ALIASES[raw];
+  if (raw === "Taiwan" || raw === "台灣" || raw === "臺灣") return "台灣";
+  const matched = Object.keys(TAIWAN_CITY_COORDS)
+    .filter(cityName => cityName.length >= 3)
+    .find(cityName => raw.includes(cityName.replace(/臺/g, "台")));
+  return TAIWAN_CITY_ALIASES[matched] || matched || raw;
+}
+
 // geocode 失敗計數（同一地名連續失敗就跳過）
 const geocodeFailCache = new Map();
 
 function cleanLocationText(location) {
   if (!location) return "";
   return location
+    .replace(/臺/g, "台")
     .replace(/（[^）]*）|\([^)]*\)/g, "") // 去掉括號說明文字
     .split(/[，,]/)[0] // 遇到逗號只取第一段
     .replace(/附近|一帶|週邊|路口/g, "") // 去掉模糊詞
@@ -676,13 +954,10 @@ async function fetchNews() {
     // ── 公視新聞（✅ 官方 RSS）──
     { url: "https://about.pts.org.tw/rss/XML/newsfeed.xml",         name: "公視新聞" },
 
-    // ── TVBS 社會（需確認）──
-    { url: "https://news.tvbs.com.tw/rss/local.xml",                name: "TVBS社會" },
+    // ── Yahoo 新聞（✅ RSS，可補社會事件）──
+    { url: "https://tw.news.yahoo.com/rss/society",                 name: "Yahoo社會" },
 
-    // ── NOWnews（需確認）──
-    { url: "https://www.nownews.com/feed/cat/7",                    name: "NOWnews社會" },
-
-    // ── 聯合報社會（需確認）──
+    // ── 聯合報社會（來源偶爾回空 feed，保留但不視為錯誤）──
     { url: "https://udn.com/rssfeed/news/2/6638?crsdomain=udn.com", name: "聯合社會" },
   ];
 
@@ -698,7 +973,7 @@ async function fetchNews() {
       const xml = await res.text();
       const items = parseRSS(xml);
       items.forEach((item, i) => {
-        allArticles.push({ ...item, id: `NEWS_${source.name}_${i}`, source: "RSS" });
+        allArticles.push({ ...item, id: `NEWS_${source.name}_${i}`, source: source.name });
       });
       console.log(`✅ [${source.name}] 抓到 ${items.length} 則`);
     } catch (e) {
@@ -726,9 +1001,18 @@ async function fetchNews() {
   console.log(`🗂️ [新聞] 去重後剩 ${allArticles.length} 則`);
 
   let newsEvents = [];
+  let aiAccepted = 0;
+  let fallbackAccepted = 0;
+  let rejected = 0;
   for (let i = 0; i < allArticles.length; i++) {
     const article = allArticles[i];
-    const ai = await aiAnalyzeSingleNews(article);
+    let ai = await aiAnalyzeSingleNews(article);
+    if (!ai || !(ai.importance > 0)) {
+      ai = heuristicAnalyzeNews(article);
+      if (ai) fallbackAccepted++;
+    } else {
+      aiAccepted++;
+    }
     
     if (ai && ai.importance > 0) {
       let coords = null;
@@ -741,27 +1025,41 @@ async function fetchNews() {
       }
 
       if (coords) {
-        newsEvents.push({
+        newsEvents.push(enrichEvent({
           id: article.id || `NEWS_${Math.random().toString(36).slice(2)}`,
           title: cleanRSSContent(ai.title),
           content: cleanRSSContent(ai.content || article.title || ""),
+          summary: cleanRSSContent(ai.content || article.description || article.title || ""),
           category: ai.category || "other",
           source: "news",
+          sourceName: article.source || "news",
           url: article.link || article.url || "",
+          sourceUrl: article.link || article.url || "",
           lat: coords.lat,
           lng: coords.lng,
           city: ai.location,
+          district: extractDistrict(ai.location),
+          address: ai.location,
+          location: ai.location,
+          importance: ai.importance,
+          eventFingerprint: ai.eventFingerprint,
           isReal: true,
           pubDate: article.pubDate || new Date().toISOString(),
+          publishedAt: article.pubDate || article.publishedAt || new Date().toISOString(),
           sources: [{ outlet: article.source || "未知", title: article.title, url: article.link || article.url, id: article.id }],
           createdAt: Date.now(),
           expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 24) * 60 * 60 * 1000,
-        });
+        }));
+      } else {
+        rejected++;
       }
+    } else {
+      rejected++;
     }
     await delay(500); // 逐筆處理間隔，避免 rate limit 並提升準確度
   }
 
+  console.log(`🤖 [新聞] AI 通過 ${aiAccepted} 則，fallback 補 ${fallbackAccepted} 則，未收錄 ${rejected} 則`);
   console.log(`🤖 [新聞] AI 篩選與聚合後剩 ${newsEvents.length} 則相關新聞`);
 
   // 二次去重邏輯已由 AI 聚合部分取代，但為了保險起見仍可保留或調整
@@ -774,24 +1072,32 @@ async function fetchNews() {
   });
   console.log(`🔍 [新聞] 最終去重後剩 ${newsEvents.length} 則`);
 
+  // ── 活動資訊 ──
+  const activityEvents = await fetchActivities();
+  newsEvents.push(...activityEvents);
+  console.log(`🎪 [活動] 新增 ${activityEvents.length} 筆活動資訊`);
+
   // ── GDELT 地理事件 ──
   console.log("📡 [GDELT] 開始抓取地理座標事件...");
   const gdeltGeoEvents = await fetchGDELTGeo();
   gdeltGeoEvents.forEach(e => {
-    newsEvents.push({
+    newsEvents.push(enrichEvent({
       id: e.id,
       title: cleanRSSContent(e.title),
       content: `【GDELT 地理事件】${cleanRSSContent(e.title)}`,
+      summary: cleanRSSContent(e.title),
       category: "news",
       source: "news",
       url: e.url,
+      sourceUrl: e.url,
       lat: e.lat,
       lng: e.lng,
       city: e.city,
       isReal: true,
+      publishedAt: e.publishedAt || new Date().toISOString(),
       createdAt: Date.now(),
       expiresAt: Date.now() + 2 * 60 * 60 * 1000, // 2小時 TTL
-    });
+    }));
   });
   console.log(`✅ [GDELT] 新增 ${gdeltGeoEvents.length} 筆地理事件`);
 
@@ -800,7 +1106,14 @@ async function fetchNews() {
 }
 
 async function fetchGDELT() {
-  const url = `https://api.gdeltproject.org/api/v2/doc/doc?query=Taiwan%20(sourcecountry:TW%20OR%20sourcelang:zho)&mode=artlist&maxrecords=75&format=json&timespan=15min`;
+  const params = new URLSearchParams({
+    query: 'Taiwan (sourcecountry:TW OR sourcelang:zho)',
+    mode: 'artlist',
+    maxrecords: '75',
+    format: 'json',
+    timespan: '60min',
+  });
+  const url = `https://api.gdeltproject.org/api/v2/doc/doc?${params.toString()}`;
   
   for (let i = 0; i < 3; i++) {
     try {
@@ -816,7 +1129,14 @@ async function fetchGDELT() {
         return [];
       }
       
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      const bodyText = await res.text();
+      if (!contentType.includes("json") && !bodyText.trim().startsWith("{")) {
+        console.warn(`⚠️ [GDELT] 回傳非 JSON，跳過本次補充：${bodyText.slice(0, 80).replace(/\s+/g, " ")}`);
+        return [];
+      }
+
+      const data = JSON.parse(bodyText);
       const articles = data.articles || [];
       console.log(`📦 [GDELT] 原始筆數: ${articles.length}`);
       
@@ -847,12 +1167,24 @@ async function fetchGDELT() {
 async function fetchGDELTGeo() {
   try {
     // GDELT GKG API - 取得有地理座標的台灣事件
-    const url = `https://api.gdeltproject.org/api/v2/geo/geo?query=Taiwan&mode=pointdata&format=json&timespan=60min`;
+    const params = new URLSearchParams({
+      query: "Taiwan",
+      mode: "pointdata",
+      format: "json",
+      timespan: "120min",
+    });
+    const url = `https://api.gdeltproject.org/api/v2/geo/geo?${params.toString()}`;
     
     const res = await fetch(url, fetchOptions);
     if (!res.ok) return [];
     
-    const data = await res.json();
+    const contentType = res.headers.get("content-type") || "";
+    const bodyText = await res.text();
+    if (!contentType.includes("json") && !bodyText.trim().startsWith("{")) {
+      console.warn(`⚠️ [GDELT GEO] 回傳非 JSON，跳過：${bodyText.slice(0, 80).replace(/\s+/g, " ")}`);
+      return [];
+    }
+    const data = JSON.parse(bodyText);
     const features = data.features || [];
     console.log(`📦 [GDELT GKG] 地理事件筆數: ${features.length}`);
     
@@ -1002,19 +1334,22 @@ async function fetchPBS(summary = createTrafficSourceSummary()) {
         lng = rawLng;
       }
 
-      results.push({
+      results.push(enrichEvent({
         id: item.id,
         text: item.summary,
         title: ai.title || item.summary.slice(0, 30),
+        content: item.summary,
+        summary: item.summary,
         category: ai.category || pbsGuessCategory(item.summary),
         lat,
         lng,
         city,
         source: "TDX CMS",
+        sourceName: "TDX CMS",
         isReal: true,
         createdAt: Date.now(),
         expiresAt: Date.now() + Math.min(ai.ttl_hours || 3, 8) * 60 * 60 * 1000,
-      });
+      }));
     }
     await delay(500);
   }
@@ -1048,19 +1383,22 @@ async function fetchPBSFallback() {
       if (!coords) continue;
 
       const jitter = () => (Math.random() - 0.5) * 0.04;
-      results.push({
+      results.push(enrichEvent({
         id: `PBSFB_${rec.srcId || Math.random().toString(36).slice(2)}`,
         text: summary,
         title: summary.slice(0, 30),
+        content: summary,
+        summary,
         category: pbsGuessCategory(summary),
         lat: coords.lat + jitter(),
         lng: coords.lng + jitter(),
         city,
         source: "TDX CMS",
+        sourceName: "TDX CMS",
         isReal: true,
         createdAt: Date.now(),
         expiresAt: Date.now() + 3 * 60 * 60 * 1000,
-      });
+      }));
     }
 
     console.log(`✅ [警廣備用] ${results.length} 筆`);
@@ -1101,19 +1439,22 @@ async function fetchPBSLegacyFallbackWithSummary(summary) {
       if (!coords) continue;
 
       const jitter = () => (Math.random() - 0.5) * 0.04;
-      results.push({
+      results.push(enrichEvent({
         id: `PBSFB_${rec.srcId || Math.random().toString(36).slice(2)}`,
         text: summaryText,
         title: summaryText.slice(0, 30),
+        content: summaryText,
+        summary: summaryText,
         category: pbsGuessCategory(summaryText),
         lat: coords.lat + jitter(),
         lng: coords.lng + jitter(),
         city,
         source: "PBS",
+        sourceName: "PBS",
         isReal: true,
         createdAt: Date.now(),
         expiresAt: Date.now() + 3 * 60 * 60 * 1000,
-      });
+      }));
     }
 
     console.log(`✅ [警廣備用] ${results.length} 筆`);
@@ -1216,19 +1557,22 @@ async function fetchPBSWithSummary(summary) {
         lng = rawLng;
       }
 
-      results.push({
+      results.push(enrichEvent({
         id: item.id,
         text: item.summary,
         title: ai.title || item.summary.slice(0, 30),
+        content: item.summary,
+        summary: item.summary,
         category: ai.category || pbsGuessCategory(item.summary),
         lat,
         lng,
         city,
         source: "PBS",
+        sourceName: "PBS",
         isReal: true,
         createdAt: Date.now(),
         expiresAt: Date.now() + Math.min(ai.ttl_hours || 3, 8) * 60 * 60 * 1000,
-      });
+      }));
     }
     await delay(500);
   }
@@ -1735,12 +2079,16 @@ async function main() {
         batch.forEach(item => {
           const ai = aiResults.find(r => r.id === item.id);
           if (!ai) return;
-          const processedItem = {
-          ...item, title: ai.title || item.text, category: ai.category || "accident",
-          isReal: ai.isReal, 
-          createdAt: Date.now(),
-          expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
-        };
+          const processedItem = enrichEvent({
+            ...item,
+            title: ai.title || item.text,
+            content: item.content || item.summary || item.text,
+            summary: item.summary || item.text,
+            category: ai.category || "accident",
+            isReal: ai.isReal,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + Math.min(ai.ttl_hours || 4, 8) * 60 * 60 * 1000,
+          });
           trafficCacheList.push(processedItem);
           if (ai.isReal) finalEvents.push(processedItem);
         });
@@ -1770,6 +2118,7 @@ async function main() {
       }
 
       await kv.set("taiwan_traffic_cache", JSON.stringify(trafficCacheList));
+      await kv.set("events:traffic", JSON.stringify(trafficCacheList.map(enrichEvent)));
       console.log(
         `✅ 交通處理完成，共 ${finalEvents.length} 筆 (警廣: ${pbsCount} 筆, TDX: ${tdxCount} 筆, cache: ${trafficSummary.cacheCount} 筆, status: ${trafficSummary.status})`
       );
@@ -1806,8 +2155,10 @@ async function main() {
       
       newsCacheList = Array.from(seenNewsTitles.values()).filter(n =>
         n.expiresAt > Date.now() && n.lat >= 21 && n.lat <= 27 && n.lng >= 118 && n.lng <= 123
-      );
+      ).map(enrichEvent);
       await kv.set("taiwan_news_cache", JSON.stringify(newsCacheList));
+      await kv.set("events:news", JSON.stringify(newsCacheList.filter(item => item.category !== "activity")));
+      await kv.set("events:activities", JSON.stringify(newsCacheList.filter(item => item.category === "activity")));
       console.log(`✅ 新聞處理完成，共 ${newsCacheList.length} 筆`);
 
       // 只有新聞模式或全跑模式才執行 Threads 發文
@@ -1890,7 +2241,7 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
             }
 
             // 4. 同城市 + 同類別 + 標題有5個以上相同字
-            if (ev.city === newEvent.city && ev.category === newEvent.category) {
+            if (ev.city === newEvent.city && ev.category === newEvent.category && ev.category !== "activity") {
                 let sameCount = 0;
                 for (const char of newTitle) {
                     if (existTitle.includes(char)) sameCount++;
@@ -1973,10 +2324,11 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
           enriched = await rewriteToTWOnline(ev);
           await delay(500); 
         }
-        validatedMerged.push(enriched);
+        validatedMerged.push(enrichEvent(enriched));
       }
   
       await kv.set("taiwan_traffic_events", JSON.stringify(validatedMerged));
+      await kv.set("events:merged", JSON.stringify(validatedMerged));
       if ((mode === "traffic" || mode === "all") && !trafficRefreshHealthy) {
         console.error(
           `TRAFFIC_REFRESH_FAILED status=${trafficSummary.status} liveSource=${trafficSummary.liveSource || "none"} pbs=${trafficSummary.pbs.count} tdx=${trafficSummary.tdx.count} cache=${trafficSummary.cacheCount}`
