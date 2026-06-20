@@ -2916,11 +2916,6 @@ body::after {
             </div>
             <div class="toolbar-caption">Event Categories</div>
             <div id="category-filters"></div>
-            <div class="toolbar-caption">Search</div>
-            <div class="search-wrap">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <input id="event-search" type="text" placeholder="搜尋標題、內容、城市" class="search-input" />
-            </div>
         </div>
 
         <div id="event-list"></div>
@@ -3701,7 +3696,10 @@ body::after {
         document.querySelector(".brand-title").textContent = textConfig.siteTitle;
         document.querySelector(".brand-sub").textContent = textConfig.siteSubtitle;
         document.querySelector(".sidebar-title").textContent = textConfig.listTitle;
-        document.getElementById("event-search").placeholder = textConfig.searchPlaceholder;
+        ["event-search", "event-search-mobile"].forEach(id => {
+            const searchInput = document.getElementById(id);
+            if (searchInput) searchInput.placeholder = textConfig.searchPlaceholder;
+        });
         
         // TW Online 專屬狀態列
         const onlineStatus = document.getElementById("tw-online-status");
@@ -4837,8 +4835,8 @@ body::after {
     // ── EVENTS ───────────────────────────────────────────────
     window.openReportModal=openReportModal;
 
-    document.getElementById("event-search").addEventListener("input",handleSearch);
-    document.getElementById("event-search-mobile").addEventListener("input",handleSearch);
+    document.getElementById("event-search")?.addEventListener("input",handleSearch);
+    document.getElementById("event-search-mobile")?.addEventListener("input",handleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
