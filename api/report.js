@@ -80,9 +80,41 @@ function extractJsonObject(text) {
   }
 }
 
+function getAiProviderConfig() {
+  const azureEndpoint = String(process.env.AZURE_OPENAI_ENDPOINT || "").trim().replace(/\/+$/, "");
+  const azureApiKey = String(process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
+  const azureDeployment = String(process.env.AZURE_OPENAI_DEPLOYMENT || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "").trim();
+  if (azureEndpoint && azureApiKey && azureDeployment) {
+    const apiVersion = String(process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview").trim();
+    return {
+      provider: "azure",
+      url: `${azureEndpoint}/openai/deployments/${encodeURIComponent(azureDeployment)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`,
+      headers: {
+        "api-key": azureApiKey,
+        "Content-Type": "application/json",
+      },
+      bodyExtra: {},
+    };
+  }
+
+  const openAiKey = String(process.env.OPENAI_API_KEY || "").trim();
+  if (!openAiKey) return null;
+  return {
+    provider: "openai",
+    url: "https://api.openai.com/v1/chat/completions",
+    headers: {
+      Authorization: `Bearer ${openAiKey}`,
+      "Content-Type": "application/json",
+    },
+    bodyExtra: {
+      model: process.env.REPORT_AI_MODEL || "gpt-4o-mini",
+    },
+  };
+}
+
 async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return fallbackAiReview("AI 未啟用，需人工覆核。");
+  const aiConfig = getAiProviderConfig();
+  if (!aiConfig) return fallbackAiReview("AI 未啟用，需人工覆核。");
 
   const promptPayload = {
     event: {
@@ -101,14 +133,11 @@ async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) 
   };
 
   try {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch(aiConfig.url, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers: aiConfig.headers,
       body: JSON.stringify({
-        model: process.env.REPORT_AI_MODEL || "gpt-4o-mini",
+        ...aiConfig.bodyExtra,
         temperature: 0,
         messages: [
           {
@@ -125,7 +154,15 @@ async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) 
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI ${response.status}`);
+      let errorDetail = "";
+      try {
+        const errorBody = await response.json();
+        errorDetail = errorBody?.error?.message || errorBody?.error?.code || "";
+      } catch {}
+      const error = new Error(`${aiConfig.provider} ${response.status}${errorDetail ? `: ${errorDetail}` : ""}`);
+      error.status = response.status;
+      error.provider = aiConfig.provider;
+      throw error;
     }
 
     const data = await response.json();
@@ -133,6 +170,16 @@ async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) 
     return normalizeAiReview(extractJsonObject(content), "AI 審核結果格式異常，需人工覆核。");
   } catch (error) {
     console.warn("[report] AI review failed:", error.message);
+    const providerLabel = error.provider === "azure" ? "Azure OpenAI" : "OpenAI";
+    if (error.status === 429) {
+      return fallbackAiReview(`AI 審核受 ${providerLabel} 額度或速率限制影響，需人工覆核。`);
+    }
+    if (error.status === 401 || error.status === 403) {
+      return fallbackAiReview(`AI 金鑰未通過 ${providerLabel} 驗證，需人工覆核。`);
+    }
+    if (error.status === 404 && error.provider === "azure") {
+      return fallbackAiReview("AI 審核找不到 Azure OpenAI deployment，需人工覆核。");
+    }
     return fallbackAiReview("AI 審核暫時失敗，需人工覆核。");
   }
 }
