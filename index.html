@@ -2419,6 +2419,44 @@ body::after {
     box-shadow: 0 0 0 8px rgba(47, 128, 237, 0.18), 0 10px 24px rgba(0,0,0,0.35);
 }
 
+.map-locate-btn {
+    position: absolute;
+    right: 18px;
+    bottom: 96px;
+    z-index: 30;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    border: 1px solid rgba(138, 155, 184, 0.22);
+    border-radius: 12px;
+    padding: 0 14px;
+    background: rgba(12, 17, 32, 0.9);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 800;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
+    backdrop-filter: blur(12px);
+    cursor: pointer;
+}
+
+.map-locate-btn.active {
+    border-color: transparent;
+    background: var(--accent);
+    color: #fff;
+}
+
+@media (max-width: 767px) {
+    .map-locate-btn {
+        right: 12px;
+        bottom: calc(min(82vh, 720px) + 16px);
+        min-height: 40px;
+        padding: 0 12px;
+        font-size: 12px;
+    }
+}
+
 .card-action-btn,
 .popup-btn-v2,
 .nearby-btn,
@@ -3000,6 +3038,10 @@ body::after {
     <!-- MAP -->
     <section id="map-stage">
         <div id="map"></div>
+        <button type="button" id="map-locate-btn" class="map-locate-btn">
+            <i class="fa-solid fa-location-crosshairs"></i>
+            <span>附近事件</span>
+        </button>
         <div class="map-hero">
             <div class="map-hero-label">島嶼脈搏｜台灣事件地圖</div>
             <div class="map-hero-title">出門前與日常生活用的公共事件雷達。</div>
@@ -3961,11 +4003,15 @@ body::after {
         const label = isNearbyMode ? "查看全台" : "使用定位看附近";
         const status = document.getElementById("nearby-status");
         const radiusLabel = formatRadiusLabel(nearbyRadiusMeters);
-        ["nearby-toggle-btn", "nearby-toggle-mobile"].forEach(id => {
+        ["nearby-toggle-btn", "nearby-toggle-mobile", "map-locate-btn"].forEach(id => {
             const btn = document.getElementById(id);
             if (!btn) return;
             btn.classList.toggle("active", isNearbyMode);
             if (id === "nearby-toggle-btn") btn.textContent = label;
+            else if (id === "map-locate-btn") {
+                const text = btn.querySelector("span");
+                if (text) text.textContent = isNearbyMode ? "查看全台" : "附近事件";
+            }
             else btn.setAttribute("aria-pressed", String(isNearbyMode));
         });
         const radiusSelect = document.getElementById("nearby-radius-select");
@@ -4869,6 +4915,7 @@ body::after {
     document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
     document.getElementById("nearby-toggle-btn")?.addEventListener("click", requestNearbyLocation);
     document.getElementById("nearby-toggle-mobile")?.addEventListener("click", requestNearbyLocation);
+    document.getElementById("map-locate-btn")?.addEventListener("click", requestNearbyLocation);
     document.getElementById("nearby-radius-select")?.addEventListener("change", (e) => {
         nearbyRadiusMeters = Number(e.target.value || 3000);
         localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
