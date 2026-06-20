@@ -2357,53 +2357,6 @@ body::after {
     line-height: 1.6;
 }
 
-.nearby-control {
-    display: grid;
-    gap: 8px;
-    margin: 10px 0 12px;
-    padding: 10px;
-    border: 1px solid rgba(138, 155, 184, 0.14);
-    border-radius: 12px;
-    background: rgba(7, 12, 22, 0.44);
-}
-
-.nearby-control-row {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-}
-
-.nearby-btn {
-    flex: 1;
-    border: 1px solid rgba(138, 155, 184, 0.18);
-    border-radius: 10px;
-    padding: 9px 11px;
-    background: rgba(22, 32, 53, 0.9);
-    color: var(--text-primary);
-    font-family: var(--font-body);
-    font-size: 12px;
-    font-weight: 800;
-    cursor: pointer;
-}
-
-.nearby-btn.active {
-    border-color: transparent;
-    background: var(--accent);
-    color: #fff;
-}
-
-.nearby-radius-select {
-    width: 106px;
-    min-height: 36px;
-    border: 1px solid rgba(138, 155, 184, 0.18);
-    border-radius: 10px;
-    background: rgba(15, 23, 42, 0.86);
-    color: var(--text-primary);
-    font-family: var(--font-body);
-    font-size: 12px;
-    padding: 0 8px;
-}
-
 .nearby-status {
     color: var(--text-muted);
     font-size: 11px;
@@ -2417,44 +2370,6 @@ body::after {
     border-radius: 50%;
     background: #2f80ed;
     box-shadow: 0 0 0 8px rgba(47, 128, 237, 0.18), 0 10px 24px rgba(0,0,0,0.35);
-}
-
-.map-locate-btn {
-    position: absolute;
-    right: 18px;
-    bottom: 96px;
-    z-index: 30;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 42px;
-    border: 1px solid rgba(138, 155, 184, 0.22);
-    border-radius: 12px;
-    padding: 0 14px;
-    background: rgba(12, 17, 32, 0.9);
-    color: var(--text-primary);
-    font-family: var(--font-body);
-    font-size: 13px;
-    font-weight: 800;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.42);
-    backdrop-filter: blur(12px);
-    cursor: pointer;
-}
-
-.map-locate-btn.active {
-    border-color: transparent;
-    background: var(--accent);
-    color: #fff;
-}
-
-@media (max-width: 767px) {
-    .map-locate-btn {
-        right: 12px;
-        bottom: calc(min(82vh, 720px) + 16px);
-        min-height: 40px;
-        padding: 0 12px;
-        font-size: 12px;
-    }
 }
 
 .card-action-btn,
@@ -2933,6 +2848,9 @@ body::after {
 
     <div class="header-right">
         <div id="status-text">準備載入...</div>
+        <button id="nearby-toggle-desktop" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
+            <i class="fa-solid fa-location-crosshairs"></i>
+        </button>
         <button id="settings-btn" class="mode-btn" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-gear"></i></button>
         <button onclick="handleDonate(100, this)" class="donate-btn">支持維護</button>
     </div>
@@ -2964,18 +2882,6 @@ body::after {
                     <div class="sidebar-kpi-label">城市維度</div>
                     <div class="sidebar-kpi-value" id="sidebar-summary-city">全台</div>
                 </div>
-            </div>
-            <div class="nearby-control">
-                <div class="nearby-control-row">
-                    <button type="button" id="nearby-toggle-btn" class="nearby-btn">使用定位看附近</button>
-                    <select id="nearby-radius-select" class="nearby-radius-select" aria-label="附近半徑">
-                        <option value="1000">1 公里</option>
-                        <option value="3000" selected>3 公里</option>
-                        <option value="5000">5 公里</option>
-                        <option value="10000">10 公里</option>
-                    </select>
-                </div>
-                <div id="nearby-status" class="nearby-status">位置只用於在本機計算附近事件，不會送到伺服器。</div>
             </div>
             <div class="toolbar-caption">Event Categories</div>
             <div id="category-filters"></div>
@@ -3038,10 +2944,6 @@ body::after {
     <!-- MAP -->
     <section id="map-stage">
         <div id="map"></div>
-        <button type="button" id="map-locate-btn" class="map-locate-btn">
-            <i class="fa-solid fa-location-crosshairs"></i>
-            <span>附近事件</span>
-        </button>
         <div class="map-hero">
             <div class="map-hero-label">島嶼脈搏｜台灣事件地圖</div>
             <div class="map-hero-title">出門前與日常生活用的公共事件雷達。</div>
@@ -4003,19 +3905,12 @@ body::after {
         const label = isNearbyMode ? "查看全台" : "使用定位看附近";
         const status = document.getElementById("nearby-status");
         const radiusLabel = formatRadiusLabel(nearbyRadiusMeters);
-        ["nearby-toggle-btn", "nearby-toggle-mobile", "map-locate-btn"].forEach(id => {
+        ["nearby-toggle-mobile", "nearby-toggle-desktop"].forEach(id => {
             const btn = document.getElementById(id);
             if (!btn) return;
             btn.classList.toggle("active", isNearbyMode);
-            if (id === "nearby-toggle-btn") btn.textContent = label;
-            else if (id === "map-locate-btn") {
-                const text = btn.querySelector("span");
-                if (text) text.textContent = isNearbyMode ? "查看全台" : "附近事件";
-            }
-            else btn.setAttribute("aria-pressed", String(isNearbyMode));
+            btn.setAttribute("aria-pressed", String(isNearbyMode));
         });
-        const radiusSelect = document.getElementById("nearby-radius-select");
-        if (radiusSelect) radiusSelect.value = String(nearbyRadiusMeters);
         if (status) {
             status.textContent = isNearbyMode
                 ? `附近範圍 ${radiusLabel}${count === null ? "" : `，目前 ${count} 件事件`}。位置只在本機用於距離計算。`
@@ -4913,15 +4808,8 @@ body::after {
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
     document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
-    document.getElementById("nearby-toggle-btn")?.addEventListener("click", requestNearbyLocation);
     document.getElementById("nearby-toggle-mobile")?.addEventListener("click", requestNearbyLocation);
-    document.getElementById("map-locate-btn")?.addEventListener("click", requestNearbyLocation);
-    document.getElementById("nearby-radius-select")?.addEventListener("change", (e) => {
-        nearbyRadiusMeters = Number(e.target.value || 3000);
-        localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
-        if (isNearbyMode) renderEvents();
-        else updateNearbyControls();
-    });
+    document.getElementById("nearby-toggle-desktop")?.addEventListener("click", requestNearbyLocation);
     
     document.getElementById("mode-normal-btn")?.addEventListener("click", () => {
         applyMapMode("normal");
