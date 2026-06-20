@@ -335,6 +335,7 @@
     };
 
     const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity", "other"];
+    const COMMUTE_CATEGORY_SET = new Set(["traffic", "disaster", "accident"]);
     const FORTUNE_CATEGORY_ORDER = ["all", "great-risk", "risk", "good", "great-good"];
     const FORTUNE_CONFIG = {
         "great-risk": { label: "大凶", color: "#EF4444", icon: "fa-triangle-exclamation", actionText: "持續注意" },
@@ -1280,10 +1281,12 @@
         localStorage.setItem("map_mode", mode);
         document.body.classList.toggle("tw-online-mode", mode === "online");
         document.body.classList.toggle("fortune-mode", mode === "fortune");
+        document.body.classList.toggle("commute-mode", mode === "commute");
         document.getElementById("map-mode-select").value = mode;
 
         const isOnline = mode === "online";
         const isFortune = mode === "fortune";
+        const isCommute = mode === "commute";
         
         // 切換底圖視覺風格。
         if (map && map.isStyleLoaded()) {
@@ -1315,14 +1318,14 @@
             siteTitle: "島嶼脈搏 Island Pulse",
             siteSubtitle: isOnline
                 ? "TW ONLINE 視覺模式"
-                : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo"),
-            listTitle: isFortune ? "周邊事件判定" : "台灣即時事件清單",
-            searchPlaceholder: isFortune ? "搜尋附近事件、地點或分類" : "搜尋事件、城市或關鍵字",
+                : (isFortune ? "周邊風險判讀" : (isCommute ? "出門前公共事件雷達" : "台灣公共事件雷達")),
+            listTitle: isFortune ? "周邊事件判定" : (isCommute ? "出門前清單" : "台灣即時事件清單"),
+            searchPlaceholder: isFortune ? "搜尋附近事件、地點或分類" : (isCommute ? "搜尋路段、城市或事故" : "搜尋事件、城市或關鍵字"),
             emptyState: "目前沒有符合條件的台灣即時事件地圖資料",
             loadingState: "正在同步事件資料...",
             statusPrefix: isOnline
                 ? "TW Online 視覺層啟用中"
-                : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo")
+                : (isFortune ? "周邊風險判讀｜位置只用於本機附近計算" : (isCommute ? "出門前模式｜只看交通、事故、施工與災害" : "公共事件雷達｜交通、災害與生活影響"))
         };
 
         document.querySelector(".brand-title").textContent = textConfig.siteTitle;
@@ -1331,11 +1334,11 @@
         const sidebarSubtitle = document.getElementById("sidebar-subtitle");
         if (sidebarSubtitle) {
             sidebarSubtitle.textContent = isFortune
-                ? "以目前位置為中心，整理附近值得靠近與需要避開的事件。"
-                : "";
+                ? "以目前位置為中心，整理附近風險與生活影響。定位只用於本機附近計算。"
+                : (isCommute ? "只顯示會影響出門決策的交通、事故、施工與災害事件。" : "");
         }
         const toolbarCaption = document.querySelector(".toolbar-caption");
-        if (toolbarCaption) toolbarCaption.textContent = isFortune ? "以你的位置為中心判讀附近事件" : "台灣即時事件地圖";
+        if (toolbarCaption) toolbarCaption.textContent = isFortune ? "以你的位置為中心判讀附近事件" : (isCommute ? "出門前事件分類" : "台灣即時事件地圖");
         document.getElementById("event-search").placeholder = textConfig.searchPlaceholder;
         const mobileSearch = document.getElementById("event-search-mobile");
         if (mobileSearch) mobileSearch.placeholder = textConfig.searchPlaceholder;
@@ -1812,9 +1815,19 @@
         renderEvents();
         setStatus("已回到全台事件");
     }
+    function confirmLocationUse() {
+        if (localStorage.getItem("location_notice_ack") === "true") return true;
+        const ok = window.confirm("定位只用來在你的瀏覽器中計算附近事件，不會儲存在本站伺服器。是否允許繼續開啟定位？");
+        if (ok) localStorage.setItem("location_notice_ack", "true");
+        return ok;
+    }
     function requestUserLocation() {
         if (!navigator.geolocation) {
             setStatus("此瀏覽器不支援定位功能。");
+            return;
+        }
+        if (!confirmLocationUse()) {
+            setStatus("未開啟定位；仍可用城市篩選查看事件。");
             return;
         }
         navigator.geolocation.getCurrentPosition((position) => {
@@ -1857,6 +1870,10 @@
     function requestUserLocationV2() {
         if (!navigator.geolocation) {
             setStatus("此瀏覽器不支援定位功能。");
+            return;
+        }
+        if (!confirmLocationUse()) {
+            setStatus("未開啟定位；仍可用城市篩選查看事件。");
             return;
         }
         navigator.geolocation.getCurrentPosition((position) => {
@@ -2094,7 +2111,9 @@
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const mapConfig = isOnline ? CATEGORY_MAP.online : CATEGORY_MAP.normal;
 
-        const order = isFortune ? FORTUNE_CATEGORY_ORDER : FIXED_CATEGORY_ORDER;
+        const order = isFortune
+            ? FORTUNE_CATEGORY_ORDER
+            : (currentMapMode === "commute" ? ["all", "traffic", "disaster", "accident"] : FIXED_CATEGORY_ORDER);
         catFilters.innerHTML = order.map(cat=>{
             if (isFortune) {
                 const isActive = activeCategory===cat;
@@ -2170,6 +2189,9 @@
             const groupCategory = inferEventGroupCategory(ev);
             if (currentMapMode === "fortune") {
                 if (!eventMatchesFortuneFilter(ev, activeCategory)) return false;
+            } else if (currentMapMode === "commute") {
+                if (!COMMUTE_CATEGORY_SET.has(groupCategory)) return false;
+                if(activeCategory!=="all"&&groupCategory!==activeCategory) return false;
             } else if(activeCategory!=="all"&&groupCategory!==activeCategory) return false;
             if(cityFilter!=="all"){
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
@@ -2247,6 +2269,22 @@
         if (severity >= 4) return "high";
         if (severity >= 2) return "medium";
         return "low";
+    }
+
+    function getDecisionAdvice(ev) {
+        const status = normalizeText(ev.status).toLowerCase();
+        const cat = inferEventGroupCategory(ev);
+        const text = normalizeText(`${ev.title || ""} ${ev.content || ""} ${ev.summary || ""}`);
+        if (status === "cleared" || status === "resolved" || /已解除|恢復通行|搶修完成|解除|恢復供電/.test(text)) {
+            return { label: "已解除", detail: "仍建議確認最新來源後再出發。" };
+        }
+        if (cat === "disaster" || getEventSeverity(ev) >= 4 || /封閉|管制|坍方|火災|淹水|停電|危險|死亡|重傷/.test(text)) {
+            return { label: "避開", detail: "建議改道或暫緩前往周邊。" };
+        }
+        if (cat === "traffic" || cat === "accident" || /施工|事故|壅塞|塞車|改道/.test(text)) {
+            return { label: "注意", detail: "行經附近請放慢車速並預留時間。" };
+        }
+        return { label: "可通行", detail: "目前僅需留意周邊狀況。" };
     }
 
     function resolveMarkerStyle(ev, fallbackColor) {
@@ -2504,6 +2542,7 @@
         const detailLabel = twCopy?.categoryLabel || getCategoryDetailLabel(ev.category);
         const impactLabel = twCopy?.impactLabel || getImpactLabel(ev);
         const severityLabel = twCopy?.severityLabel || getSeverityLabel(ev);
+        const decision = getDecisionAdvice(ev);
         const badgeHtml = twCopy
             ? `<span class="cat-badge-v2" style="background:rgba(${catVisualMeta(ev.category).rgba},0.15);border:1px solid rgba(${catVisualMeta(ev.category).rgba},0.3);color:${catVisualMeta(ev.category).tint};">${twCopy.categoryLabel}</span>`
             : makeCatBadgeV2(ev.category);
@@ -2524,10 +2563,12 @@
                 <div class="popup-summary">${displayContent}</div>
                 ${detailsHtml}
                 <div class="event-impact-row">
+                    <span class="impact-chip impact-${getSeverityBand(ev)}">建議：${decision.label}</span>
                     <span class="impact-chip impact-${getSeverityBand(ev)}">${impactLabel}</span>
                     <span class="severity-chip">${severityLabel}</span>
                     <span class="interaction-chip">${formatAttentionCount(ev)}</span>
                 </div>
+                <div class="popup-source-row"><span>${decision.detail}</span></div>
                 <div class="popup-source-row"><span>${sourceLabel}</span></div>
                 ${renderEventActions(ev, { displayTitle, context: "popup", twCopy })}
                 ${ev.sourceUrl || ev.url ? `<div class="popup-footer"><a href="${ev.sourceUrl || ev.url}" target="_blank" rel="noreferrer" class="popup-btn-v2 primary">查看來源</a></div>` : ""}
@@ -2556,6 +2597,7 @@
         const detailLabel = twCopy?.categoryLabel || getCategoryDetailLabel(ev.category);
         const impactLabel = twCopy?.impactLabel || getImpactLabel(ev);
         const severityLabel = twCopy?.severityLabel || getSeverityLabel(ev);
+        const decision = getDecisionAdvice(ev);
         const badgeHtml = twCopy
             ? `<span class="cat-badge-v2" style="background:rgba(${catVisualMeta(ev.category).rgba},0.15);border:1px solid rgba(${catVisualMeta(ev.category).rgba},0.3);color:${catVisualMeta(ev.category).tint};">${twCopy.categoryLabel}</span>`
             : makeCatBadgeV2(ev.category);
@@ -2587,9 +2629,13 @@
                 </div>
                 ${detailsHtml}
                 <div class="event-impact-row">
+                    <span class="impact-chip impact-${getSeverityBand(ev)}">建議：${decision.label}</span>
                     <span class="impact-chip impact-${getSeverityBand(ev)}">${impactLabel}</span>
                     <span class="severity-chip">${severityLabel}</span>
                     <span class="interaction-chip">${formatAttentionCount(ev)}</span>
+                </div>
+                <div class="event-trust-row">
+                    <span><i class="fa-solid fa-route"></i>${decision.detail}</span>
                 </div>
             </div>
             <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
@@ -2817,7 +2863,7 @@
     function getDataEmptyStateHtml(nearbyPreferred = false) {
         let icon = "fa-map-location-dot";
         let title = "目前沒有可顯示的事件";
-        let body = "資料源目前沒有回傳事件，或事件尚未通過座標與分類整理。";
+        let body = "資料源目前沒有回傳事件，或事件尚未通過座標、分類與有效時間整理。";
 
         if (dataSyncState.status === "loading") {
             icon = "fa-rotate";
@@ -2830,7 +2876,11 @@
         } else if (nearbyPreferred) {
             icon = "fa-location-crosshairs";
             title = `附近 ${formatRadiusLabel(nearbyRadiusMeters)} 沒有事件`;
-            body = "可以放大附近範圍，或切回全台事件查看其他區域。";
+            body = "這通常代表目前範圍內沒有有效事件；可放大附近範圍，或改用城市篩選查看。";
+        } else if (currentMapMode === "commute") {
+            icon = "fa-route";
+            title = "出門前模式目前沒有事件";
+            body = "目前沒有交通、事故、施工或災害事件符合條件；可切回一般模式查看活動與其他公共事件。";
         } else if (parsedEvents.length > 0) {
             icon = "fa-filter";
             title = "沒有符合目前條件的事件";
@@ -3886,16 +3936,17 @@ async function submitReport() {
     function applyConceptCopy(){
         const isOnline = currentMapMode === "online";
         const isFortune = currentMapMode === "fortune";
+        const isCommute = currentMapMode === "commute";
         const textPairs = [
             [".brand-title", "島嶼脈搏 Island Pulse"],
-            [".brand-sub", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "趨吉避凶模式｜吉凶事件判讀" : "台灣即時事件地圖｜Concept Demo")],
-            [".brand-note", "台灣即時事件地圖｜Concept Demo"],
-            [".sidebar-title", isFortune ? "周邊事件判定" : "台灣即時事件清單"],
-            [".toolbar-caption", isFortune ? "以你的位置為中心判讀附近事件" : "台灣即時事件地圖"],
+            [".brand-sub", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "周邊風險判讀" : (isCommute ? "出門前公共事件雷達" : "台灣公共事件雷達"))],
+            [".brand-note", "用地圖看見台灣正在發生的交通、災害與公共事件。"],
+            [".sidebar-title", isFortune ? "周邊事件判定" : (isCommute ? "出門前清單" : "台灣即時事件清單")],
+            [".toolbar-caption", isFortune ? "以你的位置為中心判讀附近事件" : (isCommute ? "出門前事件分類" : "台灣即時事件地圖")],
             ["#server-status", "視覺模式啟用中"],
-            ["#player-count", "Concept Demo"],
-            ["#tw-online-count", "Concept Demo"],
-            ["#hero-mode-copy", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "趨吉避凶模式" : "台灣地圖")]
+            ["#player-count", "公共事件"],
+            ["#tw-online-count", "公共事件"],
+            ["#hero-mode-copy", isOnline ? "TW ONLINE 視覺模式" : (isFortune ? "周邊風險" : (isCommute ? "出門前" : "台灣地圖"))]
         ];
         textPairs.forEach(([selector, text]) => {
             const el = document.querySelector(selector);
@@ -3904,8 +3955,8 @@ async function submitReport() {
         const sidebarSubtitle = document.getElementById("sidebar-subtitle");
         if (sidebarSubtitle) {
             sidebarSubtitle.textContent = isFortune
-                ? "以目前位置為中心，整理附近值得靠近與需要避開的事件。"
-                : "";
+                ? "以目前位置為中心，整理附近風險與生活影響。定位只用於本機附近計算。"
+                : (isCommute ? "只顯示會影響出門決策的交通、事故、施工與災害事件。" : "");
         }
         document.querySelectorAll(".donate-btn").forEach(btn => {
             btn.textContent = "支持作品";
@@ -3916,7 +3967,7 @@ async function submitReport() {
             const searchEl = document.getElementById(id);
             if (searchEl) searchEl.placeholder = currentMapMode === "fortune"
                 ? "搜尋附近事件、地點或分類"
-                : "搜尋城市、分類或事件";
+                : (isCommute ? "搜尋路段、城市或事故" : "搜尋城市、分類或事件");
         });
     }
 

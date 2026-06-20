@@ -53,6 +53,53 @@ const TAIWAN_CITY_COORDS = {
   Highway: { city: "省道", lat: 23.8, lng: 120.9 },
 };
 
+const TAIWAN_CITY_BOUNDS = {
+  "台北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
+  "臺北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
+  "新北市": { minLat: 24.65, maxLat: 25.32, minLng: 121.20, maxLng: 122.05 },
+  "基隆市": { minLat: 25.05, maxLat: 25.18, minLng: 121.66, maxLng: 121.82 },
+  "桃園市": { minLat: 24.55, maxLat: 25.14, minLng: 120.95, maxLng: 121.50 },
+  "新竹市": { minLat: 24.72, maxLat: 24.88, minLng: 120.88, maxLng: 121.05 },
+  "新竹縣": { minLat: 24.35, maxLat: 24.95, minLng: 120.90, maxLng: 121.35 },
+  "苗栗縣": { minLat: 24.25, maxLat: 24.75, minLng: 120.58, maxLng: 121.05 },
+  "台中市": { minLat: 23.95, maxLat: 24.45, minLng: 120.45, maxLng: 121.45 },
+  "臺中市": { minLat: 23.95, maxLat: 24.45, minLng: 120.45, maxLng: 121.45 },
+  "彰化縣": { minLat: 23.78, maxLat: 24.18, minLng: 120.25, maxLng: 120.65 },
+  "南投縣": { minLat: 23.45, maxLat: 24.25, minLng: 120.55, maxLng: 121.35 },
+  "雲林縣": { minLat: 23.45, maxLat: 23.85, minLng: 120.05, maxLng: 120.75 },
+  "嘉義市": { minLat: 23.42, maxLat: 23.55, minLng: 120.38, maxLng: 120.52 },
+  "嘉義縣": { minLat: 23.20, maxLat: 23.65, minLng: 120.00, maxLng: 120.95 },
+  "台南市": { minLat: 22.85, maxLat: 23.45, minLng: 120.00, maxLng: 120.65 },
+  "臺南市": { minLat: 22.85, maxLat: 23.45, minLng: 120.00, maxLng: 120.65 },
+  "高雄市": { minLat: 22.45, maxLat: 23.50, minLng: 120.15, maxLng: 121.10 },
+  "屏東縣": { minLat: 21.88, maxLat: 22.92, minLng: 120.38, maxLng: 121.05 },
+  "宜蘭縣": { minLat: 24.30, maxLat: 25.05, minLng: 121.45, maxLng: 122.10 },
+  "花蓮縣": { minLat: 23.00, maxLat: 24.45, minLng: 120.95, maxLng: 121.85 },
+  "台東縣": { minLat: 21.90, maxLat: 23.45, minLng: 120.65, maxLng: 121.60 },
+  "臺東縣": { minLat: 21.90, maxLat: 23.45, minLng: 120.65, maxLng: 121.60 },
+  "澎湖縣": { minLat: 23.15, maxLat: 23.85, minLng: 119.25, maxLng: 119.85 },
+  "金門縣": { minLat: 24.30, maxLat: 24.55, minLng: 118.15, maxLng: 118.55 },
+  "連江縣": { minLat: 25.90, maxLat: 26.40, minLng: 119.85, maxLng: 120.05 },
+};
+
+const KNOWN_LOCATION_COORDS = [
+  { pattern: /大佳河濱公園|台北龍舟|臺北龍舟/, city: "台北市", lat: 25.0732, lng: 121.5365 },
+  { pattern: /吉林路.*工地|中山區.*吉林路/, city: "台北市", lat: 25.0584, lng: 121.5302 },
+  { pattern: /吳興街\s*600\s*巷|信義區.*吳興街/, city: "台北市", lat: 25.0216, lng: 121.5699 },
+  { pattern: /涵煙翠|新店.*土石|新店.*邊坡/, city: "新北市", lat: 24.9599, lng: 121.5355 },
+  { pattern: /核二廠|第二核能發電廠|萬里.*台電/, city: "新北市", lat: 25.2036, lng: 121.6625 },
+  { pattern: /慈雲路|慈雲空橋|埔頂三路/, city: "新竹市", lat: 24.7876, lng: 121.0188 },
+  { pattern: /中港溪.*龍舟|竹南.*龍舟|龍舟碼頭/, city: "苗栗縣", lat: 24.6837, lng: 120.8717 },
+  { pattern: /造橋.*台鐵|台鐵山線.*造橋/, city: "苗栗縣", lat: 24.6407, lng: 120.8670 },
+  { pattern: /濁水溪出海口|東方白鸛/, city: "雲林縣", lat: 23.7977, lng: 120.1773 },
+  { pattern: /大富東街/, city: "嘉義市", lat: 23.4586, lng: 120.4310 },
+  { pattern: /沙港村|湖西.*沙港/, city: "澎湖縣", lat: 23.5964, lng: 119.6351 },
+  { pattern: /金門小三通|水頭碼頭|金城鎮.*小三通/, city: "金門縣", lat: 24.4126, lng: 118.2866 },
+  { pattern: /安南區/, city: "台南市", lat: 23.0472, lng: 120.1845 },
+  { pattern: /國道5號|國5/, city: "國道5號北上", lat: 24.9264, lng: 121.7165 },
+  { pattern: /國道1號.*彰化|國1.*彰化/, city: "彰化縣", lat: 24.0703, lng: 120.5382 },
+];
+
 const CATEGORY_GROUPS = {
   traffic: "traffic",
   construction: "traffic",
@@ -189,6 +236,29 @@ function isValidTaiwanCoord(lat, lng) {
   return lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123;
 }
 
+function isCoordInCity(city, lat, lng) {
+  const bounds = TAIWAN_CITY_BOUNDS[city];
+  if (!bounds) return true;
+  return lat >= bounds.minLat && lat <= bounds.maxLat && lng >= bounds.minLng && lng <= bounds.maxLng;
+}
+
+function resolveKnownLocationCoord(event, city, title, content) {
+  const text = normalizeText([
+    event.address,
+    event.location,
+    event.venue,
+    event.district,
+    title,
+    content,
+  ].filter(Boolean).join(" ")).replace(/臺/g, "台");
+  const match = KNOWN_LOCATION_COORDS.find((entry) => {
+    const entryCity = normalizeCity(entry.city);
+    return entry.pattern.test(text) && (!TAIWAN_CITY_BOUNDS[city] || entryCity === city || entry.city === city);
+  });
+  if (!match) return null;
+  return { lat: match.lat, lng: match.lng };
+}
+
 function inferSeverity(event, category) {
   const raw = event.severity ?? event.impactSeverity ?? event.level;
   if (typeof raw === "number" && Number.isFinite(raw)) return Math.min(5, Math.max(1, Math.round(raw)));
@@ -235,8 +305,19 @@ function normalizeEvent(event, index = 0) {
   const rawCategory = normalizeCategory(event.category || event.type);
   const groupCategory = CATEGORY_GROUPS[rawCategory] || "other";
   const city = normalizeCity(event.city || event.region || event.location || inferCityFromText(`${title} ${content}`));
-  const { lat, lng } = resolveCoordinates(event, city);
+  let { lat, lng } = resolveCoordinates(event, city);
   if (!isValidTaiwanCoord(lat, lng)) return null;
+  const knownCoord = resolveKnownLocationCoord(event, city, title, content);
+  if (knownCoord) {
+    lat = knownCoord.lat;
+    lng = knownCoord.lng;
+  } else if (!isCoordInCity(city, lat, lng)) {
+    const fallback = TAIWAN_CITY_COORDS[city];
+    if (fallback) {
+      lat = fallback.lat;
+      lng = fallback.lng;
+    }
+  }
 
   const sourceUrl = normalizeText(event.sourceUrl || event.url || event.link);
   const publishedAt = event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString();

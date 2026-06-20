@@ -848,6 +848,35 @@ const TAIWAN_CITY_COORDS = {
   "省道":   { lat: 24.0, lng: 121.0 },
 };
 
+const TAIWAN_CITY_BOUNDS = {
+  "台北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
+  "臺北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
+  "新北市": { minLat: 24.65, maxLat: 25.32, minLng: 121.20, maxLng: 122.05 },
+  "基隆市": { minLat: 25.05, maxLat: 25.18, minLng: 121.66, maxLng: 121.82 },
+  "桃園市": { minLat: 24.55, maxLat: 25.14, minLng: 120.95, maxLng: 121.50 },
+  "新竹市": { minLat: 24.72, maxLat: 24.88, minLng: 120.88, maxLng: 121.05 },
+  "新竹縣": { minLat: 24.35, maxLat: 24.95, minLng: 120.90, maxLng: 121.35 },
+  "苗栗縣": { minLat: 24.25, maxLat: 24.75, minLng: 120.58, maxLng: 121.05 },
+  "台中市": { minLat: 23.95, maxLat: 24.45, minLng: 120.45, maxLng: 121.45 },
+  "臺中市": { minLat: 23.95, maxLat: 24.45, minLng: 120.45, maxLng: 121.45 },
+  "彰化縣": { minLat: 23.78, maxLat: 24.18, minLng: 120.25, maxLng: 120.65 },
+  "南投縣": { minLat: 23.45, maxLat: 24.25, minLng: 120.55, maxLng: 121.35 },
+  "雲林縣": { minLat: 23.45, maxLat: 23.85, minLng: 120.05, maxLng: 120.75 },
+  "嘉義市": { minLat: 23.42, maxLat: 23.55, minLng: 120.38, maxLng: 120.52 },
+  "嘉義縣": { minLat: 23.20, maxLat: 23.65, minLng: 120.00, maxLng: 120.95 },
+  "台南市": { minLat: 22.85, maxLat: 23.45, minLng: 120.00, maxLng: 120.65 },
+  "臺南市": { minLat: 22.85, maxLat: 23.45, minLng: 120.00, maxLng: 120.65 },
+  "高雄市": { minLat: 22.45, maxLat: 23.50, minLng: 120.15, maxLng: 121.10 },
+  "屏東縣": { minLat: 21.88, maxLat: 22.92, minLng: 120.38, maxLng: 121.05 },
+  "宜蘭縣": { minLat: 24.30, maxLat: 25.05, minLng: 121.45, maxLng: 122.10 },
+  "花蓮縣": { minLat: 23.00, maxLat: 24.45, minLng: 120.95, maxLng: 121.85 },
+  "台東縣": { minLat: 21.90, maxLat: 23.45, minLng: 120.65, maxLng: 121.60 },
+  "臺東縣": { minLat: 21.90, maxLat: 23.45, minLng: 120.65, maxLng: 121.60 },
+  "澎湖縣": { minLat: 23.15, maxLat: 23.85, minLng: 119.25, maxLng: 119.85 },
+  "金門縣": { minLat: 24.30, maxLat: 24.55, minLng: 118.15, maxLng: 118.55 },
+  "連江縣": { minLat: 25.90, maxLat: 26.40, minLng: 119.85, maxLng: 120.05 },
+};
+
 const TAIWAN_CITY_ALIASES = {
   "臺北市": "台北市",
   "臺中市": "台中市",
@@ -879,16 +908,22 @@ function cleanLocationText(location) {
     .trim();
 }
 
+function isDetailedLocationText(locationText) {
+  const text = cleanLocationText(locationText);
+  if (!text) return false;
+  if (TAIWAN_CITY_COORDS[text]) return false;
+  return /區|鄉|鎮|村|里|路|街|巷|段|橋|公園|碼頭|工地|車站|機場|港|廠|溪|河濱/.test(text);
+}
+
 async function geocode(locationText) {
   if (!locationText) return null;
 
-  // 1. 先查縣市對照表（含部分比對），避免打 Nominatim
-  for (const [city, coords] of Object.entries(TAIWAN_CITY_COORDS)) {
-    if (locationText.startsWith(city) || locationText === city) {
+  // 1. 只有「純縣市名」才直接回中心點；詳細地址必須交給 geocoder。
+  const exactCity = TAIWAN_CITY_COORDS[locationText];
+  if (exactCity) {
       // 加小幅隨機 jitter 避免全堆同一點
       const jitter = () => (Math.random() - 0.5) * 0.04;
-      return { lat: coords.lat + jitter(), lng: coords.lng + jitter() };
-    }
+      return { lat: exactCity.lat + jitter(), lng: exactCity.lng + jitter() };
   }
 
   // 2. 已知失敗的地名直接跳過
@@ -910,8 +945,8 @@ async function geocode(locationText) {
     if (data && data.length > 0) {
       const lat = parseFloat(data[0].lat);
       const lng = parseFloat(data[0].lon);
-      // 驗證座標在台灣陸地上
-      if (isOnTaiwanLand(lat, lng)) {
+      const city = extractTaiwanCity(locationText);
+      if (isOnTaiwanLand(lat, lng) && isCoordInCity(city, lat, lng)) {
         return { lat, lng };
       }
     }
@@ -924,6 +959,21 @@ async function geocode(locationText) {
 
 function isValidTaiwanCoord(lat, lng) {
   return lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123;
+}
+
+function isCoordInCity(city, lat, lng) {
+  const normalizedCity = normalizeTaiwanCityName(city);
+  const bounds = TAIWAN_CITY_BOUNDS[normalizedCity];
+  if (!bounds) return true;
+  return lat >= bounds.minLat && lat <= bounds.maxLat && lng >= bounds.minLng && lng <= bounds.maxLng;
+}
+
+function hasUsableCityCoord(event) {
+  const lat = Number(event?.lat);
+  const lng = Number(event?.lng);
+  const cityText = `${event?.city || ""} ${event?.address || ""} ${event?.location || ""} ${event?.title || ""}`;
+  const city = extractTaiwanCity(cityText) || event?.city || "";
+  return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat, lng) && isCoordInCity(city, lat, lng);
 }
 
 function isOnTaiwanLand(lat, lng) {
@@ -1056,11 +1106,13 @@ async function fetchNews() {
     
     if (ai && ai.importance > 0) {
       let coords = null;
-      if (ai.lat && ai.lng && isOnTaiwanLand(ai.lat, ai.lng)) {
+      const cityName = extractTaiwanCity(ai.location) || normalizeTaiwanCityName(ai.city || ai.location?.slice(0, 3) || "");
+      if (ai.location && isDetailedLocationText(ai.location)) {
+        coords = await geocodeWithCity(ai.location, cityName);
+      }
+      if (!coords && ai.lat && ai.lng && isOnTaiwanLand(ai.lat, ai.lng) && isCoordInCity(cityName, ai.lat, ai.lng)) {
         coords = { lat: ai.lat, lng: ai.lng };
-      } else if (ai.location) {
-        // 嘗試解析縣市名
-        const cityName = ai.location.slice(0, 3);
+      } else if (!coords && ai.location) {
         coords = await geocodeWithCity(ai.location, cityName);
       }
 
@@ -1367,8 +1419,8 @@ async function fetchPBS(summary = createTrafficSourceSummary()) {
       let lat = coords.lat + (Math.random() - 0.5) * 0.04;
       let lng = coords.lng + (Math.random() - 0.5) * 0.04;
 
-      const rawLat = parseFloat(item.raw?.px || item.raw?.lat || item.raw?.PositionLat || "");
-      const rawLng = parseFloat(item.raw?.py || item.raw?.lng || item.raw?.PositionLon || "");
+      const rawLat = parseFloat(item.raw?.py || item.raw?.lat || item.raw?.PositionLat || "");
+      const rawLng = parseFloat(item.raw?.px || item.raw?.lng || item.raw?.PositionLon || "");
       if (Number.isFinite(rawLat) && Number.isFinite(rawLng) && isOnTaiwanLand(rawLat, rawLng)) {
         lat = rawLat;
         lng = rawLng;
@@ -1590,8 +1642,8 @@ async function fetchPBSWithSummary(summary) {
       let lat = coords.lat + (Math.random() - 0.5) * 0.04;
       let lng = coords.lng + (Math.random() - 0.5) * 0.04;
 
-      const rawLat = parseFloat(item.raw?.px || item.raw?.lat || item.raw?.PositionLat || "");
-      const rawLng = parseFloat(item.raw?.py || item.raw?.lng || item.raw?.PositionLon || "");
+      const rawLat = parseFloat(item.raw?.py || item.raw?.lat || item.raw?.PositionLat || "");
+      const rawLng = parseFloat(item.raw?.px || item.raw?.lng || item.raw?.PositionLon || "");
       if (Number.isFinite(rawLat) && Number.isFinite(rawLng) && isOnTaiwanLand(rawLat, rawLng)) {
         lat = rawLat;
         lng = rawLng;
@@ -2305,7 +2357,7 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
             finalMerged.push(ev);
         } else {
             // 同一事件座標一旦寫入就鎖定
-            if (dupe.lat && dupe.lng) {
+            if (hasUsableCityCoord(dupe)) {
                 ev.lat = dupe.lat;
                 ev.lng = dupe.lng;
             }
@@ -2345,7 +2397,7 @@ ${JSON.stringify(newEvents.map(e => ({ title: e.title, city: e.city, category: e
         let enriched = ev;
         if (oldEv) {
           // 同一事件座標一旦寫入就鎖定
-          if (oldEv.lat && oldEv.lng) {
+          if (hasUsableCityCoord(oldEv)) {
             enriched.lat = oldEv.lat;
             enriched.lng = oldEv.lng;
           }
