@@ -1055,6 +1055,25 @@
             transform: translateY(1px);
         }
 
+        .nearby-radius-select {
+            width: 72px;
+            height: 40px;
+            flex: 0 0 72px;
+            appearance: none;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: rgba(15,21,37,0.92);
+            color: var(--text-primary);
+            font: 700 12px var(--font-body);
+            padding: 0 24px 0 12px;
+            outline: none;
+            cursor: pointer;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238a9ab8' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+        }
+
         /* ── POPUP demo（設計稿 §07）──────────────────────────── */
         .custom-popup.mapboxgl-popup { max-width: 336px !important; }
         .custom-popup .mapboxgl-popup-content {
@@ -2805,6 +2824,12 @@ body::after {
         <button id="nearby-toggle-mobile" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
+        <select id="nearby-radius-mobile" class="nearby-radius-select" aria-label="附近距離">
+            <option value="1000">1 km</option>
+            <option value="3000">3 km</option>
+            <option value="5000">5 km</option>
+            <option value="10000">10 km</option>
+        </select>
         <div class="mobile-pill">
             <button id="btn-tw-mobile" class="mode-btn active">台灣</button>
             <button id="btn-global-mobile" class="mode-btn">統計</button>
@@ -2851,6 +2876,12 @@ body::after {
         <button id="nearby-toggle-desktop" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
+        <select id="nearby-radius-desktop" class="nearby-radius-select" aria-label="附近距離">
+            <option value="1000">1 km</option>
+            <option value="3000">3 km</option>
+            <option value="5000">5 km</option>
+            <option value="10000">10 km</option>
+        </select>
         <button id="settings-btn" class="mode-btn" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-gear"></i></button>
         <button onclick="handleDonate(100, this)" class="donate-btn">支持維護</button>
     </div>
@@ -3911,11 +3942,24 @@ body::after {
             btn.classList.toggle("active", isNearbyMode);
             btn.setAttribute("aria-pressed", String(isNearbyMode));
         });
+        ["nearby-radius-mobile", "nearby-radius-desktop"].forEach(id => {
+            const select = document.getElementById(id);
+            if (select) select.value = String(nearbyRadiusMeters);
+        });
         if (status) {
             status.textContent = isNearbyMode
                 ? `附近範圍 ${radiusLabel}${count === null ? "" : `，目前 ${count} 件事件`}。位置只在本機用於距離計算。`
                 : "位置只用於在本機計算附近事件，不會送到伺服器。";
         }
+    }
+
+    function setNearbyRadius(value) {
+        const nextRadius = Number(value);
+        if (!Number.isFinite(nextRadius) || nextRadius <= 0) return;
+        nearbyRadiusMeters = nextRadius;
+        localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
+        updateNearbyControls();
+        if (isNearbyMode) renderEvents();
     }
 
     function updateUserLocationMarker() {
@@ -4810,6 +4854,8 @@ body::after {
     document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
     document.getElementById("nearby-toggle-mobile")?.addEventListener("click", requestNearbyLocation);
     document.getElementById("nearby-toggle-desktop")?.addEventListener("click", requestNearbyLocation);
+    document.getElementById("nearby-radius-mobile")?.addEventListener("change", (e) => setNearbyRadius(e.target.value));
+    document.getElementById("nearby-radius-desktop")?.addEventListener("change", (e) => setNearbyRadius(e.target.value));
     
     document.getElementById("mode-normal-btn")?.addEventListener("click", () => {
         applyMapMode("normal");
