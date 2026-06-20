@@ -4441,6 +4441,13 @@ body::after {
             typeEl.value = "";
         }
         document.getElementById("report-message").value="";
+        const submitBtn = document.getElementById("report-submit-btn");
+        const cancelBtn = document.getElementById("report-cancel-btn");
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "送出回報";
+        }
+        if (cancelBtn) cancelBtn.textContent = "取消";
         setReportStatus("", "");
         reportModal.classList.add("visible");
     }
@@ -4498,14 +4505,21 @@ body::after {
             const result = await res.json().catch(() => ({}));
             if (!res.ok || !result.success) throw new Error(result.error || "回報送出失敗");
             setReportStatus("success", `已收到回報 #${result.reportId}\nAI 初判：${result.aiSummary || "待人工覆核"}\n我們會依來源與資料狀態覆核。`);
+            btn.textContent = "已送出";
+            btn.disabled = true;
+            const cancelBtn = document.getElementById("report-cancel-btn");
+            if (cancelBtn) cancelBtn.textContent = "關閉";
             await syncReportSummary();
             renderEvents();
         } catch(e) {
             console.warn("report submit failed", e);
             setReportStatus("error", "回報送出失敗，請稍後再試。");
         } finally {
-            btn.textContent = "送出回報";
-            btn.disabled = false;
+            const successEl = document.getElementById("report-success");
+            if (!successEl || successEl.style.display !== "block") {
+                btn.textContent = "送出回報";
+                btn.disabled = false;
+            }
         }
     }
 
