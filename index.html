@@ -3144,6 +3144,49 @@ body::after {
             </div>`;
     }
 
+    function getEventReportCount(ev) {
+        if (!ev || !ev.id) return 0;
+        return Number(reportSummaryByEvent[String(ev.id)] || 0);
+    }
+
+    function findReportEvent(identifier) {
+        const key = String(identifier || "");
+        return parsedEvents.find(ev => String(ev.id) === key)
+            || parsedEvents.find(ev => String(ev.title || ev.twOnlineTitle || "") === key)
+            || null;
+    }
+
+    async function syncReportSummary() {
+        try {
+            const response = await fetch("/api/report", { cache: "no-store" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            reportSummaryByEvent = data && data.byEvent && typeof data.byEvent === "object" ? data.byEvent : {};
+        } catch (error) {
+            console.warn("report summary sync failed", error);
+            reportSummaryByEvent = {};
+        }
+    }
+
+    function buildReportSnapshot(ev) {
+        if (!ev) return null;
+        return {
+            id: ev.id,
+            title: ev.twOnlineTitle || ev.title || "",
+            content: ev.twOnlineContent || ev.content || ev.summary || "",
+            city: ev.city || "",
+            category: ev.category || "",
+            lat: ev.lat ?? null,
+            lng: ev.lng ?? null,
+            source: ev.source || "",
+            sourceName: ev.sourceName || ev.source || "",
+            sourceUrl: ev.sourceUrl || ev.url || "",
+            url: ev.url || ev.sourceUrl || "",
+            publishedAt: ev.publishedAt || ev.time || "",
+            updatedAt: ev.updatedAt || ""
+        };
+    }
+
     function buildPopupHtml(ev, displayTitle, displayContent, markerStyle) {
         const city = ev.city || "未知城市";
         const timeStr = formatEventTime(ev);
@@ -3151,7 +3194,9 @@ body::after {
         const reactionSlot = isMourningEvent(ev)
             ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${ev.id}"></div>`
             : "";
-        const reportArg = encodeURIComponent(displayTitle);
+        const reportArg = encodeURIComponent(ev.id || displayTitle);
+        const reportCount = getEventReportCount(ev);
+        const reportTag = reportCount ? `<span class="popup-location-tag">已有 ${reportCount} 筆回報</span>` : "";
         const detailsHtml = makeEventDetailRows(ev, "popup");
 
         return `
@@ -3162,6 +3207,7 @@ body::after {
                             ${makeCatBadgeV2(ev.category)}
                             <span class="popup-location-tag">${city}</span>
                             ${timeHtml}
+                            ${reportTag}
                         </div>
                         <div class="popup-title-v2">${displayTitle}</div>
                     </div>
@@ -3196,7 +3242,9 @@ body::after {
         const reactionSlot = isMourningEvent(ev)
             ? `<div class="card-v2-extra"><div class="reaction-container" data-event-id="${ev.id}"></div></div>`
             : "";
-        const reportArg = encodeURIComponent(displayTitle);
+        const reportArg = encodeURIComponent(ev.id || displayTitle);
+        const reportCount = getEventReportCount(ev);
+        const reportTag = reportCount ? `<span class="time-tag report-count-tag">已有 ${reportCount} 筆回報</span>` : "";
         const detailsHtml = makeEventDetailRows(ev, "card");
 
         return `
@@ -3206,6 +3254,7 @@ body::after {
                     <span class="city-tag">${LOC_PIN_SVG}${city}</span>
                     ${makeCatBadgeV2(ev.category)}
                     ${timeHtml}
+                    ${reportTag}
                 </div>
                 <div class="card-v2-title">${displayTitle}</div>
                 <div class="card-v2-content">${displayContent}</div>
@@ -3217,7 +3266,7 @@ body::after {
                 ${sourcesHtml}
                 <div class="card-actions">
                     <div class="card-action-group">
-                        <button type="button" class="card-action-btn report" data-report="${reportArg}">
+                        <button type="button" class="card-action-btn report" data-report="${reportArg}" data-event-id="${String(ev.id || "")}">
                             <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
                         </button>
                         ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
@@ -3315,6 +3364,7 @@ body::after {
     const EMPTY_GEOJSON = { type:"FeatureCollection", features:[] };
 
     let parsedEvents = [];
+    let reportSummaryByEvent = {};
     let activeCategory = "all";
     let searchKeyword = "";
     let isTaiwanMode = true;
@@ -4095,10 +4145,12 @@ body::after {
             const data = tryParseJson(raw,[]);
             const list = Array.isArray(data)?data:[];
             parsedEvents = deduplicateEvents(list.map(normalizeDisplayEvent));
+            await syncReportSummary();
             renderCategoryButtons(); renderEvents();
         }catch(e){
             console.warn("API無法連線，使用展示資料",e);
             parsedEvents=deduplicateEvents(MOCK_EVENTS.map(normalizeDisplayEvent));
+            reportSummaryByEvent = {};
             renderCategoryButtons(); renderEvents();
             setStatus("展示模式：顯示範例資料");
         }
@@ -4341,10 +4393,55 @@ body::after {
         if (mapStage) layoutObserver.observe(mapStage);
         if (newsSidebar) layoutObserver.observe(newsSidebar);
     }
-    function openReportModal(title){
-        document.getElementById("report-title").value=title;
-        document.getElementById("report-type").value="資料錯誤";
+    const REPORT_TYPE_OPTIONS = ["座標錯誤", "事件已解除", "不是同一事件", "分類錯誤", "來源失效", "其他"];
+    let currentReportEvent = null;
+
+    function ensureReportStatusElements(){
+        const actions = document.querySelector("#report-modal .modal-actions");
+        if (!actions) return;
+        if (!document.getElementById("report-error")) {
+            const error = document.createElement("div");
+            error.id = "report-error";
+            error.className = "report-status error";
+            error.style.display = "none";
+            actions.parentNode.insertBefore(error, actions);
+        }
+        if (!document.getElementById("report-success")) {
+            const success = document.createElement("div");
+            success.id = "report-success";
+            success.className = "report-status success";
+            success.style.display = "none";
+            actions.parentNode.insertBefore(success, actions);
+        }
+    }
+
+    function setReportStatus(type, message){
+        ensureReportStatusElements();
+        const error = document.getElementById("report-error");
+        const success = document.getElementById("report-success");
+        if (error) {
+            error.textContent = type === "error" ? message : "";
+            error.style.display = type === "error" ? "block" : "none";
+        }
+        if (success) {
+            success.textContent = type === "success" ? message : "";
+            success.style.display = type === "success" ? "block" : "none";
+            success.style.whiteSpace = "pre-line";
+        }
+    }
+
+    function openReportModal(identifier){
+        ensureReportStatusElements();
+        currentReportEvent = findReportEvent(identifier);
+        const title = currentReportEvent?.twOnlineTitle || currentReportEvent?.title || String(identifier || "");
+        document.getElementById("report-title").value = title;
+        const typeEl = document.getElementById("report-type");
+        if (typeEl) {
+            typeEl.innerHTML = `<option value="">請選擇回報類型</option>` + REPORT_TYPE_OPTIONS.map(option => `<option value="${option}">${option}</option>`).join("");
+            typeEl.value = "";
+        }
         document.getElementById("report-message").value="";
+        setReportStatus("", "");
         reportModal.classList.add("visible");
     }
     function closeReportModal(){ reportModal.classList.remove("visible"); }
@@ -4366,6 +4463,52 @@ body::after {
     }
 
     // ── BETA MODAL ───────────────────────────────────────────
+    async function submitReportWithReview(){
+        const ev = currentReportEvent;
+        const title = document.getElementById("report-title").value.trim();
+        const errorType = document.getElementById("report-type").value;
+        const message = document.getElementById("report-message").value.trim();
+        if (!ev || !ev.id) {
+            setReportStatus("error", "找不到事件 ID，請重新開啟事件卡再回報。");
+            return;
+        }
+        if (!errorType) {
+            setReportStatus("error", "請選擇回報類型。");
+            return;
+        }
+        if (!message) {
+            setReportStatus("error", "請補充說明，方便人工覆核。");
+            return;
+        }
+        const btn = document.getElementById("report-submit-btn");
+        btn.textContent = "送出中...";
+        btn.disabled = true;
+        try {
+            const res = await fetch("/api/report", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    eventId: String(ev.id),
+                    title,
+                    errorType,
+                    message,
+                    eventSnapshot: buildReportSnapshot(ev)
+                })
+            });
+            const result = await res.json().catch(() => ({}));
+            if (!res.ok || !result.success) throw new Error(result.error || "回報送出失敗");
+            setReportStatus("success", `已收到回報 #${result.reportId}\nAI 初判：${result.aiSummary || "待人工覆核"}\n我們會依來源與資料狀態覆核。`);
+            await syncReportSummary();
+            renderEvents();
+        } catch(e) {
+            console.warn("report submit failed", e);
+            setReportStatus("error", "回報送出失敗，請稍後再試。");
+        } finally {
+            btn.textContent = "送出回報";
+            btn.disabled = false;
+        }
+    }
+
     function checkBetaModal(){
         if(!localStorage.getItem("beta_accepted")) betaModal.classList.add("visible");
     }
@@ -4407,7 +4550,7 @@ body::after {
     document.getElementById("btn-light-mobile").addEventListener("click",()=>switchTheme("light"));
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
-    document.getElementById("report-submit-btn").addEventListener("click",submitReport);
+    document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
     
     document.getElementById("mode-normal-btn")?.addEventListener("click", () => {
         applyMapMode("normal");

@@ -24,6 +24,8 @@ mountHandler("/api/cron", "./api/cron");
 mountHandler("/api/reaction", "./api/reaction");
 mountHandler("/api/reactions/total", "./api/reactions-total");
 mountHandler("/api/report", "./api/report");
+mountHandler("/api/reports", "./api/reports");
+mountHandler("/api/reports/:reportId", "./api/reports");
 mountHandler("/api/create-payment", "./api/create-payment");
 
 app.use(express.static(rootDir));

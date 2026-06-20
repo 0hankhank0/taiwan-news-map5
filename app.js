@@ -421,6 +421,7 @@
     let activePopup = null;
     let currentReportEvent = null;
     let reportCloseTimer = null;
+    let reportSummaryByEvent = {};
     let activeDemoType = null;
     let demoInfoCard = null;
     let demoLayerControl = null;
@@ -2603,6 +2604,8 @@
             : makeCatBadgeV2(ev.category);
         const trustMeta = getEventTrustMeta(ev);
         const sourceUrl = ev.sourceUrl || ev.url || "";
+        const reportCount = getEventReportCount(ev);
+        const reportTag = reportCount ? `<span class="time-tag report-count-tag">已有 ${reportCount} 筆回報</span>` : "";
         const sourcesHtml = sourceUrl ? `
             <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
                 <i class="fa-solid fa-newspaper"></i> 來源資料 <i class="fa-solid fa-chevron-down"></i>
@@ -2619,6 +2622,7 @@
                     <span class="time-tag">${detailLabel}</span>
                     <span class="city-tag">${LOC_PIN_SVG}${city}</span>
                     ${timeStr ? `<span class="time-tag">${timeStr}</span>` : ""}
+                    ${reportTag}
                 </div>
                 <div class="card-v2-title">${displayTitle}</div>
                 <div class="card-v2-content">${displayContent}</div>
@@ -3361,6 +3365,7 @@ async function syncNewsAndRender(){
             const store = response.headers.get("X-Data-Store") || "";
 
             parsedEvents = deduplicateEvents(events);
+            await syncReportSummary();
             setDataSyncState(buildDataStateFromEvents(parsedEvents, {
                 total: Number.isFinite(total) ? total : parsedEvents.length,
                 sources: headerSources.length ? headerSources : undefined,
@@ -3371,6 +3376,7 @@ async function syncNewsAndRender(){
         } catch (error) {
             console.warn("events sync failed", error);
             parsedEvents = [];
+            reportSummaryByEvent = {};
             setDataSyncState({
                 status: "error",
                 total: 0,
@@ -3773,6 +3779,46 @@ async function syncNewsAndRender(){
     return ["位置錯誤", resolvedOption, "重複事件", "不是此類事件", "資料過期", "其他"];
 }
 
+function getEventReportCount(ev) {
+    if (!ev || !ev.id) return 0;
+    return Number(reportSummaryByEvent[String(ev.id)] || 0);
+}
+
+async function syncReportSummary() {
+    try {
+        const response = await fetch("/api/report", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        reportSummaryByEvent = data && data.byEvent && typeof data.byEvent === "object" ? data.byEvent : {};
+    } catch (error) {
+        console.warn("report summary sync failed", error);
+        reportSummaryByEvent = {};
+    }
+}
+
+function buildReportSnapshot(ev) {
+    if (!ev) return null;
+    return {
+        id: ev.id,
+        title: ev.displayTitle || ev.title || "",
+        content: ev.content || ev.summary || ev.text || "",
+        city: ev.city || "",
+        category: ev.category || "",
+        lat: ev.lat ?? null,
+        lng: ev.lng ?? null,
+        source: ev.source || "",
+        sourceName: ev.sourceName || ev.source || "",
+        sourceUrl: ev.sourceUrl || ev.url || "",
+        url: ev.url || ev.sourceUrl || "",
+        publishedAt: ev.publishedAt || ev.time || "",
+        updatedAt: ev.updatedAt || ""
+    };
+}
+
+function getReportOptionsForEvent(ev) {
+    return ["座標錯誤", "事件已解除", "不是同一事件", "分類錯誤", "來源失效", "其他"];
+}
+
 function renderReportTypeOptions(ev) {
     const typeEl = document.getElementById("report-type");
     if (!typeEl) return;
@@ -3782,7 +3828,27 @@ function renderReportTypeOptions(ev) {
         options.map(option => `<option value="${option}">${option}</option>`).join("");
 }
 
+function ensureReportStatusElements() {
+    const actions = document.querySelector("#report-modal .modal-actions");
+    if (!actions) return;
+    if (!document.getElementById("report-error")) {
+        const error = document.createElement("div");
+        error.id = "report-error";
+        error.className = "report-status error";
+        error.style.display = "none";
+        actions.parentNode.insertBefore(error, actions);
+    }
+    if (!document.getElementById("report-success")) {
+        const success = document.createElement("div");
+        success.id = "report-success";
+        success.className = "report-status success";
+        success.style.display = "none";
+        actions.parentNode.insertBefore(success, actions);
+    }
+}
+
 function showReportError(message) {
+    ensureReportStatusElements();
     const errorEl = document.getElementById("report-error");
     const successEl = document.getElementById("report-success");
     if (successEl) successEl.style.display = "none";
@@ -3793,16 +3859,19 @@ function showReportError(message) {
 }
 
 function showReportSuccess(message) {
+    ensureReportStatusElements();
     const errorEl = document.getElementById("report-error");
     const successEl = document.getElementById("report-success");
     if (errorEl) errorEl.style.display = "none";
     if (successEl) {
         successEl.textContent = message;
+        successEl.style.whiteSpace = "pre-line";
         successEl.style.display = "block";
     }
 }
 
 function clearReportMessages() {
+    ensureReportStatusElements();
     const errorEl = document.getElementById("report-error");
     const successEl = document.getElementById("report-success");
     if (errorEl) {
@@ -3894,6 +3963,59 @@ async function submitReport() {
     }
 }
     // CONCEPT DEMO MODAL ???????????????????????????????????
+async function submitReportWithReview() {
+    const ev = currentReportEvent;
+    if (!ev || !ev.id) {
+        showReportError("找不到事件 ID，請重新開啟事件卡再回報。");
+        return;
+    }
+    const typeEl = document.getElementById("report-type");
+    const noteEl = document.getElementById("report-note") || document.getElementById("report-message");
+    const submitBtn = document.getElementById("report-submit-btn");
+    const type = typeEl?.value || "";
+    const note = noteEl?.value || "";
+    if (!type) {
+        showReportError("請選擇回報類型。");
+        return;
+    }
+    if (!note.trim()) {
+        showReportError("請補充說明，方便人工覆核。");
+        return;
+    }
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "送出中...";
+    }
+    try {
+        const response = await fetch("/api/report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                eventId: String(ev.id),
+                title: ev.displayTitle || ev.title || "",
+                errorType: type,
+                message: note,
+                eventSnapshot: buildReportSnapshot(ev)
+            })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) throw new Error(result.error || "report failed");
+        showReportSuccess(`已收到回報 #${result.reportId}\nAI 初判：${result.aiSummary || "待人工覆核"}\n我們會依來源與資料狀態覆核。`);
+        await syncReportSummary();
+        renderEvents();
+        if (reportCloseTimer) clearTimeout(reportCloseTimer);
+        reportCloseTimer = setTimeout(closeReportModal, 4500);
+    } catch (error) {
+        console.warn("Report submit failed", error);
+        showReportError("回報送出失敗，請稍後再試。");
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "送出回報";
+        }
+    }
+}
+
     function checkBetaModal(){
         localStorage.setItem("beta_accepted", "true");
         betaModal.classList.remove("visible");
@@ -4029,7 +4151,7 @@ async function submitReport() {
     document.getElementById("nearby-radius-mobile")?.addEventListener("change", (e) => handleNearbyRadiusChangeV2(e.target.value));
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
-    document.getElementById("report-submit-btn").addEventListener("click",submitReport);
+    document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
     
     document.getElementById("mode-normal-btn")?.addEventListener("click", () => {
         applyMapMode("normal");
