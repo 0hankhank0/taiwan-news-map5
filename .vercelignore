@@ -1,5 +1,7 @@
 node_modules
 exports
+tests
+UI設計
 .git
 .agents
 .codex
@@ -7,3 +9,9 @@ exports
 0607.mp4
 *.log
 *.tmp
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+api/admin-auth.js
+api/event-normalizer.js
+api/location-resolver.js
