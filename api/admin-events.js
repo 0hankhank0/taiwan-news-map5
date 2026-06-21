@@ -1,5 +1,5 @@
-const { normalizeEventsForFrontend } = require("./event-normalizer");
-const { isAuthorized } = require("./admin-auth");
+const { normalizeEventsForFrontend } = require("../event-normalizer");
+const { isAuthorized } = require("../admin-auth");
 const { getCachedEvents, updateCachedEvent } = require("../event-store");
 
 const ALLOWED_STATUSES = new Set(["active", "upcoming", "resolved", "cleared", "expired"]);
