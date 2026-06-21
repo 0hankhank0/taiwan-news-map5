@@ -2,7 +2,7 @@ const assert = require("assert");
 const {
   isCoordInCity,
   resolveLocationSync,
-} = require("../api/location-resolver");
+} = require("../location-resolver");
 
 function approx(actual, expected, tolerance = 0.0005) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be close to ${expected}`);
