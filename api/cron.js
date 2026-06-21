@@ -7,7 +7,7 @@ const {
   makeGeocodingCacheKey,
   normalizeCity,
   resolveLocationSync,
-} = require("./location-resolver");
+} = require("../location-resolver");
 
 const Parser = require("rss-parser");
 const axios = require("axios");
