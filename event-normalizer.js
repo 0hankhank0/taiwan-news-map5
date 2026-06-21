@@ -1,4 +1,4 @@
-const locationResolver = require("./api/location-resolver");
+const locationResolver = require("./location-resolver");
 
 const TAIWAN_CITY_COORDS = {
   "台北市": { lat: 25.033, lng: 121.5654 },
