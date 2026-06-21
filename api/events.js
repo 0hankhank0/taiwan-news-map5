@@ -1,4 +1,4 @@
-const { normalizeEventsForFrontend } = require("./event-normalizer");
+const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { getCachedEvents, getEventCacheStatus } = require("../event-store");
 
 function normalizeQueryValue(value) {
