@@ -1,5 +1,5 @@
 const { REPORT_STATUSES, getReports, updateReport } = require("../report-store");
-const { isAuthorized } = require("./admin-auth");
+const { isAuthorized } = require("../admin-auth");
 
 function sendJson(res, status, payload) {
   return res.status(status).json(payload);
