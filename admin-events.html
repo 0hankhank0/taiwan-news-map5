@@ -72,6 +72,29 @@
     function option(value, label, current) {
       return `<option value="${escapeHtml(value)}"${String(value) === String(current || "") ? " selected" : ""}>${escapeHtml(label || value)}</option>`;
     }
+    const STATUS_LABELS = {
+      active: "進行中",
+      upcoming: "即將開始",
+      resolved: "已解除",
+      cleared: "已清除",
+      expired: "已過期"
+    };
+    const REVIEW_STATE_LABELS = {
+      unreviewed: "未覆核",
+      pending_review: "待人工覆核",
+      reviewed: "已覆核",
+      merged: "已合併",
+      rejected: "已退回"
+    };
+    const VERIFIED_STATUS_LABELS = {
+      unverified: "未驗證",
+      verified: "已驗證",
+      resolved: "已解除",
+      rejected: "已退回"
+    };
+    function labelFor(map, value, fallback = "") {
+      return map[value] || value || fallback;
+    }
     function renderEvent(event) {
       const sourceCount = Array.isArray(event.sourceTrace) ? event.sourceTrace.length : 0;
       return `
@@ -81,8 +104,8 @@
               <h2 class="title">${escapeHtml(event.title)}</h2>
               <div class="meta">
                 <span class="tag">#${escapeHtml(event.id)}</span>
-                <span class="tag ${escapeHtml(event.reviewState)}">${escapeHtml(event.reviewState || "unreviewed")}</span>
-                <span class="tag ${escapeHtml(event.verifiedStatus)}">${escapeHtml(event.verifiedStatus || "unverified")}</span>
+                <span class="tag ${escapeHtml(event.reviewState)}">${escapeHtml(labelFor(REVIEW_STATE_LABELS, event.reviewState, "未覆核"))}</span>
+                <span class="tag ${escapeHtml(event.verifiedStatus)}">${escapeHtml(labelFor(VERIFIED_STATUS_LABELS, event.verifiedStatus, "未驗證"))}</span>
                 <span class="tag">${escapeHtml(event.locationPrecision || "unknown")}</span>
                 <span class="tag">${escapeHtml(event.sourceName || event.source || "unknown")}</span>
                 <span class="tag">${sourceCount} sourceTrace</span>
@@ -94,13 +117,13 @@
             <input data-field="title" class="wide" value="${escapeHtml(event.title)}" />
             <input data-field="category" value="${escapeHtml(event.category)}" />
             <select data-field="status">
-              ${["active","upcoming","resolved","cleared","expired"].map(v => option(v, v, event.status)).join("")}
+              ${["active","upcoming","resolved","cleared","expired"].map(v => option(v, STATUS_LABELS[v], event.status)).join("")}
             </select>
             <select data-field="reviewState">
-              ${["unreviewed","pending_review","reviewed","merged","rejected"].map(v => option(v, v, event.reviewState)).join("")}
+              ${["unreviewed","pending_review","reviewed","merged","rejected"].map(v => option(v, REVIEW_STATE_LABELS[v], event.reviewState)).join("")}
             </select>
             <select data-field="verifiedStatus">
-              ${["unverified","verified","resolved","rejected"].map(v => option(v, v, event.verifiedStatus)).join("")}
+              ${["unverified","verified","resolved","rejected"].map(v => option(v, VERIFIED_STATUS_LABELS[v], event.verifiedStatus)).join("")}
             </select>
             <input data-field="city" value="${escapeHtml(event.city)}" />
             <input data-field="district" value="${escapeHtml(event.district)}" />
