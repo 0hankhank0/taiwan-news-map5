@@ -1,0 +1,21 @@
+function getBearerToken(req) {
+  const header = req.headers.authorization || req.headers.Authorization || "";
+  const match = String(header).match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : "";
+}
+
+function getQueryToken(req) {
+  return String(req.query?.token || "").trim();
+}
+
+function isAuthorized(req) {
+  const expected = process.env.REPORT_ADMIN_TOKEN;
+  if (!expected) return { ok: false, status: 503, error: "REPORT_ADMIN_TOKEN is not configured" };
+  const supplied = getBearerToken(req) || getQueryToken(req);
+  if (supplied !== expected) return { ok: false, status: 401, error: "Unauthorized" };
+  return { ok: true };
+}
+
+module.exports = {
+  isAuthorized,
+};
