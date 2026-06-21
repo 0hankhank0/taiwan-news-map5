@@ -6,6 +6,7 @@ const { Redis } = require("@upstash/redis");
 const EVENT_CACHE_KEY = "taiwan_traffic_events";
 const MERGED_EVENT_CACHE_KEY = "events:merged";
 const EVENT_BUCKET_KEYS = ["events:traffic", "events:news", "events:activities"];
+const EVENT_REVIEW_LOG_KEY = "events:review-log";
 
 function createKvClient() {
   const url = process.env.KV_REST_API_URL;
@@ -202,6 +203,109 @@ async function setCachedEvents(events, options = {}) {
   return legacyOk || mergedOk;
 }
 
+function findEventIndex(events, eventId) {
+  const key = String(eventId || "").trim();
+  if (!key) return -1;
+  return events.findIndex((event) =>
+    String(event?.id || "") === key
+    || String(event?.eventId || "") === key
+    || String(event?.eventFingerprint || "") === key
+  );
+}
+
+function buildSourceTrace(event) {
+  if (Array.isArray(event?.sourceTrace) && event.sourceTrace.length > 0) return event.sourceTrace;
+  if (Array.isArray(event?.sources) && event.sources.length > 0) {
+    return event.sources.map((source) => ({
+      outlet: String(source.outlet || source.source || event.sourceName || event.source || "").trim(),
+      title: String(source.title || event.title || "").trim(),
+      url: String(source.url || source.sourceUrl || event.sourceUrl || event.url || "").trim(),
+      capturedAt: event.updatedAt || event.publishedAt || event.createdAt || "",
+    }));
+  }
+  return [{
+    outlet: String(event?.sourceName || event?.source || "unknown").trim(),
+    title: String(event?.title || "").trim(),
+    url: String(event?.sourceUrl || event?.url || "").trim(),
+    capturedAt: event?.updatedAt || event?.publishedAt || event?.createdAt || "",
+  }];
+}
+
+function normalizeEventPatch(patch = {}) {
+  const allowed = {};
+  if (patch.title !== undefined) allowed.title = String(patch.title).trim();
+  if (patch.content !== undefined) allowed.content = String(patch.content).trim();
+  if (patch.category !== undefined) allowed.category = String(patch.category).trim();
+  if (patch.status !== undefined) allowed.status = String(patch.status).trim();
+  if (patch.verifiedStatus !== undefined) allowed.verifiedStatus = String(patch.verifiedStatus).trim();
+  if (patch.reviewState !== undefined) allowed.reviewState = String(patch.reviewState).trim();
+  if (patch.mergedIntoEventId !== undefined) allowed.mergedIntoEventId = String(patch.mergedIntoEventId).trim();
+  if (patch.adminNote !== undefined) allowed.adminNote = String(patch.adminNote).trim();
+  if (patch.locationPrecision !== undefined) allowed.locationPrecision = String(patch.locationPrecision).trim();
+  if (patch.locationSource !== undefined) allowed.locationSource = String(patch.locationSource).trim();
+  if (patch.address !== undefined) allowed.address = String(patch.address).trim();
+  if (patch.venue !== undefined) allowed.venue = String(patch.venue).trim();
+  if (patch.city !== undefined) allowed.city = String(patch.city).trim();
+  if (patch.district !== undefined) allowed.district = String(patch.district).trim();
+  if (patch.resolvedAt !== undefined) allowed.resolvedAt = patch.resolvedAt ? String(patch.resolvedAt).trim() : null;
+  if (patch.lat !== undefined) {
+    const lat = Number(patch.lat);
+    if (Number.isFinite(lat)) allowed.lat = lat;
+  }
+  if (patch.lng !== undefined) {
+    const lng = Number(patch.lng);
+    if (Number.isFinite(lng)) allowed.lng = lng;
+  }
+  return allowed;
+}
+
+async function updateCachedEvent(eventId, patch = {}, actor = "admin") {
+  const events = await getCachedEvents();
+  const index = findEventIndex(events, eventId);
+  if (index < 0) return null;
+
+  const now = new Date().toISOString();
+  const current = events[index];
+  const normalizedPatch = normalizeEventPatch(patch);
+  const nextStatus = normalizedPatch.status || current.status;
+  const resolvedAt = normalizedPatch.resolvedAt !== undefined
+    ? normalizedPatch.resolvedAt
+    : (["resolved", "cleared"].includes(String(nextStatus || "").toLowerCase()) ? (current.resolvedAt || now) : current.resolvedAt || null);
+  const next = {
+    ...current,
+    ...normalizedPatch,
+    status: nextStatus,
+    statusSource: "manual",
+    reviewState: normalizedPatch.reviewState || (normalizedPatch.mergedIntoEventId ? "merged" : "reviewed"),
+    verifiedStatus: normalizedPatch.verifiedStatus || (resolvedAt ? "resolved" : "verified"),
+    lastVerifiedAt: now,
+    resolvedAt,
+    sourceTrace: buildSourceTrace(current),
+    adminReview: {
+      ...(current.adminReview || {}),
+      adminNote: normalizedPatch.adminNote ?? current.adminReview?.adminNote ?? "",
+      updatedAt: now,
+      actor,
+    },
+    updatedAt: now,
+  };
+
+  events[index] = next;
+  await setCachedEvents(events);
+
+  const currentLog = await getCachedValue(EVENT_REVIEW_LOG_KEY);
+  const log = Array.isArray(currentLog) ? currentLog : [];
+  const entry = {
+    eventId: String(eventId),
+    action: normalizedPatch.mergedIntoEventId ? "merge" : (resolvedAt ? "resolve-or-update" : "update"),
+    patch: normalizedPatch,
+    actor,
+    createdAt: now,
+  };
+  await setCachedValue(EVENT_REVIEW_LOG_KEY, [entry, ...log].slice(0, 1000));
+  return next;
+}
+
 function eventDedupeKey(event) {
   return String(
     event?.eventFingerprint
@@ -224,9 +328,11 @@ module.exports = {
   EVENT_CACHE_KEY,
   MERGED_EVENT_CACHE_KEY,
   EVENT_BUCKET_KEYS,
+  EVENT_REVIEW_LOG_KEY,
   getCachedEvents,
   getEventCacheStatus,
   getCachedValue,
   setCachedEvents,
   setCachedValue,
+  updateCachedEvent,
 };

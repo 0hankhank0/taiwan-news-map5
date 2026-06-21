@@ -109,6 +109,13 @@
       align-items: start;
     }
     a { color: var(--accent); }
+    .nav {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+      font-size: 13px;
+    }
     .empty {
       border: 1px dashed var(--line);
       color: var(--muted);
@@ -126,6 +133,11 @@
     <div class="wrap">
       <h1>事件回報後台</h1>
       <p class="sub">AI 只提供審核建議；事件資料需人工覆核後再處理。</p>
+      <div class="nav">
+        <a href="/admin-events.html">事件管理</a>
+        <a href="/admin-health.html">監控頁</a>
+        <a href="/">回地圖</a>
+      </div>
       <div class="toolbar">
         <input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" />
         <select id="status">

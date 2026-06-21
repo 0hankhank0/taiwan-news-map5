@@ -6,7 +6,9 @@
   },
   "scripts": {
     "start": "node server.js",
-    "scraper": "node scraper.js"
+    "scraper": "node scraper.js",
+    "test:location": "node tests/location-resolver.test.js",
+    "test:admin": "node tests/admin-api.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

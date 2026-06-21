@@ -1,3 +1,5 @@
+const locationResolver = require("./api/location-resolver");
+
 const TAIWAN_CITY_COORDS = {
   "台北市": { lat: 25.033, lng: 121.5654 },
   "臺北市": { lat: 25.033, lng: 121.5654 },
@@ -161,29 +163,15 @@ function normalizeCategory(value) {
 }
 
 function normalizeCity(value) {
-  const raw = normalizeText(value, "台灣").replace(/臺/g, "台");
-  const match = TAIWAN_CITY_COORDS[raw];
-  if (match?.city) return match.city;
-  const city = Object.keys(TAIWAN_CITY_COORDS)
-    .filter((cityName) => cityName.length >= 3)
-    .find((cityName) => raw.includes(cityName.replace(/臺/g, "台")));
-  return CITY_ALIASES[city] || city || raw;
+  return locationResolver.normalizeCity(value);
 }
 
 function inferCityFromText(text) {
-  const source = normalizeText(text).replace(/臺/g, "台");
-  const city = Object.keys(TAIWAN_CITY_COORDS)
-    .filter((cityName) => cityName.length >= 3)
-    .find((cityName) => source.includes(cityName.replace(/臺/g, "台")));
-  return CITY_ALIASES[city] || city || "";
+  return locationResolver.inferCityFromText(text);
 }
 
 function extractDistrict(text = "") {
-  const source = normalizeText(text).replace(/臺/g, "台");
-  const matches = [...source.matchAll(DISTRICT_PATTERN)].map((match) => match[1]);
-  return matches.find((name) => /(?:區|鄉|鎮)$/.test(name))
-    || matches.find((name) => /市$/.test(name) && !TAIWAN_CITY_COORDS[name])
-    || "";
+  return locationResolver.extractDistrict(text);
 }
 
 function parseTime(value) {
@@ -227,36 +215,21 @@ function resolveCoordinates(event, city) {
   if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng };
 
   const cityKey = city || inferCityFromText(`${event.title || ""} ${event.content || ""} ${event.description || ""}`);
-  const fallback = TAIWAN_CITY_COORDS[cityKey];
+  const fallback = locationResolver.getCityFallback(cityKey);
   if (fallback) return { lat: fallback.lat, lng: fallback.lng };
   return { lat: NaN, lng: NaN };
 }
 
 function isValidTaiwanCoord(lat, lng) {
-  return lat >= 21 && lat <= 27 && lng >= 118 && lng <= 123;
+  return locationResolver.isValidTaiwanCoord(lat, lng);
 }
 
 function isCoordInCity(city, lat, lng) {
-  const bounds = TAIWAN_CITY_BOUNDS[city];
-  if (!bounds) return true;
-  return lat >= bounds.minLat && lat <= bounds.maxLat && lng >= bounds.minLng && lng <= bounds.maxLng;
+  return locationResolver.isCoordInCity(city, lat, lng);
 }
 
 function resolveKnownLocationCoord(event, city, title, content) {
-  const text = normalizeText([
-    event.address,
-    event.location,
-    event.venue,
-    event.district,
-    title,
-    content,
-  ].filter(Boolean).join(" ")).replace(/臺/g, "台");
-  const match = KNOWN_LOCATION_COORDS.find((entry) => {
-    const entryCity = normalizeCity(entry.city);
-    return entry.pattern.test(text) && (!TAIWAN_CITY_BOUNDS[city] || entryCity === city || entry.city === city);
-  });
-  if (!match) return null;
-  return { lat: match.lat, lng: match.lng };
+  return locationResolver.resolveKnownLocationCoord(event, city, title, content);
 }
 
 function inferSeverity(event, category) {
@@ -294,6 +267,24 @@ function makeStableId(event, index) {
   return `event_${Math.abs(hash).toString(36)}`;
 }
 
+function buildSourceTrace(event) {
+  if (Array.isArray(event.sourceTrace) && event.sourceTrace.length > 0) return event.sourceTrace;
+  if (Array.isArray(event.sources) && event.sources.length > 0) {
+    return event.sources.map((source) => ({
+      outlet: normalizeText(source.outlet || source.source || event.sourceName || event.source || "unknown"),
+      title: normalizeText(source.title || event.title || ""),
+      url: normalizeText(source.url || source.sourceUrl || event.sourceUrl || event.url || ""),
+      capturedAt: normalizeText(event.updatedAt || event.publishedAt || event.createdAt || ""),
+    }));
+  }
+  return [{
+    outlet: normalizeText(event.sourceName || event.source || "unknown"),
+    title: normalizeText(event.title || ""),
+    url: normalizeText(event.sourceUrl || event.url || ""),
+    capturedAt: normalizeText(event.updatedAt || event.publishedAt || event.createdAt || ""),
+  }];
+}
+
 function normalizeEvent(event, index = 0) {
   if (!event || typeof event !== "object") return null;
   if (isDemoEvent(event)) return null;
@@ -304,25 +295,15 @@ function normalizeEvent(event, index = 0) {
 
   const rawCategory = normalizeCategory(event.category || event.type);
   const groupCategory = CATEGORY_GROUPS[rawCategory] || "other";
-  const city = normalizeCity(event.city || event.region || event.location || inferCityFromText(`${title} ${content}`));
-  let { lat, lng } = resolveCoordinates(event, city);
+  const location = locationResolver.resolveLocationSync(event, { title, content });
+  const city = location.city;
+  let { lat, lng } = location;
   if (!isValidTaiwanCoord(lat, lng)) return null;
-  const knownCoord = resolveKnownLocationCoord(event, city, title, content);
-  if (knownCoord) {
-    lat = knownCoord.lat;
-    lng = knownCoord.lng;
-  } else if (!isCoordInCity(city, lat, lng)) {
-    const fallback = TAIWAN_CITY_COORDS[city];
-    if (fallback) {
-      lat = fallback.lat;
-      lng = fallback.lng;
-    }
-  }
 
   const sourceUrl = normalizeText(event.sourceUrl || event.url || event.link);
   const publishedAt = event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString();
   const createdAt = Number(event.createdAt) || Date.parse(publishedAt) || Date.now();
-  const district = normalizeText(event.district || extractDistrict(`${event.address || ""} ${event.location || ""} ${title} ${content}`));
+  const district = normalizeText(location.district || event.district || extractDistrict(`${event.address || ""} ${event.location || ""} ${title} ${content}`));
 
   return {
     ...event,
@@ -339,6 +320,9 @@ function normalizeEvent(event, index = 0) {
     venue: normalizeText(event.venue || ""),
     lat,
     lng,
+    locationPrecision: normalizeText(event.locationPrecision || location.locationPrecision || "unknown"),
+    locationSource: normalizeText(event.locationSource || location.locationSource || "unknown"),
+    locationQuery: normalizeText(event.locationQuery || location.locationQuery || ""),
     severity: inferSeverity(event, rawCategory),
     source: normalizeText(event.source || event.sourceName || "news"),
     sourceName: normalizeText(event.sourceName || event.source || "news"),
@@ -351,6 +335,14 @@ function normalizeEvent(event, index = 0) {
     endsAt: event.endsAt || event.endAt || null,
     expiresAt: event.expiresAt || null,
     status: normalizeText(event.status || inferStatus(event)),
+    statusSource: normalizeText(event.statusSource || event.sourceName || event.source || "source"),
+    verifiedStatus: normalizeText(event.verifiedStatus || "unverified"),
+    reviewState: normalizeText(event.reviewState || "unreviewed"),
+    lastVerifiedAt: event.lastVerifiedAt || null,
+    resolvedAt: event.resolvedAt || null,
+    mergedIntoEventId: normalizeText(event.mergedIntoEventId || ""),
+    sourceTrace: buildSourceTrace(event),
+    adminReview: event.adminReview && typeof event.adminReview === "object" ? event.adminReview : null,
     impact: normalizeText(event.impact || inferImpact(event, rawCategory)),
     advice: normalizeText(event.advice || inferAdvice(event, rawCategory)),
     tags: Array.isArray(event.tags) ? event.tags : [rawCategory, city, district].filter(Boolean),
@@ -405,6 +397,7 @@ function normalizeEventsForFrontend(value) {
   return parseStoredEvents(value)
     .map(normalizeEvent)
     .filter(Boolean)
+    .filter((event) => !event.mergedIntoEventId)
     .filter((event) => !isInstitutionalNewsEvent(event))
     .filter((event) => {
       const key = normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>事件管理後台 | Island Pulse Beta</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0b1020; --panel:#121a2d; --panel2:#18223a; --line:rgba(148,163,184,.24); --text:#e5e7eb; --muted:#94a3b8; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --danger:#fb7185; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { position:sticky; top:0; z-index:2; background:rgba(11,16,32,.94); border-bottom:1px solid var(--line); backdrop-filter:blur(16px); }
+    .wrap { max-width:1240px; margin:0 auto; padding:20px; }
+    h1 { margin:0 0 4px; font-size:22px; }
+    .sub, .status { color:var(--muted); font-size:13px; }
+    .nav { display:flex; gap:10px; margin:14px 0; flex-wrap:wrap; }
+    a { color:var(--accent); }
+    .toolbar { display:grid; grid-template-columns:minmax(220px,1fr) 180px 120px; gap:10px; margin-top:16px; }
+    input, select, textarea, button { border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; }
+    input, select, textarea { width:100%; padding:10px 12px; }
+    textarea { min-height:70px; resize:vertical; }
+    button { cursor:pointer; padding:10px 12px; font-weight:700; }
+    button.primary { background:#075985; border-color:#0284c7; }
+    button.ok { background:rgba(16,185,129,.18); border-color:rgba(52,211,153,.5); }
+    button.warn { background:rgba(251,191,36,.16); border-color:rgba(251,191,36,.5); }
+    .event { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:12px; }
+    .head { display:grid; grid-template-columns:1fr auto; gap:12px; }
+    .title { margin:0 0 8px; font-size:17px; }
+    .meta { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
+    .tag { border:1px solid var(--line); border-radius:999px; padding:3px 8px; color:var(--muted); font-size:12px; }
+    .tag.reviewed, .tag.verified { color:var(--ok); border-color:rgba(52,211,153,.5); }
+    .tag.unreviewed, .tag.pending_review { color:var(--warn); border-color:rgba(251,191,36,.5); }
+    .tag.merged, .tag.resolved { color:var(--accent); border-color:rgba(56,189,248,.5); }
+    .grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin-top:12px; }
+    .grid .wide { grid-column:span 2; }
+    .grid .full { grid-column:1 / -1; }
+    .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+    .empty { border:1px dashed var(--line); color:var(--muted); padding:32px; border-radius:8px; text-align:center; }
+    @media (max-width:900px) { .toolbar,.head,.grid { grid-template-columns:1fr; } .grid .wide,.grid .full { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <h1>事件管理後台 <span class="tag">BETA</span></h1>
+      <p class="sub">人工修正只覆蓋展示層資料；原始來源與 sourceTrace 會保留，仍需人工覆核。</p>
+      <div class="nav">
+        <a href="/admin-reports.html">回報後台</a>
+        <a href="/admin-health.html">監控頁</a>
+        <a href="/">回地圖</a>
+      </div>
+      <div class="toolbar">
+        <input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" />
+        <input id="q" type="search" placeholder="搜尋標題、城市、來源或事件 ID" />
+        <button id="load" class="primary" type="button">載入</button>
+      </div>
+    </div>
+  </header>
+  <main class="wrap">
+    <div id="status" class="status">尚未載入。</div>
+    <section id="events"></section>
+  </main>
+  <script>
+    const tokenEl = document.getElementById("token");
+    const qEl = document.getElementById("q");
+    const statusEl = document.getElementById("status");
+    const eventsEl = document.getElementById("events");
+    tokenEl.value = localStorage.getItem("report_admin_token") || "";
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#039;" }[ch]));
+    }
+    function option(value, label, current) {
+      return `<option value="${escapeHtml(value)}"${String(value) === String(current || "") ? " selected" : ""}>${escapeHtml(label || value)}</option>`;
+    }
+    function renderEvent(event) {
+      const sourceCount = Array.isArray(event.sourceTrace) ? event.sourceTrace.length : 0;
+      return `
+        <article class="event" data-event-id="${escapeHtml(event.id)}">
+          <div class="head">
+            <div>
+              <h2 class="title">${escapeHtml(event.title)}</h2>
+              <div class="meta">
+                <span class="tag">#${escapeHtml(event.id)}</span>
+                <span class="tag ${escapeHtml(event.reviewState)}">${escapeHtml(event.reviewState || "unreviewed")}</span>
+                <span class="tag ${escapeHtml(event.verifiedStatus)}">${escapeHtml(event.verifiedStatus || "unverified")}</span>
+                <span class="tag">${escapeHtml(event.locationPrecision || "unknown")}</span>
+                <span class="tag">${escapeHtml(event.sourceName || event.source || "unknown")}</span>
+                <span class="tag">${sourceCount} sourceTrace</span>
+              </div>
+            </div>
+            <a href="${escapeHtml(event.url || event.sourceUrl || "#")}" target="_blank" rel="noreferrer">來源</a>
+          </div>
+          <div class="grid">
+            <input data-field="title" class="wide" value="${escapeHtml(event.title)}" />
+            <input data-field="category" value="${escapeHtml(event.category)}" />
+            <select data-field="status">
+              ${["active","upcoming","resolved","cleared","expired"].map(v => option(v, v, event.status)).join("")}
+            </select>
+            <select data-field="reviewState">
+              ${["unreviewed","pending_review","reviewed","merged","rejected"].map(v => option(v, v, event.reviewState)).join("")}
+            </select>
+            <select data-field="verifiedStatus">
+              ${["unverified","verified","resolved","rejected"].map(v => option(v, v, event.verifiedStatus)).join("")}
+            </select>
+            <input data-field="city" value="${escapeHtml(event.city)}" />
+            <input data-field="district" value="${escapeHtml(event.district)}" />
+            <input data-field="lat" value="${escapeHtml(event.lat)}" />
+            <input data-field="lng" value="${escapeHtml(event.lng)}" />
+            <input data-field="mergedIntoEventId" class="wide" placeholder="合併到 event ID" value="${escapeHtml(event.mergedIntoEventId)}" />
+            <input data-field="address" class="wide" placeholder="地址" value="${escapeHtml(event.address)}" />
+            <textarea data-field="adminNote" class="full" placeholder="管理備註">${escapeHtml(event.adminReview?.adminNote || "")}</textarea>
+          </div>
+          <div class="actions">
+            <button class="warn" type="button" data-quick-resolve>標記已解除</button>
+            <button class="ok" type="button" data-save>儲存覆核</button>
+          </div>
+        </article>`;
+    }
+    async function loadEvents() {
+      const token = tokenEl.value.trim();
+      localStorage.setItem("report_admin_token", token);
+      const params = new URLSearchParams({ token, limit: "160" });
+      if (qEl.value.trim()) params.set("q", qEl.value.trim());
+      statusEl.textContent = "載入中...";
+      eventsEl.innerHTML = "";
+      try {
+        const response = await fetch(`/api/admin-events?${params.toString()}`, { cache: "no-store" });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+        const events = Array.isArray(data.events) ? data.events : [];
+        statusEl.textContent = `共 ${data.total || events.length} 筆，顯示 ${events.length} 筆。`;
+        eventsEl.innerHTML = events.length ? events.map(renderEvent).join("") : `<div class="empty">沒有符合條件的事件。</div>`;
+      } catch (error) {
+        statusEl.textContent = `載入失敗：${error.message}`;
+      }
+    }
+    function collectPatch(card) {
+      const patch = {};
+      card.querySelectorAll("[data-field]").forEach((field) => {
+        patch[field.dataset.field] = field.value;
+      });
+      return patch;
+    }
+    async function saveEvent(card, extra = {}) {
+      const token = tokenEl.value.trim();
+      const eventId = card.dataset.eventId;
+      const patch = { ...collectPatch(card), ...extra };
+      const response = await fetch(`/api/admin-events?token=${encodeURIComponent(token)}&eventId=${encodeURIComponent(eventId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+      await loadEvents();
+    }
+    document.getElementById("load").addEventListener("click", loadEvents);
+    qEl.addEventListener("keydown", (event) => { if (event.key === "Enter") loadEvents(); });
+    eventsEl.addEventListener("click", async (event) => {
+      const card = event.target.closest(".event");
+      if (!card) return;
+      const button = event.target.closest("button");
+      if (!button) return;
+      button.disabled = true;
+      try {
+        if (button.hasAttribute("data-quick-resolve")) {
+          await saveEvent(card, { status: "resolved", verifiedStatus: "resolved", reviewState: "reviewed", resolvedAt: new Date().toISOString() });
+        } else if (button.hasAttribute("data-save")) {
+          await saveEvent(card);
+        }
+      } catch (error) {
+        alert(`儲存失敗：${error.message}`);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

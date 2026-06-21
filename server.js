@@ -20,6 +20,8 @@ function mountHandler(route, handlerPath) {
 
 mountHandler("/api/config.js", "./api/config");
 mountHandler("/api/events", "./api/events");
+mountHandler("/api/admin-events", "./api/admin-events");
+mountHandler("/api/health", "./api/health");
 mountHandler("/api/cron", "./api/cron");
 mountHandler("/api/reaction", "./api/reaction");
 mountHandler("/api/reactions/total", "./api/reactions-total");
