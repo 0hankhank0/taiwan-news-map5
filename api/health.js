@@ -1,5 +1,5 @@
-const { normalizeEventsForFrontend } = require("./event-normalizer");
-const { isAuthorized } = require("./admin-auth");
+const { normalizeEventsForFrontend } = require("../event-normalizer");
+const { isAuthorized } = require("../admin-auth");
 const { getCachedEvents, getEventCacheStatus } = require("../event-store");
 const { getReports } = require("../report-store");
 
