@@ -213,6 +213,36 @@
         </div>`;
     }
 
+    function getLocationPrecisionLabel(ev) {
+        const precision = normalizeText(ev.locationPrecision || "").toLowerCase();
+        if (precision === "exact") return "精準地點";
+        if (precision === "district") return "區域估算";
+        if (precision === "city") return "縣市估算";
+        return "";
+    }
+
+    function makeLocationPrecisionTag(ev, className = "event-impact-chip") {
+        const label = getLocationPrecisionLabel(ev);
+        if (!label) return "";
+        return `<span class="${className}" title="事件定位可信度">${label}</span>`;
+    }
+
+    function getReviewStateLabel(ev) {
+        const state = normalizeText(ev.reviewState || "").toLowerCase();
+        const verified = normalizeText(ev.verifiedStatus || "").toLowerCase();
+        if (state === "reviewed" || verified === "verified") return "人工覆核";
+        if (state === "pending_review") return "待覆核";
+        if (state === "merged") return "已合併";
+        if (verified === "resolved") return "已解除覆核";
+        return "未覆核";
+    }
+
+    function getSourceTraceLabel(ev) {
+        const count = Array.isArray(ev.sourceTrace) ? ev.sourceTrace.length : 0;
+        const source = normalizeText(ev.sourceName || ev.source || "資料來源");
+        return count > 1 ? `${source} 等 ${count} 筆來源` : source;
+    }
+
     function makeEventDetailRows(ev, context = "card") {
         const rows = [];
         const isActivity = inferEventGroupCategory(ev) === "activity" || ev.category === "activity";
@@ -224,11 +254,13 @@
         if (place) rows.push([isActivity ? "場地" : "地點", place]);
         else if (area) rows.push(["地區", area]);
         rows.push(["狀態", getEventStatusLabel(ev)]);
+        rows.push(["資料", `${getSourceTraceLabel(ev)}｜${getReviewStateLabel(ev)}`]);
+        if (ev.updatedAt || ev.lastVerifiedAt) rows.push(["更新", formatEventDateTime(ev.lastVerifiedAt || ev.updatedAt)]);
         rows.push(["建議", getEventAdviceLabel(ev)]);
         if (ev.impact) rows.push(["影響", ev.impact]);
 
         if (!rows.length) return "";
-        const maxRows = context === "popup" ? 4 : 3;
+        const maxRows = context === "popup" ? 5 : 4;
         return `<div class="event-detail-list event-detail-list--${context}">
             ${rows.slice(0, maxRows).map(([label, value]) => `
                 <div class="event-detail-item">
@@ -345,6 +377,7 @@
                         <div class="popup-header-meta">
                             ${makeCatBadgeV2(ev.category)}
                             <span class="popup-location-tag">${city}</span>
+                            ${makeLocationPrecisionTag(ev, "popup-location-tag")}
                             ${timeHtml}
                             ${reportTag}
                         </div>
@@ -393,6 +426,7 @@
             <div class="card-v2-left">
                 <div class="card-v2-meta">
                     <span class="city-tag">${LOC_PIN_SVG}${city}</span>
+                    ${makeLocationPrecisionTag(ev, "time-tag")}
                     ${makeCatBadgeV2(ev.category)}
                     ${timeHtml}
                     ${reportTag}
