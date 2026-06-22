@@ -547,6 +547,21 @@
     let twGeoJSON = null;
     let activePopup = null;
     const renderedMarkers = [];
+    const MOBILE_MARKER_LIMIT = 80;
+    const MOBILE_CARD_LIMIT = 60;
+    let mapResizeScheduled = false;
+
+    function isMobileViewport() {
+        return window.matchMedia("(max-width: 767px)").matches;
+    }
+
+    function debounce(fn, wait = 160) {
+        let timer = null;
+        return (...args) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => fn(...args), wait);
+        };
+    }
 
     // ── THEME ───────────────────────────────────────────────
     const MAPBOX_STYLES = {
@@ -611,7 +626,34 @@
         }
     });
 
-    function fallbackToLeaflet() {
+    async function loadLeafletAssets() {
+        if (window.L) return window.L;
+        if (!document.querySelector('link[data-lazy-leaflet="css"]')) {
+            const link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+            link.dataset.lazyLeaflet = "css";
+            document.head.appendChild(link);
+        }
+        await new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-lazy-leaflet="js"]');
+            if (existing) {
+                existing.addEventListener("load", resolve, { once: true });
+                existing.addEventListener("error", reject, { once: true });
+                return;
+            }
+            const script = document.createElement("script");
+            script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+            script.dataset.lazyLeaflet = "js";
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+        });
+        return window.L;
+    }
+
+    async function fallbackToLeaflet() {
+        const L = await loadLeafletAssets();
         const fallbackMap = L.map('map').setView([23.5, 121], 7);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap'
@@ -938,15 +980,22 @@
     }
 
     function scheduleMapResize() {
+        if (mapResizeScheduled) return;
+        mapResizeScheduled = true;
         const resizeNow = () => {
+            mapResizeScheduled = false;
             if (map && typeof map.resize === "function") map.resize();
             if (window._fallbackMap && typeof window._fallbackMap.invalidateSize === "function") {
                 window._fallbackMap.invalidateSize(true);
             }
         };
         requestAnimationFrame(resizeNow);
-        setTimeout(resizeNow, 120);
-        setTimeout(resizeNow, 360);
+        setTimeout(() => {
+            if (map && typeof map.resize === "function") map.resize();
+            if (window._fallbackMap && typeof window._fallbackMap.invalidateSize === "function") {
+                window._fallbackMap.invalidateSize(true);
+            }
+        }, 180);
     }
 
     function formatRadiusLabel(meters) {
@@ -1320,6 +1369,9 @@
         let events = filterEventsByNearby(getFilteredEvents());
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
+        const isMobile = isMobileViewport();
+        const markerLimit = isMobile ? MOBILE_MARKER_LIMIT : Infinity;
+        const cardLimit = isMobile ? MOBILE_CARD_LIMIT : Infinity;
 
         events.sort((a,b)=>{
             const aNews=(a.source==="news"||a.source==="RSS")?1:0;
@@ -1336,7 +1388,10 @@
             document.getElementById("reset-filters-btn")?.addEventListener("click", resetVisibleFilters);
         }
 
-        events.forEach(ev=>{
+        events.forEach((ev, index)=>{
+            const shouldRenderMarker = index < markerLimit;
+            const shouldRenderCard = index < cardLimit;
+            if (!shouldRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
             const cat = config[mappedCat]||config.other;
             const latlng = [Number(ev.lat),Number(ev.lng)];
@@ -1351,65 +1406,71 @@
             const pinPulse = shouldPinPulse(ev, severity);
             const popupHtml = buildPopupHtml(ev, displayTitle, displayContent, markerStyle);
 
-            const popup = new mapboxgl.Popup({
-                className: "custom-popup",
-                closeButton: true,
-                closeOnClick: false,
-                maxWidth: "328px",
-                offset: 22
-            });
-            enableSubpixelPositioning(popup);
-            popup.setHTML(popupHtml);
-            popup.on("open", () => {
-                activePopup = popup;
-                if (isMourningEvent(ev)) {
-                    const container = popup.getElement().querySelector(".reaction-container, .popup-reactions-wrap");
-                    if (container) updateReactionUI(ev.id, container);
-                }
-            });
-            popup.on("close", () => { if (activePopup === popup) activePopup = null; });
+            let popup = null;
+            if (shouldRenderMarker) {
+                popup = new mapboxgl.Popup({
+                    className: "custom-popup",
+                    closeButton: true,
+                    closeOnClick: false,
+                    maxWidth: "328px",
+                    offset: 22
+                });
+                enableSubpixelPositioning(popup);
+                popup.setHTML(popupHtml);
+                popup.on("open", () => {
+                    activePopup = popup;
+                    if (isMourningEvent(ev)) {
+                        const container = popup.getElement().querySelector(".reaction-container, .popup-reactions-wrap");
+                        if (container) updateReactionUI(ev.id, container);
+                    }
+                });
+                popup.on("close", () => { if (activePopup === popup) activePopup = null; });
 
-            const marker = new mapboxgl.Marker({
-                element: makeMarkerElement(
-                    markerStyle.color,
-                    CAT_SVG[mappedCat] || CAT_SVG.other,
-                    severity,
-                    markerStyle.glow,
-                    pinPulse
-                ),
-                anchor: "center",
-                offset: [0, 0]
-            });
-            enableSubpixelPositioning(marker);
-            marker
-                .setLngLat([latlng[1], latlng[0]])
-                .setPopup(popup)
-                .addTo(map);
-            
-            // Tooltip on hover
-            const markerEl = marker.getElement();
-            markerEl.style.cursor = "pointer";
-
-            const tooltip = new mapboxgl.Popup({
-                closeButton: false,
-                closeOnClick: false,
-                className: "custom-tooltip",
-                offset: [0, -20],
-                anchor: "bottom"
-            });
-            enableSubpixelPositioning(tooltip);
-
-            markerEl.addEventListener("mouseenter", () => {
-                tooltip.setLngLat([latlng[1], latlng[0]])
-                    .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
+                const marker = new mapboxgl.Marker({
+                    element: makeMarkerElement(
+                        markerStyle.color,
+                        CAT_SVG[mappedCat] || CAT_SVG.other,
+                        severity,
+                        markerStyle.glow,
+                        pinPulse
+                    ),
+                    anchor: "center",
+                    offset: [0, 0]
+                });
+                enableSubpixelPositioning(marker);
+                marker
+                    .setLngLat([latlng[1], latlng[0]])
+                    .setPopup(popup)
                     .addTo(map);
-            });
+                
+                const markerEl = marker.getElement();
+                markerEl.style.cursor = "pointer";
 
-            markerEl.addEventListener("mouseleave", () => {
-                tooltip.remove();
-            });
+                if (!isMobile) {
+                    const tooltip = new mapboxgl.Popup({
+                        closeButton: false,
+                        closeOnClick: false,
+                        className: "custom-tooltip",
+                        offset: [0, -20],
+                        anchor: "bottom"
+                    });
+                    enableSubpixelPositioning(tooltip);
 
-            renderedMarkers.push(marker);
+                    markerEl.addEventListener("mouseenter", () => {
+                        tooltip.setLngLat([latlng[1], latlng[0]])
+                            .setHTML(`<div style="font-size:12px;font-weight:700;max-width:180px;line-height:1.5;">${ev.title}</div>`)
+                            .addTo(map);
+                    });
+
+                    markerEl.addEventListener("mouseleave", () => {
+                        tooltip.remove();
+                    });
+                }
+
+                renderedMarkers.push(marker);
+            }
+
+            if (!shouldRenderCard) return;
 
             const card = document.createElement("article");
             card.className = "event-card-v2";
@@ -1435,6 +1496,13 @@
                 updateReactionUI(ev.id, card.querySelector('.reaction-container'));
             }
         });
+
+        if (isMobile && events.length > cardLimit) {
+            const notice = document.createElement("div");
+            notice.className = "mobile-render-limit";
+            notice.textContent = `Showing ${cardLimit} of ${events.length}. Use search, city, or category filters to narrow the list.`;
+            eventList.appendChild(notice);
+        }
 
         const cnt=document.getElementById("mobile-count");
         if(cnt) cnt.textContent=`${events.length} 筆`;
@@ -1869,8 +1937,9 @@
     // ── EVENTS ───────────────────────────────────────────────
     window.openReportModal=openReportModal;
 
-    document.getElementById("event-search")?.addEventListener("input",handleSearch);
-    document.getElementById("event-search-mobile")?.addEventListener("input",handleSearch);
+    const debouncedHandleSearch = debounce(handleSearch, 180);
+    document.getElementById("event-search")?.addEventListener("input", debouncedHandleSearch);
+    document.getElementById("event-search-mobile")?.addEventListener("input", debouncedHandleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));

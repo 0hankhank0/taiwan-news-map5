@@ -2671,6 +2671,69 @@ body::after {
     }
 }
 
+@media (max-width: 767px) {
+    #app-header,
+    .modal-overlay,
+    .modal-box,
+    .mobile-search,
+    .mobile-city-select,
+    .mobile-pill,
+    .styled-select {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    #news-sidebar {
+        box-shadow: 0 -12px 28px rgba(0, 0, 0, 0.42);
+        will-change: transform;
+        contain: layout paint style;
+    }
+
+    #event-list {
+        contain: layout paint style;
+    }
+
+    .event-card-v2,
+    .filter-chip,
+    .filter-chip-v2,
+    .mobile-icon-btn,
+    .donate-btn,
+    .btn,
+    .popup-btn-v2 {
+        transition: none !important;
+        box-shadow: none !important;
+    }
+
+    .event-card-v2:hover,
+    .filter-chip:hover,
+    .filter-chip-v2:hover,
+    .donate-btn:hover,
+    .btn:hover {
+        transform: none !important;
+    }
+
+    .map-pin-svg {
+        filter: none !important;
+    }
+
+    .pin-pulse,
+    .candle-lit svg,
+    .loading-line {
+        animation: none !important;
+    }
+
+    .mobile-render-limit {
+        margin: 4px 0 14px;
+        padding: 12px 14px;
+        border: 1px solid rgba(138, 155, 184, 0.14);
+        border-radius: 12px;
+        color: var(--text-secondary);
+        background: rgba(7, 12, 22, 0.54);
+        font-size: 12px;
+        line-height: 1.5;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
