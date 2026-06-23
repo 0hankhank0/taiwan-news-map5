@@ -94,6 +94,12 @@
         return normalizeText([ev.title, ev.summary, ev.content, ev.text, ev.location, ev.city, ev.source].filter(Boolean).join(" ")).toLowerCase();
     }
 
+    function shouldShowRealtimeEvent(ev) {
+        const filter = window.TNM_EVENT_CONTENT_FILTER;
+        if (!filter || typeof filter.shouldShowEvent !== "function") return true;
+        return filter.shouldShowEvent(ev);
+    }
+
     function inferEventGroupCategory(ev) {
         const raw = normalizeText(typeof ev === "string" ? ev : (ev?.category || ev?.groupCategory || ev?.type || "other")).toLowerCase();
         const mapConfig = CATEGORY_MAP.normal || {};
@@ -163,6 +169,35 @@
         return start || end || "";
     }
 
+    function parseFutureActivityDate(ev) {
+        const raw = ev.startsAt || ev.startAt || "";
+        const direct = raw ? new Date(raw) : null;
+        if (direct && !Number.isNaN(direct.getTime())) return direct;
+        const text = getEventText(ev);
+        const match = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|號)/);
+        if (!match) return null;
+        const now = new Date();
+        const candidate = new Date(now.getFullYear(), Number(match[1]) - 1, Number(match[2]), 0, 0, 0);
+        if (candidate.getTime() + 24 * 60 * 60 * 1000 < now.getTime()) {
+            candidate.setFullYear(candidate.getFullYear() + 1);
+        }
+        return candidate;
+    }
+
+    function isFutureActivity(ev) {
+        if (inferEventGroupCategory(ev) !== "activity") return false;
+        const d = parseFutureActivityDate(ev);
+        return Boolean(d && d.getTime() > Date.now() + 6 * 60 * 60 * 1000);
+    }
+
+    function getEventSortWeight(ev) {
+        if (isFutureActivity(ev)) return 20;
+        const category = inferEventGroupCategory(ev);
+        if (category === "disaster" || category === "accident" || category === "traffic") return 0;
+        if (category === "activity") return 10;
+        return 5;
+    }
+
     function getEventText(ev) {
         return normalizeText([ev.title, ev.content, ev.summary, ev.location, ev.address, ev.impact, ev.advice].filter(Boolean).join(" "));
     }
@@ -170,6 +205,7 @@
     function getEventStatusLabel(ev) {
         const text = getEventText(ev);
         const raw = normalizeText(ev.status || "").toLowerCase();
+        if (isFutureActivity(ev) || raw === "upcoming") return "未來活動";
         if (raw === "cleared" || raw === "resolved" || /已解除|恢復通行|搶修完成|解除|恢復供電|恢復正常/.test(text)) return "已解除";
         if (/管制|封閉|中斷|停駛|停班停課|施工中|搶修中|處理中/.test(text)) return "影響中";
         if (/注意|提醒|預警|可能|預計|將於/.test(text)) return "注意";
@@ -177,15 +213,15 @@
     }
 
     function getEventAdviceLabel(ev) {
-        if (ev.advice) return normalizeText(ev.advice);
         const text = getEventText(ev);
         const category = inferEventGroupCategory(ev);
         const status = getEventStatusLabel(ev);
+        if (category === "activity") return /管制|人潮|路跑|賽事|封街|演唱會|展覽|活動/.test(text) ? "前往前確認時間、交通與入場資訊" : "前往前確認時間與地點";
+        if (ev.advice) return normalizeText(ev.advice);
         if (status === "已解除") return "可通行，仍請留意現場狀況";
         if (/封閉|中斷|禁止通行|停駛|停班停課|土石流|落石|淹水|坍方/.test(text)) return "避開";
         if (/管制|壅塞|回堵|車多|施工|改道|事故|車禍|追撞|擦撞/.test(text) || category === "traffic") return "改道或提早出門";
         if (category === "disaster" || /豪雨|地震|颱風|強風|火災|火警|爆炸/.test(text)) return "避免靠近";
-        if (category === "activity") return /管制|人潮|路跑|賽事/.test(text) ? "可前往，留意周邊管制" : "可前往";
         return "注意";
     }
 
@@ -215,16 +251,61 @@
 
     function getLocationPrecisionLabel(ev) {
         const precision = normalizeText(ev.locationPrecision || "").toLowerCase();
+        const displayMode = getLocationDisplayMode(ev);
+        const quality = getLocationQuality(ev);
+        if (displayMode === "list_only" || quality === "low") return "定位待確認";
+        if (displayMode === "estimated" || quality === "medium") {
+            if (precision === "district") return "區域估算";
+            if (precision === "city") return "縣市估算";
+            return "地點估算";
+        }
         if (precision === "exact") return "精準地點";
         if (precision === "district") return "區域估算";
         if (precision === "city") return "縣市估算";
         return "";
     }
 
+    function getLocationQuality(ev) {
+        const explicit = normalizeText(ev.locationQuality || "").toLowerCase();
+        if (["high", "medium", "low"].includes(explicit)) return explicit;
+        const confidence = Number(ev.locationConfidence);
+        if (Number.isFinite(confidence)) {
+            if (confidence >= 0.8) return "high";
+            if (confidence >= 0.55) return "medium";
+            return "low";
+        }
+        const precision = normalizeText(ev.locationPrecision || "").toLowerCase();
+        if (precision === "exact") return "medium";
+        if (precision === "district") return "medium";
+        return "low";
+    }
+
+    function getLocationDisplayMode(ev) {
+        const explicit = normalizeText(ev.locationDisplayMode || "").toLowerCase();
+        if (["point", "estimated", "list_only"].includes(explicit)) return explicit;
+        const quality = getLocationQuality(ev);
+        const precision = normalizeText(ev.locationPrecision || "").toLowerCase();
+        if (quality === "high") return "point";
+        if (quality === "medium" && precision !== "unknown") return "estimated";
+        return "list_only";
+    }
+
+    function shouldRenderLocationMarker(ev) {
+        return getLocationDisplayMode(ev) !== "list_only";
+    }
+
+    function getLocationConfidenceLabel(ev) {
+        const confidence = Number(ev.locationConfidence);
+        return Number.isFinite(confidence) ? `${Math.round(confidence * 100)}%` : "";
+    }
+
     function makeLocationPrecisionTag(ev, className = "event-impact-chip") {
         const label = getLocationPrecisionLabel(ev);
         if (!label) return "";
-        return `<span class="${className}" title="事件定位可信度">${label}</span>`;
+        const confidence = getLocationConfidenceLabel(ev);
+        const evidence = normalizeText(ev.locationEvidence || ev.locationReason || ev.locationQuery || "");
+        const title = ["事件定位可信度", confidence, evidence].filter(Boolean).join("｜").replace(/[<>"']/g, " ");
+        return `<span class="${className}" title="${title}">${label}${confidence ? ` ${confidence}` : ""}</span>`;
     }
 
     function getReviewStateLabel(ev) {
@@ -254,13 +335,14 @@
         if (place) rows.push([isActivity ? "場地" : "地點", place]);
         else if (area) rows.push(["地區", area]);
         rows.push(["狀態", getEventStatusLabel(ev)]);
+        rows.push(["定位", [getLocationPrecisionLabel(ev), getLocationConfidenceLabel(ev)].filter(Boolean).join(" ") || "待確認"]);
         rows.push(["資料", `${getSourceTraceLabel(ev)}｜${getReviewStateLabel(ev)}`]);
         if (ev.updatedAt || ev.lastVerifiedAt) rows.push(["更新", formatEventDateTime(ev.lastVerifiedAt || ev.updatedAt)]);
         rows.push(["建議", getEventAdviceLabel(ev)]);
         if (ev.impact) rows.push(["影響", ev.impact]);
 
         if (!rows.length) return "";
-        const maxRows = context === "popup" ? 5 : 4;
+        const maxRows = context === "popup" ? 5 : context === "mobile-card" ? 2 : 4;
         return `<div class="event-detail-list event-detail-list--${context}">
             ${rows.slice(0, maxRows).map(([label, value]) => `
                 <div class="event-detail-item">
@@ -342,8 +424,8 @@
         if (!ev) return null;
         return {
             id: ev.id,
-            title: ev.twOnlineTitle || ev.title || "",
-            content: ev.twOnlineContent || ev.content || ev.summary || "",
+            title: ev.title || "",
+            content: ev.content || ev.summary || "",
             city: ev.city || "",
             category: ev.category || "",
             lat: ev.lat ?? null,
@@ -365,6 +447,7 @@
             ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${ev.id}"></div>`
             : "";
         const reportArg = encodeURIComponent(ev.id || displayTitle);
+        const reportTitleArg = encodeURIComponent(ev.title || displayTitle);
         const reportCount = getEventReportCount(ev);
         const reportTag = reportCount ? `<span class="popup-location-tag">已有 ${reportCount} 筆回報</span>` : "";
         const impactHtml = makeEventImpactRow(ev);
@@ -393,7 +476,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         查看原文
                     </a>` : ""}
-                    <button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"))'>
+                    <button type="button" class="popup-btn-v2 ghost" onclick='openReportModal(decodeURIComponent("${reportArg}"), decodeURIComponent("${reportTitleArg}"))'>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         回報錯誤
                     </button>
@@ -405,6 +488,8 @@
         const city = normalizeText(ev.city) || "未知城市";
         const timeStr = formatEventTime(ev);
         const timeHtml = timeStr ? `<span class="time-tag">${timeStr}</span>` : "";
+        const isMobile = isMobileViewport();
+        const upcomingTag = isFutureActivity(ev) ? `<span class="time-tag upcoming-tag">未來活動</span>` : "";
         const sourcesHtml = ev.sources && ev.sources.length > 0 ? `
             <div class="card-sources-toggle" onclick="this.nextElementSibling.classList.toggle('visible'); event.stopPropagation();">
                 <i class="fa-solid fa-newspaper"></i> ${ev.sources.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
@@ -416,10 +501,11 @@
             ? `<div class="card-v2-extra"><div class="reaction-container" data-event-id="${ev.id}"></div></div>`
             : "";
         const reportArg = encodeURIComponent(ev.id || displayTitle);
+        const reportTitleArg = encodeURIComponent(ev.title || displayTitle);
         const reportCount = getEventReportCount(ev);
         const reportTag = reportCount ? `<span class="time-tag report-count-tag">已有 ${reportCount} 筆回報</span>` : "";
-        const impactHtml = makeEventImpactRow(ev);
-        const detailsHtml = makeEventDetailRows(ev, "card");
+        const impactHtml = isMobile ? "" : makeEventImpactRow(ev);
+        const detailsHtml = makeEventDetailRows(ev, isMobile ? "mobile-card" : "card");
 
         return `
             <div class="card-bar" style="background:${catVisual.color};"></div>
@@ -428,6 +514,7 @@
                     <span class="city-tag">${LOC_PIN_SVG}${city}</span>
                     ${makeLocationPrecisionTag(ev, "time-tag")}
                     ${makeCatBadgeV2(ev.category)}
+                    ${upcomingTag}
                     ${timeHtml}
                     ${reportTag}
                 </div>
@@ -442,7 +529,7 @@
                 ${sourcesHtml}
                 <div class="card-actions">
                     <div class="card-action-group">
-                        <button type="button" class="card-action-btn report" data-report="${reportArg}" data-event-id="${String(ev.id || "")}">
+                        <button type="button" class="card-action-btn report" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${String(ev.id || "")}">
                             <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
                         </button>
                         ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noreferrer" class="card-action-btn link" onclick="event.stopPropagation();"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
@@ -661,7 +748,7 @@
         window._fallbackMap = fallbackMap;
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
-            parsedEvents.forEach(ev => {
+            parsedEvents.filter(shouldShowRealtimeEvent).forEach(ev => {
                 const latlng = [Number(ev.lat), Number(ev.lng)];
                 if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
                     L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)
@@ -1064,6 +1151,7 @@
     function filterEventsByNearby(events) {
         if (!isNearbyMode || !userLocation) return events;
         return events
+            .filter(ev => shouldRenderLocationMarker(ev))
             .map(ev => ({
                 ...ev,
                 distanceMeters: distanceMeters(userLocation.lat, userLocation.lng, Number(ev.lat), Number(ev.lng))
@@ -1181,6 +1269,7 @@
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const commuteCategories = new Set(["traffic", "accident", "disaster"]);
         const filtered = parsedEvents.filter(ev=>{
+            if (!shouldShowRealtimeEvent(ev)) return false;
             const lat=Number(ev.lat), lng=Number(ev.lng);
             
             // 座標無效或不在台灣直接排除
@@ -1374,9 +1463,14 @@
         const cardLimit = isMobile ? MOBILE_CARD_LIMIT : Infinity;
 
         events.sort((a,b)=>{
+            const weightDelta = getEventSortWeight(a) - getEventSortWeight(b);
+            if (weightDelta !== 0) return weightDelta;
             const aNews=(a.source==="news"||a.source==="RSS")?1:0;
             const bNews=(b.source==="news"||b.source==="RSS")?1:0;
-            return bNews-aNews;
+            if (bNews !== aNews) return bNews-aNews;
+            const at = Date.parse(a.updatedAt || a.publishedAt || a.createdAt || "") || 0;
+            const bt = Date.parse(b.updatedAt || b.publishedAt || b.createdAt || "") || 0;
+            return bt - at;
         });
 
         clearRenderedMarkers();
@@ -1390,8 +1484,9 @@
 
         events.forEach((ev, index)=>{
             const shouldRenderMarker = index < markerLimit;
+            const canRenderMarker = shouldRenderMarker && shouldRenderLocationMarker(ev);
             const shouldRenderCard = index < cardLimit;
-            if (!shouldRenderMarker && !shouldRenderCard) return;
+            if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
             const cat = config[mappedCat]||config.other;
             const latlng = [Number(ev.lat),Number(ev.lng)];
@@ -1407,7 +1502,7 @@
             const popupHtml = buildPopupHtml(ev, displayTitle, displayContent, markerStyle);
 
             let popup = null;
-            if (shouldRenderMarker) {
+            if (canRenderMarker) {
                 popup = new mapboxgl.Popup({
                     className: "custom-popup",
                     closeButton: true,
@@ -1445,6 +1540,7 @@
                 
                 const markerEl = marker.getElement();
                 markerEl.style.cursor = "pointer";
+                if (getLocationDisplayMode(ev) === "estimated") markerEl.classList.add("marker-location-estimated");
 
                 if (!isMobile) {
                     const tooltip = new mapboxgl.Popup({
@@ -1480,15 +1576,23 @@
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
                 closeActivePopup();
-                flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
-                popup.addTo(map);
+                if (popup) {
+                    flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
+                    popup.addTo(map);
+                } else {
+                    flyToLatLng(latlng, 9, 800);
+                    setStatus("此事件定位待確認，未顯示精準地圖標記");
+                }
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
             });
 
             const reportBtn=card.querySelector("[data-report]");
             if(reportBtn) reportBtn.addEventListener("click",e=>{
                 e.stopPropagation();
-                openReportModal(decodeURIComponent(reportBtn.dataset.report||""));
+                openReportModal(
+                    decodeURIComponent(reportBtn.dataset.report||""),
+                    decodeURIComponent(reportBtn.dataset.reportTitle||"")
+                );
             });
 
             eventList.appendChild(card);
@@ -1586,6 +1690,7 @@
       isTaiwanMode = mode; 
       const mapEl    = document.getElementById('map'); 
       const statsEl  = document.getElementById('stats-view'); 
+      document.body.classList.toggle('stats-mode', !mode);
  
       ['btn-tw','btn-tw-mobile'].forEach(id=>{ 
         const b=document.getElementById(id); 
@@ -1610,6 +1715,7 @@
  
     async function renderStatsView(){ 
       const events = parsedEvents.filter(ev=>{ 
+        if (!shouldShowRealtimeEvent(ev)) return false;
         const lat=Number(ev.lat), lng=Number(ev.lng); 
         return Number.isFinite(lat) && Number.isFinite(lng) && isValidTaiwanCoord(lat,lng); 
       }); 
@@ -1687,7 +1793,7 @@
  
       hotEl.innerHTML = top4.map((ev,i)=>{ 
         const cat = CAT_COLORS[ev.category] || CAT_COLORS.other; 
-        const title = ev.twOnlineTitle || ev.title || '未命名事件'; 
+        const title = ev.title || '未命名事件'; 
         const city  = ev.city || ''; 
         const border = i < top4.length-1 ? 'border-bottom:1px solid rgba(99,120,180,0.1);' : ''; 
         return ` 
@@ -1780,7 +1886,7 @@
         if (mapStage) layoutObserver.observe(mapStage);
         if (newsSidebar) layoutObserver.observe(newsSidebar);
     }
-    const REPORT_TYPE_OPTIONS = ["座標錯誤", "事件已解除", "不是同一事件", "分類錯誤", "來源失效", "其他"];
+    const REPORT_TYPE_OPTIONS = ["資料錯誤", "座標錯誤", "事件已解除", "不是同一事件", "分類錯誤", "來源失效", "其他"];
     let currentReportEvent = null;
 
     function ensureReportStatusElements(){
@@ -1817,15 +1923,15 @@
         }
     }
 
-    function openReportModal(identifier){
+    function openReportModal(identifier, visibleTitle = ""){
         ensureReportStatusElements();
         currentReportEvent = findReportEvent(identifier);
-        const title = currentReportEvent?.twOnlineTitle || currentReportEvent?.title || String(identifier || "");
+        const title = currentReportEvent?.title || normalizeText(visibleTitle) || String(identifier || "");
         document.getElementById("report-title").value = title;
         const typeEl = document.getElementById("report-type");
         if (typeEl) {
-            typeEl.innerHTML = `<option value="">請選擇回報類型</option>` + REPORT_TYPE_OPTIONS.map(option => `<option value="${option}">${option}</option>`).join("");
-            typeEl.value = "";
+            typeEl.innerHTML = REPORT_TYPE_OPTIONS.map(option => `<option value="${option}">${option}</option>`).join("");
+            typeEl.value = REPORT_TYPE_OPTIONS[0];
         }
         document.getElementById("report-message").value="";
         const submitBtn = document.getElementById("report-submit-btn");
@@ -1842,7 +1948,7 @@
 
     async function submitReport(){
         const title=document.getElementById("report-title").value.trim();
-        const errorType=document.getElementById("report-type").value;
+        const errorType=document.getElementById("report-type").value || REPORT_TYPE_OPTIONS[0];
         const message=document.getElementById("report-message").value.trim();
         if(!message){ alert("請填寫補充說明！"); return; }
         const btn=document.getElementById("report-submit-btn");
@@ -1860,7 +1966,7 @@
     async function submitReportWithReview(){
         const ev = currentReportEvent;
         const title = document.getElementById("report-title").value.trim();
-        const errorType = document.getElementById("report-type").value;
+        const errorType = document.getElementById("report-type").value || REPORT_TYPE_OPTIONS[0];
         const message = document.getElementById("report-message").value.trim();
         if (!ev || !ev.id) {
             setReportStatus("error", "找不到事件 ID，請重新開啟事件卡再回報。");
