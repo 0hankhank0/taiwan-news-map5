@@ -79,6 +79,8 @@ async function run() {
       locationEvidence: "台北市信義區松仁路與松壽路口發生火災",
       locationPrecision: "exact",
       locationConfidence: 0.92,
+      locationAmbiguity: false,
+      locationReason: "內文明確指出火災發生在該路口",
       source: "news",
       eventFingerprint: "taipei_fire_songren",
     },
@@ -117,6 +119,8 @@ async function run() {
   assert.equal(normalized.length, 2);
   assert.equal(normalized[0].locationPrecision, "exact");
   assert.equal(normalized[0].locationQuery, "台北市信義區松仁路與松壽路口");
+  assert.equal(normalized[0].locationAmbiguity, false);
+  assert(normalized[0].locationReason.includes("火災"));
   assert.equal(normalized[1].locationPrecision, "city");
   assert(Number.isFinite(normalized[1].lat));
   assert(!normalized.some((event) => event.eventFingerprint === "low_confidence"));

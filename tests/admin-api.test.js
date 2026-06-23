@@ -78,6 +78,9 @@ async function call(handler, req) {
   assert.equal(events[0].category, "traffic");
   assert.equal(events[0].status, "resolved");
   assert.equal(events[0].reviewState, "reviewed");
+  assert.equal(events[0].locationQuality, "high");
+  assert.equal(events[0].locationDisplayMode, "point");
+  assert.equal(events[0].locationConfidence, 1);
   assert.equal(events[0].adminReview.adminNote, "manual test");
 
   console.log("admin API tests passed");
