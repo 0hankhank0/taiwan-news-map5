@@ -249,6 +249,166 @@ function isOfficialCoordinate(event) {
   return source.includes("tdx") || source.includes("pbs") || source.includes("ubike");
 }
 
+function clampConfidence(value, fallback = 0) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(0, Math.min(1, n));
+}
+
+function normalizePrecision(value) {
+  const precision = normalizeText(value).toLowerCase();
+  return ["exact", "district", "city", "unknown"].includes(precision) ? precision : "unknown";
+}
+
+function inferLocationQuality(confidence) {
+  const score = clampConfidence(confidence);
+  if (score >= 0.8) return "high";
+  if (score >= 0.55) return "medium";
+  return "low";
+}
+
+function inferLocationDisplayMode(locationQuality, locationPrecision) {
+  if (locationQuality === "high") return "point";
+  if (locationQuality === "medium" && locationPrecision !== "unknown") return "estimated";
+  return "list_only";
+}
+
+function defaultLocationConfidence(source, precision) {
+  const normalizedSource = normalizeText(source).toLowerCase();
+  const normalizedPrecision = normalizePrecision(precision);
+
+  if (normalizedSource === "manual") return 1;
+  if (normalizedSource === "official") return 0.98;
+  if (normalizedSource === "known-location") return 0.94;
+  if (normalizedSource.includes("mapbox")) return normalizedPrecision === "exact" ? 0.82 : 0.62;
+  if (normalizedSource.includes("geoapify")) return normalizedPrecision === "exact" ? 0.8 : 0.6;
+  if (normalizedSource === "provided") return normalizedPrecision === "exact" ? 0.74 : 0.55;
+  if (normalizedSource === "ai-context") return normalizedPrecision === "exact" ? 0.68 : 0.48;
+  if (normalizedPrecision === "district") return 0.58;
+  if (normalizedPrecision === "city") return 0.34;
+  return 0.1;
+}
+
+function withLocationQuality(location, event = {}) {
+  const precision = normalizePrecision(location.locationPrecision || event.locationPrecision);
+  const source = normalizeText(location.locationSource || event.locationSource || "unknown");
+  const explicitConfidence = Number(location.locationConfidence ?? event.locationConfidence);
+  const confidence = clampConfidence(
+    explicitConfidence,
+    defaultLocationConfidence(source, precision)
+  );
+  const locationQuality = normalizeText(location.locationQuality || event.locationQuality)
+    || inferLocationQuality(confidence);
+  const displayMode = normalizeText(location.locationDisplayMode || event.locationDisplayMode)
+    || inferLocationDisplayMode(locationQuality, precision);
+
+  return {
+    ...location,
+    locationPrecision: precision,
+    locationSource: source,
+    locationConfidence: confidence,
+    locationQuality,
+    locationDisplayMode: displayMode,
+    locationEvidence: normalizeText(location.locationEvidence || event.locationEvidence || event.locationReason || ""),
+  };
+}
+
+function getCityBounds(city) {
+  return TAIWAN_CITY_BOUNDS[normalizeCity(city)] || null;
+}
+
+function normalizeForLocationMatch(value = "") {
+  return normalizeText(value)
+    .replace(/臺/g, "台")
+    .replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, "")
+    .toLowerCase();
+}
+
+function extractLocationTokens(value = "") {
+  const source = normalizeText(value).replace(/臺/g, "台");
+  const matches = [
+    ...source.matchAll(/([\u4e00-\u9fffA-Za-z0-9]{2,24}(?:縣|市|區|鄉|鎮|村|里|路|街|巷|段|橋|站|館|園|場|廟|宮|大學|高中|國中|國小|市場|百貨|中心|醫院|公園|濕地|古道|部落))/g),
+  ].map((match) => match[1]);
+  return Array.from(new Set(matches.map(normalizeForLocationMatch).filter((token) => token.length >= 2))).slice(0, 12);
+}
+
+function inferCandidatePrecision(candidate = {}) {
+  const raw = normalizeText(candidate.precision || candidate.featureType || candidate.resultType).toLowerCase();
+  if (/address|poi|amenity|building|venue|street|road|intersection/.test(raw)) return "exact";
+  if (/district|locality|neighborhood|suburb|township|village/.test(raw)) return "district";
+  if (/place|city|region|county|state/.test(raw)) return "city";
+  return normalizePrecision(candidate.locationPrecision || "unknown");
+}
+
+function scoreGeocodingCandidate(event = {}, baseLocation = {}, candidate = {}) {
+  const lat = Number(candidate.lat);
+  const lng = Number(candidate.lng);
+  const city = normalizeCity(baseLocation.city || event.city || "");
+  const query = normalizeText(candidate.query || baseLocation.locationQuery || event.locationQuery || buildLocationQuery(event, city, event.title, event.content));
+  const candidateText = normalizeText([
+    candidate.placeName,
+    candidate.formatted,
+    candidate.address,
+    candidate.name,
+    candidate.city,
+    candidate.district,
+    candidate.context,
+  ].filter(Boolean).join(" "));
+  const precision = inferCandidatePrecision(candidate);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !isValidTaiwanCoord(lat, lng)) {
+    return { ...candidate, accepted: false, rejectedReason: "invalid-coordinate", score: 0, locationPrecision: precision };
+  }
+  if (city && !isCoordInCity(city, lat, lng)) {
+    return { ...candidate, accepted: false, rejectedReason: "outside-city", score: 0, locationPrecision: precision };
+  }
+
+  const queryTokens = extractLocationTokens(query);
+  const evidenceTokens = extractLocationTokens(event.locationEvidence || event.locationText || event.address || event.location || "");
+  const tokens = Array.from(new Set([...queryTokens, ...evidenceTokens]));
+  const normalizedCandidateText = normalizeForLocationMatch(candidateText);
+  const matchedTokens = tokens.filter((token) => normalizedCandidateText.includes(token));
+  const cityMatched = city ? normalizedCandidateText.includes(normalizeForLocationMatch(city)) : true;
+
+  let score = 0.18;
+  score += clampConfidence(candidate.confidence ?? candidate.relevance ?? candidate.rankConfidence, 0.5) * 0.35;
+  if (precision === "exact") score += 0.18;
+  else if (precision === "district") score += 0.08;
+  if (cityMatched) score += 0.12;
+  if (matchedTokens.length > 0) score += Math.min(0.22, matchedTokens.length * 0.08);
+  if (candidate.source === "mapbox") score += 0.02;
+  if (candidate.source === "geoapify") score += 0.02;
+  if (event.locationConfidence !== undefined) score += clampConfidence(event.locationConfidence, 0) * 0.08;
+  if (!matchedTokens.length && precision !== "city") score -= 0.12;
+
+  score = clampConfidence(score);
+  const confidenceCap = precision === "city" ? 0.52 : precision === "district" ? 0.74 : 0.95;
+  const confidence = Math.min(score, confidenceCap);
+  const quality = inferLocationQuality(confidence);
+  return {
+    ...candidate,
+    lat,
+    lng,
+    accepted: confidence >= 0.55,
+    rejectedReason: confidence >= 0.55 ? "" : "low-confidence",
+    score,
+    matchedTokens,
+    locationPrecision: precision,
+    locationConfidence: confidence,
+    locationQuality: quality,
+    locationDisplayMode: inferLocationDisplayMode(quality, precision),
+  };
+}
+
+function rankGeocodingCandidates(event = {}, baseLocation = {}, candidates = []) {
+  return candidates
+    .map((candidate) => scoreGeocodingCandidate(event, baseLocation, candidate))
+    .sort((a, b) => {
+      if (Boolean(b.accepted) !== Boolean(a.accepted)) return Number(b.accepted) - Number(a.accepted);
+      return (b.locationConfidence || 0) - (a.locationConfidence || 0);
+    });
+}
+
 function resolveLocationSync(event, options = {}) {
   const title = normalizeText(options.title ?? event.title ?? event.text ?? event.name ?? event.description);
   const content = normalizeText(options.content ?? event.content ?? event.summary ?? event.description ?? event.text ?? title);
@@ -258,48 +418,48 @@ function resolveLocationSync(event, options = {}) {
   const locationQuery = normalizeText(event.locationQuery || buildLocationQuery(event, city, title, content));
 
   if (existing && isOfficialCoordinate(event) && isValidTaiwanCoord(existing.lat, existing.lng)) {
-    return { ...existing, city, district, locationPrecision: "exact", locationSource: event.locationSource || "official", locationQuery };
+    return withLocationQuality({ ...existing, city, district, locationPrecision: "exact", locationSource: event.locationSource || "official", locationQuery }, event);
   }
 
   const known = resolveKnownLocationCoord(event, city, title, content);
-  if (known) return { ...known, city, district };
+  if (known) return withLocationQuality({ ...known, city, district }, event);
 
   if (existing && isValidTaiwanCoord(existing.lat, existing.lng)) {
     const outsideCity = !isCoordInCity(city, existing.lat, existing.lng);
     const cityCenter = isCityCenterCoord(city, existing.lat, existing.lng);
     if (!outsideCity && !cityCenter) {
-      return {
+      return withLocationQuality({
         ...existing,
         city,
         district,
         locationPrecision: event.locationPrecision || "exact",
         locationSource: event.locationSource || "provided",
         locationQuery,
-      };
+      }, event);
     }
     if (!outsideCity && cityCenter) {
-      return {
+      return withLocationQuality({
         ...existing,
         city,
         district,
         locationPrecision: event.locationPrecision || "city",
         locationSource: event.locationSource || "city-fallback",
         locationQuery,
-      };
+      }, event);
     }
   }
 
   const districtCenter = getDistrictCenter(city, district);
   if (districtCenter) {
-    return { ...districtCenter, city, district, locationPrecision: "district", locationSource: "district-fallback", locationQuery };
+    return withLocationQuality({ ...districtCenter, city, district, locationPrecision: "district", locationSource: "district-fallback", locationQuery }, event);
   }
 
   const cityFallback = getCityFallback(city);
   if (cityFallback) {
-    return { ...cityFallback, city, district, locationPrecision: "city", locationSource: "city-fallback", locationQuery };
+    return withLocationQuality({ ...cityFallback, city, district, locationPrecision: "city", locationSource: "city-fallback", locationQuery }, event);
   }
 
-  return { lat: NaN, lng: NaN, city, district, locationPrecision: "unknown", locationSource: "unknown", locationQuery };
+  return withLocationQuality({ lat: NaN, lng: NaN, city, district, locationPrecision: "unknown", locationSource: "unknown", locationQuery }, event);
 }
 
 function makeGeocodingCacheKey(city, query) {
@@ -312,14 +472,21 @@ module.exports = {
   KNOWN_LOCATION_COORDS,
   buildLocationQuery,
   extractDistrict,
+  getCityBounds,
   getCityFallback,
+  inferLocationDisplayMode,
+  inferLocationQuality,
   inferCityFromText,
   isCityCenterCoord,
   isCoordInCity,
   isValidTaiwanCoord,
   makeGeocodingCacheKey,
   normalizeCity,
+  normalizePrecision,
   normalizeText,
+  rankGeocodingCandidates,
   resolveKnownLocationCoord,
   resolveLocationSync,
+  scoreGeocodingCandidate,
+  withLocationQuality,
 };

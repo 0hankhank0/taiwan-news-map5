@@ -73,6 +73,7 @@ Core:
 Optional/enrichment:
 
 - `MAPBOX_GEOCODING_TOKEN`
+- `GEOAPIFY_API_KEY`
 - `TDX_CLIENT_ID`
 - `TDX_CLIENT_SECRET`
 - `OPENAI_API_KEY`
@@ -92,6 +93,7 @@ Local-only:
 - `EVENT_DB_PATH`
 - `DISABLE_LOCAL_EVENT_CACHE`
 - `MAX_GEOCODING_PER_CRON`
+- `MAPBOX_GEOCODING_PERMANENT` (`1` 時才會把 Mapbox geocoding 結果寫入長期快取)
 
 ## Commands
 
