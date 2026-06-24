@@ -243,6 +243,15 @@ function normalizeEventPatch(patch = {}) {
   if (patch.adminNote !== undefined) allowed.adminNote = String(patch.adminNote).trim();
   if (patch.locationPrecision !== undefined) allowed.locationPrecision = String(patch.locationPrecision).trim();
   if (patch.locationSource !== undefined) allowed.locationSource = String(patch.locationSource).trim();
+  if (patch.locationConfidence !== undefined) {
+    const confidence = Number(patch.locationConfidence);
+    if (Number.isFinite(confidence)) allowed.locationConfidence = Math.max(0, Math.min(1, confidence));
+  }
+  if (patch.locationQuality !== undefined) allowed.locationQuality = String(patch.locationQuality).trim();
+  if (patch.locationDisplayMode !== undefined) allowed.locationDisplayMode = String(patch.locationDisplayMode).trim();
+  if (patch.locationEvidence !== undefined) allowed.locationEvidence = String(patch.locationEvidence).trim();
+  if (patch.locationAmbiguity !== undefined) allowed.locationAmbiguity = Boolean(patch.locationAmbiguity);
+  if (patch.locationReason !== undefined) allowed.locationReason = String(patch.locationReason).trim();
   if (patch.address !== undefined) allowed.address = String(patch.address).trim();
   if (patch.venue !== undefined) allowed.venue = String(patch.venue).trim();
   if (patch.city !== undefined) allowed.city = String(patch.city).trim();

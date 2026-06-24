@@ -48,6 +48,9 @@ function sanitizePatch(input = {}) {
     patch.lat = lat;
     patch.locationPrecision = "exact";
     patch.locationSource = "manual";
+    patch.locationConfidence = 1;
+    patch.locationQuality = "high";
+    patch.locationDisplayMode = "point";
   }
   if (input.lng !== undefined && input.lng !== "") {
     const lng = Number(input.lng);
@@ -55,6 +58,9 @@ function sanitizePatch(input = {}) {
     patch.lng = lng;
     patch.locationPrecision = "exact";
     patch.locationSource = "manual";
+    patch.locationConfidence = 1;
+    patch.locationQuality = "high";
+    patch.locationDisplayMode = "point";
   }
   return patch;
 }
@@ -73,10 +79,12 @@ module.exports = async (req, res) => {
   if (req.method === "GET") {
     const q = String(req.query?.q || "").trim().toLowerCase();
     const reviewState = String(req.query?.reviewState || "").trim();
+    const locationQuality = String(req.query?.locationQuality || "").trim();
     const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 120)));
     const events = normalizeEventsForFrontend(await getCachedEvents());
     let filtered = events;
     if (reviewState) filtered = filtered.filter((event) => String(event.reviewState || "") === reviewState);
+    if (locationQuality) filtered = filtered.filter((event) => String(event.locationQuality || "") === locationQuality);
     if (q) {
       filtered = filtered.filter((event) =>
         [event.id, event.title, event.content, event.city, event.district, event.address, event.sourceName]

@@ -230,6 +230,8 @@ function normalizeAiExtractedEvents(events = []) {
       locationSource: "ai-context",
       locationEvidence,
       locationConfidence: confidence,
+      locationAmbiguity: Boolean(item.locationAmbiguity),
+      locationReason: normalizeText(item.locationReason || locationEvidence),
     };
   }).filter(Boolean);
 }

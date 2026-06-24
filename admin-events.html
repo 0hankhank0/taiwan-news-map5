@@ -14,7 +14,7 @@
     .sub, .status { color:var(--muted); font-size:13px; }
     .nav { display:flex; gap:10px; margin:14px 0; flex-wrap:wrap; }
     a { color:var(--accent); }
-    .toolbar { display:grid; grid-template-columns:minmax(220px,1fr) 180px 120px; gap:10px; margin-top:16px; }
+    .toolbar { display:grid; grid-template-columns:minmax(220px,1fr) 180px 160px 120px; gap:10px; margin-top:16px; }
     input, select, textarea, button { border:1px solid var(--line); border-radius:8px; background:var(--panel); color:var(--text); font:inherit; }
     input, select, textarea { width:100%; padding:10px 12px; }
     textarea { min-height:70px; resize:vertical; }
@@ -30,6 +30,9 @@
     .tag.reviewed, .tag.verified { color:var(--ok); border-color:rgba(52,211,153,.5); }
     .tag.unreviewed, .tag.pending_review { color:var(--warn); border-color:rgba(251,191,36,.5); }
     .tag.merged, .tag.resolved { color:var(--accent); border-color:rgba(56,189,248,.5); }
+    .tag.high { color:var(--ok); border-color:rgba(52,211,153,.5); }
+    .tag.medium { color:var(--warn); border-color:rgba(251,191,36,.5); }
+    .tag.low { color:var(--danger); border-color:rgba(251,113,133,.5); }
     .grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin-top:12px; }
     .grid .wide { grid-column:span 2; }
     .grid .full { grid-column:1 / -1; }
@@ -51,6 +54,12 @@
       <div class="toolbar">
         <input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" />
         <input id="q" type="search" placeholder="搜尋標題、城市、來源或事件 ID" />
+        <select id="location-quality-filter">
+          <option value="">全部定位品質</option>
+          <option value="low">低信任</option>
+          <option value="medium">中信任</option>
+          <option value="high">高信任</option>
+        </select>
         <button id="load" class="primary" type="button">載入</button>
       </div>
     </div>
@@ -62,6 +71,7 @@
   <script>
     const tokenEl = document.getElementById("token");
     const qEl = document.getElementById("q");
+    const locationQualityEl = document.getElementById("location-quality-filter");
     const statusEl = document.getElementById("status");
     const eventsEl = document.getElementById("events");
     tokenEl.value = localStorage.getItem("report_admin_token") || "";
@@ -95,8 +105,32 @@
     function labelFor(map, value, fallback = "") {
       return map[value] || value || fallback;
     }
+    function locationQualityLabel(value) {
+      return { high: "高信任", medium: "中信任", low: "低信任" }[value] || value || "未知";
+    }
+    function formatConfidence(value) {
+      const n = Number(value);
+      return Number.isFinite(n) ? `${Math.round(n * 100)}%` : "未知";
+    }
+    function renderCandidateSummary(event) {
+      const candidates = Array.isArray(event.locationCandidates) ? event.locationCandidates : [];
+      if (!candidates.length) return "";
+      return candidates.slice(0, 5).map((candidate, index) => {
+        const label = [
+          `#${index + 1}`,
+          candidate.source || "unknown",
+          candidate.precision || candidate.featureType || "",
+          formatConfidence(candidate.confidence),
+          candidate.accepted ? "accepted" : (candidate.rejectedReason || "rejected"),
+          candidate.placeName || "",
+        ].filter(Boolean).join(" · ");
+        return label;
+      }).join("\n");
+    }
     function renderEvent(event) {
       const sourceCount = Array.isArray(event.sourceTrace) ? event.sourceTrace.length : 0;
+      const quality = event.locationQuality || "low";
+      const candidateSummary = renderCandidateSummary(event);
       return `
         <article class="event" data-event-id="${escapeHtml(event.id)}">
           <div class="head">
@@ -107,6 +141,8 @@
                 <span class="tag ${escapeHtml(event.reviewState)}">${escapeHtml(labelFor(REVIEW_STATE_LABELS, event.reviewState, "未覆核"))}</span>
                 <span class="tag ${escapeHtml(event.verifiedStatus)}">${escapeHtml(labelFor(VERIFIED_STATUS_LABELS, event.verifiedStatus, "未驗證"))}</span>
                 <span class="tag">${escapeHtml(event.locationPrecision || "unknown")}</span>
+                <span class="tag ${escapeHtml(quality)}">${escapeHtml(locationQualityLabel(quality))} ${escapeHtml(formatConfidence(event.locationConfidence))}</span>
+                <span class="tag">${escapeHtml(event.locationDisplayMode || "list_only")}</span>
                 <span class="tag">${escapeHtml(event.sourceName || event.source || "unknown")}</span>
                 <span class="tag">${sourceCount} sourceTrace</span>
               </div>
@@ -131,6 +167,8 @@
             <input data-field="lng" value="${escapeHtml(event.lng)}" />
             <input data-field="mergedIntoEventId" class="wide" placeholder="合併到 event ID" value="${escapeHtml(event.mergedIntoEventId)}" />
             <input data-field="address" class="wide" placeholder="地址" value="${escapeHtml(event.address)}" />
+            <textarea class="full" readonly placeholder="定位依據">${escapeHtml(event.locationEvidence || event.locationReason || "")}</textarea>
+            ${candidateSummary ? `<textarea class="full" readonly placeholder="定位候選">${escapeHtml(candidateSummary)}</textarea>` : ""}
             <textarea data-field="adminNote" class="full" placeholder="管理備註">${escapeHtml(event.adminReview?.adminNote || "")}</textarea>
           </div>
           <div class="actions">
@@ -144,6 +182,7 @@
       localStorage.setItem("report_admin_token", token);
       const params = new URLSearchParams({ token, limit: "160" });
       if (qEl.value.trim()) params.set("q", qEl.value.trim());
+      if (locationQualityEl.value) params.set("locationQuality", locationQualityEl.value);
       statusEl.textContent = "載入中...";
       eventsEl.innerHTML = "";
       try {
@@ -179,6 +218,7 @@
     }
     document.getElementById("load").addEventListener("click", loadEvents);
     qEl.addEventListener("keydown", (event) => { if (event.key === "Enter") loadEvents(); });
+    locationQualityEl.addEventListener("change", loadEvents);
     eventsEl.addEventListener("click", async (event) => {
       const card = event.target.closest(".event");
       if (!card) return;

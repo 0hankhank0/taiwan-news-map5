@@ -57,6 +57,8 @@ module.exports = async (req, res) => {
       bySource: countBy(events, (event) => event.sourceName || event.source),
       byCategory: countBy(events, (event) => event.groupCategory || event.category),
       byLocationPrecision: countBy(events, (event) => event.locationPrecision),
+      byLocationQuality: countBy(events, (event) => event.locationQuality),
+      byLocationDisplayMode: countBy(events, (event) => event.locationDisplayMode),
       byReviewState: countBy(events, (event) => event.reviewState),
     },
     cache: {
@@ -73,6 +75,7 @@ module.exports = async (req, res) => {
     integrations: {
       mapboxPublicToken: hasEnv("MAPBOX_PUBLIC_TOKEN") || hasEnv("MAPBOX_TOKEN"),
       mapboxGeocodingToken: hasEnv("MAPBOX_GEOCODING_TOKEN") || hasEnv("MAPBOX_PUBLIC_TOKEN") || hasEnv("MAPBOX_TOKEN"),
+      geoapifyGeocodingToken: hasEnv("GEOAPIFY_API_KEY") || hasEnv("GEOAPIFY_KEY"),
       tdxCredentials: hasEnv("TDX_CLIENT_ID") && hasEnv("TDX_CLIENT_SECRET"),
       openAiKey: hasEnv("OPENAI_API_KEY"),
       azureOpenAi: hasEnv("AZURE_OPENAI_API_KEY") && (hasEnv("AZURE_OPENAI_DEPLOYMENT") || hasEnv("AZURE_OPENAI_DEPLOYMENT_NAME")),

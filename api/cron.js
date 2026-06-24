@@ -9,11 +9,14 @@ const {
 } = require("../ai-news-context");
 const {
   buildLocationQuery,
+  getCityBounds,
   isCoordInCity,
   isValidTaiwanCoord,
   makeGeocodingCacheKey,
   normalizeCity,
+  rankGeocodingCandidates,
   resolveLocationSync,
+  withLocationQuality,
 } = require("../location-resolver");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("../event-content-filter");
 
@@ -57,7 +60,7 @@ const TDX_BACKOFF_MS = 1000 * 60 * Number(process.env.TDX_BACKOFF_MINUTES || 60)
 const TDX_STATIC_CACHE_KEY = "tdx:static_cms";
 const TDX_LIVE_CACHE_KEY = "tdx:live_cms_events";
 const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
-const GEOCODING_CACHE_PREFIX = "geocode:v1:";
+const GEOCODING_CACHE_PREFIX = "geocode:v2:";
 const GEOCODING_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const MAX_GEOCODING_PER_CRON = Number(process.env.MAX_GEOCODING_PER_CRON || 20);
 const EVENT_BUCKET_KEYS = {
@@ -844,6 +847,8 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     "locationText must be the physical place, road section, venue, district, or city found in the article.",
     "locationEvidence must quote or closely paraphrase the sentence fragment that supports locationText.",
     "locationConfidence is 0 to 1. Use at least 0.55 only when the location is supported by evidence.",
+    "Set locationAmbiguity true when the article contains multiple plausible event locations or only background locations.",
+    "locationReason must briefly explain why locationText is the event location.",
     "Use locationPrecision exact for venue/road/address, district for district/township, city for city-only.",
     "Use one category from the allowed enum.",
     "Deduplicate reports of the same real-world event into one event.",
@@ -886,10 +891,12 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
                     locationEvidence: { type: "string" },
                     locationPrecision: { type: "string", enum: ["exact", "district", "city", "unknown"] },
                     locationConfidence: { type: "number" },
+                    locationAmbiguity: { type: "boolean" },
+                    locationReason: { type: "string" },
                     source: { type: "string" },
                     eventFingerprint: { type: "string" },
                   },
-                  required: ["title", "content", "category", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "source", "eventFingerprint"],
+                  required: ["title", "content", "category", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "locationAmbiguity", "locationReason", "source", "eventFingerprint"],
                   additionalProperties: false,
                 },
               },
@@ -918,9 +925,8 @@ function normalizeFinalEvents(events) {
       return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 21 && lat <= 26.5 && lng >= 118 && lng <= 123;
     })
     .map((item) => {
-      const { locationEvidence, locationConfidence, ...publicItem } = item;
       return {
-        ...publicItem,
+        ...item,
         title: String(item.title || "").trim(),
         content: String(item.content || "").trim(),
         city: String(item.city || "Taiwan").trim(),
@@ -948,75 +954,203 @@ function getMapboxGeocodingToken() {
   return String(process.env.MAPBOX_GEOCODING_TOKEN || process.env.MAPBOX_PUBLIC_TOKEN || process.env.MAPBOX_TOKEN || "").trim();
 }
 
+function getGeoapifyGeocodingToken() {
+  return String(process.env.GEOAPIFY_API_KEY || process.env.GEOAPIFY_KEY || "").trim();
+}
+
+function useMapboxPermanentGeocoding() {
+  return process.env.MAPBOX_GEOCODING_PERMANENT === "1";
+}
+
 function shouldTryExternalGeocoding(event, location) {
-  if (!getMapboxGeocodingToken()) return false;
-  if (!["city", "district", "unknown"].includes(location.locationPrecision)) return false;
+  if (!getMapboxGeocodingToken() && !getGeoapifyGeocodingToken()) return false;
+  if (location.locationQuality === "high" && location.locationPrecision === "exact") return false;
+  if (!["city", "district", "unknown"].includes(location.locationPrecision) && location.locationQuality !== "low") return false;
   const query = buildLocationQuery(event, location.city, event.title, event.content);
   if (!query || query.length < 4) return false;
   if (/^(台灣|國道|省道|Taiwan)$/i.test(query)) return false;
   return /區|鄉|鎮|路|街|巷|館|園|場|廟|部落|市場|濕地|古道|大學|百貨|中心|車站|港|橋/.test(query);
 }
 
-async function geocodeLocationWithMapbox(event, location, startedAt) {
-  const token = getMapboxGeocodingToken();
-  const query = buildLocationQuery(event, location.city, event.title, event.content);
-  const cacheKey = `${GEOCODING_CACHE_PREFIX}${makeGeocodingCacheKey(location.city, query)}`;
+function getCityBboxParam(city) {
+  const bounds = getCityBounds(city);
+  return bounds ? `${bounds.minLng},${bounds.minLat},${bounds.maxLng},${bounds.maxLat}` : "";
+}
 
+function buildExternalGeocodingResult(provider, event, location, query, rankedCandidates) {
+  const best = rankedCandidates.find((candidate) => candidate.accepted);
+  if (!best) return null;
+  const source = `${provider}-geocoding`;
+  return withLocationQuality({
+    lat: best.lat,
+    lng: best.lng,
+    city: location.city,
+    district: location.district,
+    locationPrecision: best.locationPrecision,
+    locationSource: source,
+    locationQuery: query,
+    locationConfidence: best.locationConfidence,
+    locationQuality: best.locationQuality,
+    locationDisplayMode: best.locationDisplayMode,
+    locationEvidence: event.locationEvidence || event.locationReason || "",
+    locationCandidates: rankedCandidates.slice(0, 5).map((candidate) => ({
+      source: candidate.source,
+      lat: candidate.lat,
+      lng: candidate.lng,
+      placeName: candidate.placeName || candidate.formatted || candidate.name || "",
+      featureType: candidate.featureType || candidate.resultType || "",
+      precision: candidate.locationPrecision,
+      confidence: candidate.locationConfidence,
+      accepted: Boolean(candidate.accepted),
+      rejectedReason: candidate.rejectedReason || "",
+      matchedTokens: candidate.matchedTokens || [],
+    })),
+  }, event);
+}
+
+async function readGeocodingCache(provider, event, location, query) {
+  const canReadCache = provider === "geoapify" || (provider === "mapbox" && useMapboxPermanentGeocoding());
+  if (!canReadCache) return null;
+  const cacheKey = `${GEOCODING_CACHE_PREFIX}${provider}:${makeGeocodingCacheKey(location.city, query)}`;
   try {
     const cached = await getCachedValue(cacheKey);
     if (cached && Number.isFinite(Number(cached.lat)) && Number.isFinite(Number(cached.lng))) {
       const lat = Number(cached.lat);
       const lng = Number(cached.lng);
       if (isValidTaiwanCoord(lat, lng) && isCoordInCity(location.city, lat, lng)) {
-        return {
+        return withLocationQuality({
+          ...cached,
           lat,
           lng,
-          locationPrecision: "exact",
-          locationSource: cached.locationSource || "mapbox-geocoding-cache",
+          locationSource: cached.locationSource || `${provider}-geocoding-cache`,
           locationQuery: query,
-        };
+        }, event);
       }
     }
   } catch (error) {
     console.warn("[cron] geocode cache read failed:", error.message);
   }
+  return null;
+}
+
+async function writeGeocodingCache(provider, location, query, result) {
+  const canWriteCache = provider === "geoapify" || (provider === "mapbox" && useMapboxPermanentGeocoding());
+  if (!canWriteCache || !result) return;
+  const cacheKey = `${GEOCODING_CACHE_PREFIX}${provider}:${makeGeocodingCacheKey(location.city, query)}`;
+  await setCachedValue(cacheKey, result, { ex: GEOCODING_CACHE_TTL_SECONDS }).catch((error) => {
+    console.warn("[cron] geocode cache write failed:", error.message);
+  });
+}
+
+async function geocodeLocationWithMapbox(event, location, startedAt) {
+  const token = getMapboxGeocodingToken();
+  if (!token) return null;
+  const query = buildLocationQuery(event, location.city, event.title, event.content);
+  const cached = await readGeocodingCache("mapbox", event, location, query);
+  if (cached) return cached;
 
   const remaining = getRemainingTime(startedAt);
   if (remaining < 1200) return null;
 
   try {
-    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json`;
+    const endpoint = useMapboxPermanentGeocoding() ? "mapbox.places-permanent" : "mapbox.places";
+    const url = `https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(query)}.json`;
+    const bbox = getCityBboxParam(location.city);
     const response = await axios.get(url, {
       params: {
         access_token: token,
         country: "tw",
         language: "zh-Hant",
-        limit: 1,
+        limit: 5,
+        autocomplete: false,
+        proximity: Number.isFinite(Number(location.lng)) && Number.isFinite(Number(location.lat)) ? `${location.lng},${location.lat}` : undefined,
+        bbox: bbox || undefined,
       },
       timeout: Math.max(800, Math.min(1800, remaining - 300)),
     });
-    const feature = response.data?.features?.[0];
-    const center = Array.isArray(feature?.center) ? feature.center : [];
-    const lng = Number(center[0]);
-    const lat = Number(center[1]);
-    if (!isValidTaiwanCoord(lat, lng) || !isCoordInCity(location.city, lat, lng)) return null;
-
-    const result = {
-      lat,
-      lng,
-      locationPrecision: "exact",
-      locationSource: "mapbox-geocoding",
-      locationQuery: query,
-      placeName: feature.place_name || "",
-    };
-    await setCachedValue(cacheKey, result, { ex: GEOCODING_CACHE_TTL_SECONDS }).catch((error) => {
-      console.warn("[cron] geocode cache write failed:", error.message);
+    const features = Array.isArray(response.data?.features) ? response.data.features : [];
+    const candidates = features.map((feature) => {
+      const center = Array.isArray(feature?.center) ? feature.center : [];
+      const context = Array.isArray(feature?.context) ? feature.context.map((item) => item.text || item.short_code || "").join(" ") : "";
+      return {
+        source: "mapbox",
+        lat: Number(center[1]),
+        lng: Number(center[0]),
+        placeName: feature.place_name || "",
+        name: feature.text || feature.matching_text || "",
+        featureType: Array.isArray(feature.place_type) ? feature.place_type[0] : "",
+        relevance: Number(feature.relevance),
+        context,
+        query,
+      };
     });
+    const ranked = rankGeocodingCandidates(event, location, candidates);
+    const result = buildExternalGeocodingResult("mapbox", event, location, query, ranked);
+    await writeGeocodingCache("mapbox", location, query, result);
     return result;
   } catch (error) {
     console.warn("[cron] Mapbox geocoding failed:", error.message);
     return null;
   }
+}
+
+async function geocodeLocationWithGeoapify(event, location, startedAt) {
+  const token = getGeoapifyGeocodingToken();
+  if (!token) return null;
+  const query = buildLocationQuery(event, location.city, event.title, event.content);
+  const cached = await readGeocodingCache("geoapify", event, location, query);
+  if (cached) return cached;
+
+  const remaining = getRemainingTime(startedAt);
+  if (remaining < 1200) return null;
+
+  try {
+    const bbox = getCityBboxParam(location.city);
+    const filter = bbox ? `rect:${bbox}|countrycode:tw` : "countrycode:tw";
+    const response = await axios.get("https://api.geoapify.com/v1/geocode/search", {
+      params: {
+        text: query,
+        apiKey: token,
+        format: "json",
+        lang: "zh",
+        limit: 5,
+        filter,
+        bias: Number.isFinite(Number(location.lng)) && Number.isFinite(Number(location.lat)) ? `proximity:${location.lng},${location.lat}` : "countrycode:tw",
+      },
+      timeout: Math.max(800, Math.min(1800, remaining - 300)),
+    });
+    const rows = Array.isArray(response.data?.results) ? response.data.results : [];
+    const candidates = rows.map((row) => ({
+      source: "geoapify",
+      lat: Number(row.lat),
+      lng: Number(row.lon),
+      placeName: row.formatted || row.address_line1 || "",
+      name: row.name || "",
+      formatted: row.formatted || "",
+      city: row.city || row.county || row.state || "",
+      district: row.suburb || row.district || "",
+      featureType: row.result_type || "",
+      confidence: Number(row.rank?.confidence),
+      context: [row.address_line1, row.address_line2, row.city, row.county, row.state, row.country].filter(Boolean).join(" "),
+      query,
+    }));
+    const ranked = rankGeocodingCandidates(event, location, candidates);
+    const result = buildExternalGeocodingResult("geoapify", event, location, query, ranked);
+    await writeGeocodingCache("geoapify", location, query, result);
+    return result;
+  } catch (error) {
+    console.warn("[cron] Geoapify geocoding failed:", error.message);
+    return null;
+  }
+}
+
+async function geocodeLocationWithProviders(event, location, startedAt) {
+  const mapbox = await geocodeLocationWithMapbox(event, location, startedAt);
+  if (mapbox?.locationQuality === "high") return mapbox;
+  const geoapify = await geocodeLocationWithGeoapify(event, location, startedAt);
+  if (!geoapify) return mapbox;
+  if (!mapbox) return geoapify;
+  return Number(geoapify.locationConfidence || 0) > Number(mapbox.locationConfidence || 0) ? geoapify : mapbox;
 }
 
 async function enrichEventLocations(events, startedAt) {
@@ -1034,11 +1168,17 @@ async function enrichEventLocations(events, startedAt) {
       locationPrecision: location.locationPrecision,
       locationSource: location.locationSource,
       locationQuery: location.locationQuery,
+      locationConfidence: location.locationConfidence,
+      locationQuality: location.locationQuality,
+      locationDisplayMode: location.locationDisplayMode,
+      locationEvidence: location.locationEvidence || event.locationEvidence || event.locationReason || "",
+      locationAmbiguity: Boolean(event.locationAmbiguity),
+      locationReason: event.locationReason || "",
     };
 
     if (geocodingAttempts < MAX_GEOCODING_PER_CRON && shouldTryExternalGeocoding(nextEvent, location)) {
       geocodingAttempts += 1;
-      const geocoded = await geocodeLocationWithMapbox(nextEvent, location, startedAt);
+      const geocoded = await geocodeLocationWithProviders(nextEvent, location, startedAt);
       if (geocoded) {
         geocodingHits += 1;
         nextEvent = {
@@ -1048,6 +1188,11 @@ async function enrichEventLocations(events, startedAt) {
           locationPrecision: geocoded.locationPrecision,
           locationSource: geocoded.locationSource,
           locationQuery: geocoded.locationQuery,
+          locationConfidence: geocoded.locationConfidence,
+          locationQuality: geocoded.locationQuality,
+          locationDisplayMode: geocoded.locationDisplayMode,
+          locationEvidence: geocoded.locationEvidence,
+          locationCandidates: geocoded.locationCandidates,
         };
       }
     }

@@ -324,6 +324,15 @@ function normalizeEvent(event, index = 0) {
     locationPrecision: normalizeText(event.locationPrecision || location.locationPrecision || "unknown"),
     locationSource: normalizeText(event.locationSource || location.locationSource || "unknown"),
     locationQuery: normalizeText(event.locationQuery || location.locationQuery || ""),
+    locationConfidence: Number.isFinite(Number(event.locationConfidence ?? location.locationConfidence))
+      ? Number(event.locationConfidence ?? location.locationConfidence)
+      : 0,
+    locationQuality: normalizeText(event.locationQuality || location.locationQuality || "low"),
+    locationDisplayMode: normalizeText(event.locationDisplayMode || location.locationDisplayMode || "list_only"),
+    locationEvidence: normalizeText(event.locationEvidence || location.locationEvidence || ""),
+    locationAmbiguity: Boolean(event.locationAmbiguity),
+    locationReason: normalizeText(event.locationReason || ""),
+    locationCandidates: Array.isArray(event.locationCandidates) ? event.locationCandidates.slice(0, 8) : undefined,
     severity: inferSeverity(event, rawCategory),
     source: normalizeText(event.source || event.sourceName || "news"),
     sourceName: normalizeText(event.sourceName || event.source || "news"),
