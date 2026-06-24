@@ -1,10 +1,11 @@
 (function initEventContentFilter(root, factory) {
-  if (typeof module === "object" && module.exports) {
+  if (typeof module === "object" && module.exports && !(root && root.document)) {
     module.exports = factory();
   } else {
     root.TNM_EVENT_CONTENT_FILTER = factory();
+    if (root.document?.documentElement) root.document.documentElement.dataset.tnmEventContentFilter = "ready";
   }
-})(typeof globalThis !== "undefined" ? globalThis : this, function eventContentFilterFactory() {
+})(typeof window !== "undefined" ? window : (typeof globalThis !== "undefined" ? globalThis : this), function eventContentFilterFactory() {
   const VISIBILITY = {
     VISIBLE: "visible",
     LOW_REALTIME_HIDDEN: "low_realtime_hidden",

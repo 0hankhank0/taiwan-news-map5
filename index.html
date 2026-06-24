@@ -104,6 +104,39 @@
                     <option value="online">🎮 TW Online</option>
                 </select>
             </div>
+            <div class="settings-section" aria-labelledby="alert-zone-settings-title">
+                <div class="settings-section-title" id="alert-zone-settings-title">個人化警戒區</div>
+                <div class="settings-section-copy">設定住家、公司或常走區域，事件命中時會在卡片與彈窗顯示標籤。</div>
+                <div class="alert-zone-controls">
+                    <div class="form-group">
+                        <label class="form-label" for="alert-zone-type">區域類型</label>
+                        <select id="alert-zone-type" class="form-control">
+                            <option value="home">住家</option>
+                            <option value="work">公司</option>
+                            <option value="frequent">常走區域</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="alert-zone-radius">警戒半徑</label>
+                        <select id="alert-zone-radius" class="form-control">
+                            <option value="1000">1 km</option>
+                            <option value="3000" selected>3 km</option>
+                            <option value="5000">5 km</option>
+                            <option value="10000">10 km</option>
+                        </select>
+                    </div>
+                    <div class="form-group alert-zone-label-field">
+                        <label class="form-label" for="alert-zone-label">顯示名稱</label>
+                        <input id="alert-zone-label" type="text" class="form-control" maxlength="24" placeholder="例如：住家、公司、通勤路線" />
+                    </div>
+                </div>
+                <button id="alert-zone-add-current" type="button" class="btn btn-primary alert-zone-add-btn">
+                    <i class="fa-solid fa-location-crosshairs"></i>
+                    用目前位置新增
+                </button>
+                <div id="alert-zone-status" class="alert-zone-status" aria-live="polite"></div>
+                <div id="alert-zone-list" class="alert-zone-list"></div>
+            </div>
             <div class="modal-actions">
                 <button id="settings-close-btn" class="btn btn-primary">關閉</button>
             </div>
@@ -129,7 +162,7 @@
 <div id="mobile-topbar">
     <div class="mobile-row1">
         <input id="event-search-mobile" type="text" placeholder="搜尋標題、城市..." class="mobile-search" />
-        <button onclick="handleDonate(100, this)" class="donate-btn" style="flex-shrink:0; font-size:11px; padding:8px 12px;">⛽ 加油</button>
+        <button data-action="donate" data-donate-amount="100" class="donate-btn" style="flex-shrink:0; font-size:11px; padding:8px 12px;">⛽ 加油</button>
     </div>
     <div class="mobile-row2">
         <select id="city-filter-mobile" class="mobile-city-select"></select>
@@ -195,7 +228,7 @@
             <option value="10000">10 km</option>
         </select>
         <button id="settings-btn" class="mode-btn" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-gear"></i></button>
-        <button onclick="handleDonate(100, this)" class="donate-btn">支持維護</button>
+        <button data-action="donate" data-donate-amount="100" class="donate-btn">支持維護</button>
     </div>
 </header>
 
@@ -226,6 +259,13 @@
                     <div class="sidebar-kpi-value" id="sidebar-summary-city">全台</div>
                 </div>
             </div>
+            <div id="alert-zone-summary" class="alert-zone-summary" hidden>
+                <div class="alert-zone-summary-main">
+                    <div class="alert-zone-summary-label">個人警戒區</div>
+                    <div id="alert-zone-summary-copy" class="alert-zone-summary-copy">尚未設定警戒區</div>
+                </div>
+                <button id="alert-zone-filter-toggle" class="alert-zone-filter-toggle" type="button" aria-pressed="false">只看命中</button>
+            </div>
             <div class="toolbar-caption">Event Categories</div>
             <div id="category-filters"></div>
         </div>
@@ -233,7 +273,7 @@
         <div id="event-list"></div>
 
         <div class="sidebar-footer">
-            <button onclick="handleDonate(100, this)" class="donate-btn">支持資料與地圖維護 (NT$ 100)</button>
+            <button data-action="donate" data-donate-amount="100" class="donate-btn">支持資料與地圖維護 (NT$ 100)</button>
             <div class="support-note">支持款項用於資料抓取、地圖服務、API 與日常維護。</div>
             <div class="privacy-note">定位若啟用，只用於在瀏覽器中計算附近事件；也可以不開定位，直接用城市篩選。</div>
             <div class="contact">聯絡作者：gsdsdfssdf@gmail.com</div>
@@ -309,8 +349,8 @@
     </section>
 </div>
 
-<script src="/event-content-filter.js"></script>
-<script src="/assets/index/main.js"></script>
-<script src="/assets/index/data-trust.js"></script>
+<script src="/event-content-filter.js?v=shared-display-2"></script>
+<script src="/event-display.js?v=shared-display-2"></script>
+<script src="/assets/index/main.js?v=modules-2"></script>
 </body>
 </html>

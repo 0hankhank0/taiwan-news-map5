@@ -56,6 +56,25 @@ async function getReaction(eventId) {
   };
 }
 
+async function getReactions(eventIds = []) {
+  const ids = Array.from(new Set(
+    (Array.isArray(eventIds) ? eventIds : [])
+      .map((eventId) => String(eventId || "").trim())
+      .filter(Boolean)
+  ));
+
+  if (kv) {
+    const entries = await Promise.all(ids.map(async (eventId) => [eventId, await getReaction(eventId)]));
+    return Object.fromEntries(entries);
+  }
+
+  const counts = await getLocalCounts();
+  return Object.fromEntries(ids.map((eventId) => [eventId, {
+    muyu: Number(counts[eventId]?.muyu || 0),
+    candle: Number(counts[eventId]?.candle || 0),
+  }]));
+}
+
 async function getReactionTotals() {
   if (kv) {
     const keys = await kv.keys("reaction:*");
@@ -83,6 +102,7 @@ async function getReactionTotals() {
 
 module.exports = {
   getReaction,
+  getReactions,
   getReactionTotals,
   incrementReaction,
 };

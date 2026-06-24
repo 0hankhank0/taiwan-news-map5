@@ -7,10 +7,14 @@
   "scripts": {
     "start": "node server.js",
     "scraper": "node scraper.js",
+    "test": "npm run test:content-filter && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:admin && npm run test:reaction",
     "test:content-filter": "node tests/event-content-filter.test.js",
+    "test:event-display": "node tests/event-display.test.js",
+    "test:alert-zones": "node tests/alert-zones.test.mjs",
     "test:ai-context": "node tests/ai-news-context.test.js",
     "test:location": "node tests/location-resolver.test.js",
-    "test:admin": "node tests/admin-api.test.js"
+    "test:admin": "node tests/admin-api.test.js",
+    "test:reaction": "node tests/reaction-api.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

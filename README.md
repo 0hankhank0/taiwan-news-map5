@@ -7,9 +7,12 @@ Beta 版台灣事件地圖。此專案把新聞、交通、活動與公共事件
 ## Project Structure
 
 - `index.html`: 主頁 HTML、SEO metadata、CDN imports、前端資產入口。
-- `assets/index/main.js`: Mapbox 地圖、事件渲染、篩選、附近模式、回報、贊助與 beta 信任標籤。
+- `assets/index/main.js`: 前端相容入口，動態載入 ES module 主程式。
+- `assets/index/main.mjs`: Mapbox 地圖、事件渲染、篩選、附近模式、回報、贊助與主流程協調。
+- `assets/index/modules/`: 前端 ES modules，包含資料信任面板、事件委派、地圖 token、回報、反應與個人化警戒區輔助工具。
 - `assets/index/index.css`: 主頁、卡片、地圖 marker、popup、modal、RWD 樣式。
-- `assets/index/data-trust.js`: 事件資料狀態與信任面板。
+- `assets/index/data-trust.js`: 舊相容入口；實際資料信任面板由 `assets/index/modules/data-trust.mjs` 管理。
+- `event-display.js`: 前後端共用事件顯示純函式，包含分類、狀態、定位品質、覆核與顯示標籤。
 - `api/`: Vercel Serverless Functions。Hobby plan 上限是 12 個 function，目前維持 11 個。
 - `event-store.js`: 事件快取、KV/SQLite fallback、人工覆核更新。
 - `event-normalizer.js`: API 輸出正規化、去重、beta 可信度欄位。
@@ -100,6 +103,10 @@ Local-only:
 ```bash
 npm install
 npm start
+npm run test:content-filter
+npm run test:event-display
+npm run test:alert-zones
+npm run test:ai-context
 npm run test:location
 npm run test:admin
 ```
@@ -112,6 +119,8 @@ npm run test:admin
 - Keep shared helper modules outside `api/`.
 - Keep `node_modules`, `.git`, `.vercel`, `data`, `exports`, and tests out of deployment uploads where possible.
 - After changing event schema or admin APIs, run:
+  - `npm run test:event-display`
+  - `npm run test:alert-zones`
   - `npm run test:location`
   - `npm run test:admin`
   - `node --check` on changed API/frontend files.
@@ -121,7 +130,7 @@ npm run test:admin
 Implemented:
 
 - Event map and list UI.
-- Category/city/search/nearby filtering.
+- Category/city/search/nearby filtering and personalized alert zones.
 - TW Online and statistics views.
 - Event report flow and AI moderation suggestion.
 - Admin report review.

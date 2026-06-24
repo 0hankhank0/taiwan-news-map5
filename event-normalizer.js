@@ -1,4 +1,5 @@
 const locationResolver = require("./location-resolver");
+const eventDisplay = require("./event-display");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 
 const TAIWAN_CITY_COORDS = {
@@ -103,33 +104,7 @@ const KNOWN_LOCATION_COORDS = [
   { pattern: /國道1號.*彰化|國1.*彰化/, city: "彰化縣", lat: 24.0703, lng: 120.5382 },
 ];
 
-const CATEGORY_GROUPS = {
-  traffic: "traffic",
-  construction: "traffic",
-  roadwork: "traffic",
-  accident: "accident",
-  incident: "accident",
-  safety: "accident",
-  publicsafety: "accident",
-  "public-safety": "accident",
-  criminal: "accident",
-  crime: "accident",
-  police: "accident",
-  medical: "accident",
-  fire: "accident",
-  disaster: "disaster",
-  earthquake: "disaster",
-  typhoon: "disaster",
-  weather: "disaster",
-  climate: "disaster",
-  activity: "activity",
-  event: "activity",
-  market: "activity",
-  exhibition: "activity",
-  sports: "activity",
-  news: "other",
-  other: "other",
-};
+const CATEGORY_GROUPS = eventDisplay.CATEGORY_GROUPS;
 
 const CITY_ALIASES = {
   "臺北市": "台北市",
@@ -159,8 +134,7 @@ function normalizeText(value, fallback = "") {
 }
 
 function normalizeCategory(value) {
-  const category = normalizeText(value, "other").toLowerCase().replace(/_/g, "-");
-  return CATEGORY_GROUPS[category] ? category : "other";
+  return eventDisplay.normalizeCategory(value);
 }
 
 function normalizeCity(value) {
@@ -182,32 +156,15 @@ function parseTime(value) {
 }
 
 function inferStatus(event) {
-  const now = Date.now();
-  const startAt = parseTime(event.startsAt || event.startAt);
-  const endAt = parseTime(event.endsAt || event.endAt || event.expiresAt);
-  if (endAt && endAt < now) return "expired";
-  if (startAt && startAt > now) return "upcoming";
-  return "active";
+  return eventDisplay.deriveEventStatus(event);
 }
 
 function inferImpact(event, category) {
-  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.text || ""}`);
-  if (category === "activity") return "活動期間周邊可能有人潮與交通變化。";
-  if (category === "traffic" || category === "construction") return "周邊道路可能壅塞或受管制影響。";
-  if (category === "accident") return "現場周邊通行與安全可能受影響。";
-  if (category === "disaster" || /火災|淹水|坍方|地震|停電|停水/.test(text)) return "周邊民生、交通或安全可能受影響。";
-  if (category === "criminal") return "周邊公共安全需留意。";
-  return "此事件可能影響周邊活動與通行。";
+  return eventDisplay.deriveEventImpact(event, CATEGORY_GROUPS[category] || category);
 }
 
 function inferAdvice(event, category) {
-  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.text || ""}`);
-  if (category === "activity") return "前往前請確認活動頁公告、交通方式與入場時間。";
-  if (category === "traffic" || category === "construction" || /封閉|管制|壅塞|塞車/.test(text)) return "行經附近請放慢車速，必要時提前改道。";
-  if (category === "accident") return "避開事故現場，依警方或現場人員指揮通行。";
-  if (category === "disaster" || /火災|淹水|坍方|土石流|地震/.test(text)) return "避免靠近危險區域，留意官方最新公告。";
-  if (category === "criminal") return "避免靠近現場，留意警方與地方政府公告。";
-  return "前往附近前先確認最新資訊。";
+  return eventDisplay.deriveEventAdvice(event, CATEGORY_GROUPS[category] || category);
 }
 
 function resolveCoordinates(event, city) {
