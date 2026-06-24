@@ -94,6 +94,24 @@ const fetchOptions = {
   headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
 };
 
+const rssFetchOptions = {
+  headers: {
+    ...fetchOptions.headers,
+    "Accept": "application/atom+xml, application/rss+xml, text/xml, application/xml, */*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.8",
+  },
+};
+
+function getRetryAfterMs(res, fallbackMs) {
+  const value = res.headers.get("retry-after");
+  if (!value) return fallbackMs;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(1000, Math.min(seconds * 1000, 60000));
+  const until = Date.parse(value);
+  if (!Number.isFinite(until)) return fallbackMs;
+  return Math.max(1000, Math.min(until - Date.now(), 60000));
+}
+
 const todayStr = new Date().toLocaleString("zh-TW", { timeZone: "Asia/Taipei" });
 
 function parseTWDate(str) {
@@ -658,7 +676,13 @@ async function fetchActivities() {
   const windowEnd = now + 30 * 24 * 60 * 60 * 1000;
 
   try {
-    const res = await fetch(url, fetchOptions);
+    const res = await fetch(url, {
+      ...rssFetchOptions,
+      headers: {
+        ...rssFetchOptions.headers,
+        "Referer": "https://kktix.com/events",
+      },
+    });
     if (!res.ok) {
       console.log(`⚠️ [活動] KKTIX HTTP ${res.status}，跳過`);
       return [];
@@ -869,14 +893,28 @@ function normalizeTaiwanCityName(city = "") {
 // geocode 失敗計數（同一地名連續失敗就跳過）
 const geocodeFailCache = new Map();
 
-function cleanLocationText(location) {
-  if (!location) return "";
-  return location
+function normalizeLocationInput(location) {
+  return String(location ?? "")
     .replace(/臺/g, "台")
     .replace(/（[^）]*）|\([^)]*\)/g, "") // 去掉括號說明文字
     .split(/[，,]/)[0] // 遇到逗號只取第一段
-    .replace(/附近|一帶|週邊|路口/g, "") // 去掉模糊詞
+    .replace(/附近|一帶|週邊|周邊|路口/g, "") // 去掉模糊詞
     .trim();
+}
+
+function isInvalidLocationText(location) {
+  const text = normalizeLocationInput(location);
+  const compact = text.replace(/\s+/g, "").toLowerCase();
+  if (!compact) return true;
+  if (["null", "nul", "undefined", "none", "n/a", "na", "unknown"].includes(compact)) return true;
+  if (/^(無|不明|未知|未提供|無地點|地點不明)$/.test(compact)) return true;
+  if (/^(台灣|臺灣|台灣地|臺灣地|台灣地區|臺灣地區|全台|全臺|全台灣|全臺灣|全國|國內)$/.test(compact)) return true;
+  return false;
+}
+
+function cleanLocationText(location) {
+  const text = normalizeLocationInput(location);
+  return isInvalidLocationText(text) ? "" : text;
 }
 
 function isDetailedLocationText(locationText) {
@@ -887,6 +925,7 @@ function isDetailedLocationText(locationText) {
 }
 
 async function geocode(locationText) {
+  locationText = cleanLocationText(locationText);
   if (!locationText) return null;
 
   // 1. 只有「純縣市名」才直接回中心點；詳細地址必須交給 geocoder。
@@ -966,6 +1005,9 @@ async function geocodeWithCity(address, city) {
   if (!address) return null;
   
   const cleanedAddress = cleanLocationText(address);
+  if (!cleanedAddress) return null;
+  const cityName = normalizeTaiwanCityName(city || extractTaiwanCity(cleanedAddress));
+  if (!cityName || isInvalidLocationText(cityName)) return null;
   const jitter = () => (Math.random() - 0.5) * 0.006; // 約 300 公尺偏移
 
   // 如果清理後只剩縣市名，直接回傳城市中心點
@@ -974,7 +1016,7 @@ async function geocodeWithCity(address, city) {
     return { lat: coords.lat + jitter(), lng: coords.lng + jitter() };
   }
 
-  const fullAddress = cleanedAddress.includes(city) ? cleanedAddress : `${city}${cleanedAddress}`;
+  const fullAddress = cleanedAddress.includes(cityName) ? cleanedAddress : `${cityName}${cleanedAddress}`;
   const query = `${fullAddress} 台灣`;
   const coords = await geocode(query);
   
@@ -984,9 +1026,9 @@ async function geocodeWithCity(address, city) {
   }
   
   // 失敗就用城市中心點
-  const cityCenter = TAIWAN_CITY_COORDS[city];
+  const cityCenter = TAIWAN_CITY_COORDS[cityName];
   if (!cityCenter) {
-    console.log(`⚠️ [Geocode] ${city} 無中心座標且地址解析失敗，跳過該事件`);
+    console.log(`⚠️ [Geocode] ${cityName} 無中心座標且地址解析失敗，跳過該事件`);
     return null;
   }
 
@@ -1077,14 +1119,24 @@ async function fetchNews() {
     
     if (ai && ai.importance > 0) {
       let coords = null;
-      const cityName = extractTaiwanCity(ai.location) || normalizeTaiwanCityName(ai.city || ai.location?.slice(0, 3) || "");
-      if (ai.location && isDetailedLocationText(ai.location)) {
-        coords = await geocodeWithCity(ai.location, cityName);
+      const locationText = cleanLocationText(ai.location || ai.address || ai.venue || "");
+      const cityName = extractTaiwanCity(locationText)
+        || extractTaiwanCity(`${ai.city || ""} ${article.title || ""} ${article.description || ""}`)
+        || normalizeTaiwanCityName(ai.city || "");
+
+      if (!locationText || !cityName || !TAIWAN_CITY_COORDS[cityName]) {
+        rejected++;
+        await delay(500);
+        continue;
+      }
+
+      if (isDetailedLocationText(locationText)) {
+        coords = await geocodeWithCity(locationText, cityName);
       }
       if (!coords && ai.lat && ai.lng && isOnTaiwanLand(ai.lat, ai.lng) && isCoordInCity(cityName, ai.lat, ai.lng)) {
         coords = { lat: ai.lat, lng: ai.lng };
-      } else if (!coords && ai.location) {
-        coords = await geocodeWithCity(ai.location, cityName);
+      } else if (!coords) {
+        coords = await geocodeWithCity(locationText, cityName);
       }
 
       if (coords) {
@@ -1101,10 +1153,10 @@ async function fetchNews() {
           sourceUrl: article.link || article.url || "",
           lat: coords.lat,
           lng: coords.lng,
-          city: ai.location,
-          district: extractDistrict(ai.location),
-          address: ai.location,
-          location: ai.location,
+          city: cityName,
+          district: extractDistrict(locationText),
+          address: locationText,
+          location: locationText,
           importance: ai.importance,
           eventFingerprint: ai.eventFingerprint,
           isReal: true,
@@ -1184,7 +1236,7 @@ async function fetchGDELT() {
     try {
       const res = await fetch(url, fetchOptions);
       if (res.status === 429) {
-        const wait = 5000 * (i + 1);
+        const wait = getRetryAfterMs(res, 5000 * (i + 1));
         console.log(`⏳ [GDELT] 429，等待 ${wait / 1000} 秒後重試...`);
         await delay(wait);
         continue;
