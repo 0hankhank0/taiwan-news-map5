@@ -1,0 +1,1429 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>台灣即時事件地圖 — UI 強化設計方案</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════════════════
+   台灣即時事件地圖 VI 系統 — 全套 CSS 設計 Token
+   可直接複製到 index.html 的 :root 取代原有變數
+   ══════════════════════════════════════════════════════════ */
+:root {
+  /* ── 核心品牌色 ─────────────────────────────────────────── */
+  /* 警示紅：緊急事件的主視覺色 */
+  --brand-crimson:        #C0392B;
+  --brand-crimson-deep:   #922B21;
+  --brand-crimson-glow:   rgba(192,57,43,0.18);
+
+  /* 香火橙：台灣廟宇香火的溫暖感，用於中度警示 */
+  --brand-incense:        #D35400;
+  --brand-incense-light:  rgba(211,84,0,0.15);
+
+  /* 燭光金：悼念功能的主色，源自台灣喪儀蠟燭色 */
+  --brand-candle:         #E8A020;
+  --brand-candle-light:   rgba(232,160,32,0.15);
+  --brand-candle-flame:   #F5C842;
+
+  /* 木魚棕：敲木魚功能，台灣佛寺木魚的深棕色 */
+  --brand-muyu:           #7D5A3C;
+  --brand-muyu-light:     rgba(125,90,60,0.15);
+
+  /* 夜深藍：地圖背景，台灣夜空感 */
+  --bg-void:              #060A14;
+  --bg-deep:              #0C1120;
+  --bg-panel:             #101828;
+  --bg-card:              #162035;
+  --bg-card-hover:        #1C2A42;
+  --bg-elevated:          #213050;
+
+  /* ── 文字色 ──────────────────────────────────────────────── */
+  --text-primary:         #E8EDF8;
+  --text-secondary:       #8A9BB8;
+  --text-muted:           #4A5878;
+  --text-ghost:           #2A3450;
+
+  /* ── 邊框 ─────────────────────────────────────────────── */
+  --border:               rgba(100,130,200,0.12);
+  --border-bright:        rgba(100,130,200,0.28);
+  --border-accent:        rgba(192,57,43,0.35);
+
+  /* ── 事件類別色 ─────────────────────────────────────────── */
+  --cat-disaster:         #C0392B;  /* 災害 — 警示紅 */
+  --cat-criminal:         #8E44AD;  /* 刑事 — 暗紫 */
+  --cat-traffic:          #2471A3;  /* 交通 — 警察藍 */
+  --cat-medical:          #D35400;  /* 醫療 — 急救橙 */
+  --cat-activity:         #1E8449;  /* 活動 — 生機綠 */
+  --cat-other:            #4A5878;  /* 其他 — 鉛灰 */
+
+  /* ── 圓角 ──────────────────────────────────────────────── */
+  --radius-xs:  6px;
+  --radius-sm:  10px;
+  --radius-md:  16px;
+  --radius-lg:  22px;
+  --radius-xl:  28px;
+  --radius-full: 999px;
+
+  /* ── 字體 ──────────────────────────────────────────────── */
+  --font-body:    "Space Grotesk", sans-serif;
+  --font-display: "Noto Serif TC", serif;
+  --font-mono:    "JetBrains Mono", monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-void);
+  color: var(--text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ══════════════════════════════════════════════════════════
+   展示頁版面
+   ══════════════════════════════════════════════════════════ */
+.doc-wrapper {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 60px 32px 120px;
+}
+
+.doc-header {
+  margin-bottom: 72px;
+  border-bottom: 1px solid var(--border-bright);
+  padding-bottom: 48px;
+}
+
+.doc-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--brand-crimson);
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.doc-kicker::before {
+  content: "";
+  display: inline-block;
+  width: 24px;
+  height: 1px;
+  background: var(--brand-crimson);
+}
+
+.doc-title {
+  font-family: var(--font-display);
+  font-size: clamp(32px, 5vw, 52px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.doc-subtitle {
+  font-size: 16px;
+  color: var(--text-secondary);
+  max-width: 540px;
+  line-height: 1.7;
+}
+
+/* ── 章節 ── */
+.section {
+  margin-bottom: 72px;
+}
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.section-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* ══════════════════════════════════════════════════════════
+   1. 色彩系統展示
+   ══════════════════════════════════════════════════════════ */
+.color-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.color-swatch {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.swatch-block {
+  height: 72px;
+}
+
+.swatch-info {
+  padding: 10px 12px;
+  background: var(--bg-card);
+}
+
+.swatch-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: block;
+  margin-bottom: 3px;
+}
+
+.swatch-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ══════════════════════════════════════════════════════════
+   2. 事件類別圖示系統
+   ══════════════════════════════════════════════════════════ */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.icon-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: default;
+}
+
+.icon-card:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-bright);
+}
+
+.event-icon-wrap {
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.icon-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: 0.03em;
+}
+
+.icon-sublabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: -8px;
+  text-align: center;
+}
+
+/* SVG 圖示 */
+.evt-svg {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════
+   3. 地圖 Marker 系統
+   ══════════════════════════════════════════════════════════ */
+.marker-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.marker-demo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.marker-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+/* Marker pin 形狀 */
+.pin-outer {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-body {
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  position: relative;
+}
+
+.pin-icon {
+  transform: rotate(45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pin-pulse {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.25;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 0.4; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   4. 事件卡片重設計
+   ══════════════════════════════════════════════════════════ */
+.card-demo-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-deep);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* 新版事件卡 */
+.event-card-v2 {
+  position: relative;
+  padding: 16px 20px;
+  background: var(--bg-panel);
+  transition: background 0.15s;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: start;
+  border-bottom: 1px solid var(--border);
+}
+
+.event-card-v2:last-child {
+  border-bottom: none;
+}
+
+.event-card-v2:hover {
+  background: var(--bg-card);
+}
+
+.event-card-v2::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.event-card-v2:hover::before {
+  opacity: 1;
+}
+
+.card-v2-left {}
+
+.card-v2-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  flex-wrap: wrap;
+}
+
+.city-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 新版類別徽章 */
+.cat-badge-v2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px 3px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.cat-badge-v2 svg {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+}
+
+/* 時間標籤 */
+.time-tag {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-left: auto;
+}
+
+.card-v2-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.5;
+  margin-bottom: 5px;
+  letter-spacing: -0.01em;
+}
+
+.card-v2-content {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-v2-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.src-badge-v2 {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+/* ══════════════════════════════════════════════════════════
+   5. 情感互動元件（木魚 / 蠟燭）
+   ══════════════════════════════════════════════════════════ */
+.reaction-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.reaction-demo-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 24px;
+}
+
+.reaction-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.reaction-location {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  font-family: var(--font-mono);
+}
+
+.reaction-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.react-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.18s;
+  font-family: var(--font-body);
+  position: relative;
+  overflow: hidden;
+  letter-spacing: 0.02em;
+}
+
+.react-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.react-btn:hover::after { opacity: 0.08; }
+.react-btn:active { transform: scale(0.96); }
+
+.react-btn.muyu {
+  background: var(--brand-muyu-light);
+  border-color: rgba(125,90,60,0.35);
+  color: #C4956B;
+}
+
+.react-btn.candle {
+  background: var(--brand-candle-light);
+  border-color: rgba(232,160,32,0.35);
+  color: var(--brand-candle-flame);
+}
+
+.react-btn.muyu.active {
+  background: var(--brand-muyu);
+  border-color: var(--brand-muyu);
+  color: #fff;
+}
+
+.react-btn.candle.active {
+  background: rgba(232,160,32,0.8);
+  border-color: var(--brand-candle);
+  color: #2A1A00;
+}
+
+.react-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.react-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 20px;
+}
+
+.react-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.react-total {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-left: 4px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   6. 濾波片（Category Filter Chips）重設計
+   ══════════════════════════════════════════════════════════ */
+.filter-demo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-chip-v2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px 7px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid;
+  transition: all 0.15s;
+  font-family: var(--font-body);
+  letter-spacing: 0.02em;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  border-color: var(--border);
+}
+
+.filter-chip-v2:hover {
+  border-color: var(--border-bright);
+  color: var(--text-primary);
+}
+
+.filter-chip-v2.active {
+  color: #fff;
+  border-color: transparent;
+}
+
+.filter-chip-v2 svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+/* ══════════════════════════════════════════════════════════
+   7. 狀態列 / Header 徽章
+   ══════════════════════════════════════════════════════════ */
+.status-demo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  border: 1px solid;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.live {
+  background: #2ECC71;
+  box-shadow: 0 0 6px rgba(46,204,113,0.6);
+  animation: blink 2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   8. 來源徽章重設計
+   ══════════════════════════════════════════════════════════ */
+.src-demo {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ══════════════════════════════════════════════════════════
+   搜尋列重設計
+   ══════════════════════════════════════════════════════════ */
+.search-v2 {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+}
+
+.search-v2 input {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-bright);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 11px 16px 11px 42px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.search-v2 input::placeholder { color: var(--text-muted); }
+.search-v2 input:focus {
+  border-color: var(--brand-crimson);
+  box-shadow: 0 0 0 3px var(--brand-crimson-glow);
+}
+
+.search-v2 .s-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+/* 加油按鈕 */
+.fuel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  background: linear-gradient(135deg, #7D2D00, #B84000);
+  color: #FFD580;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid rgba(255,180,50,0.25);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: var(--font-body);
+  letter-spacing: 0.05em;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+.fuel-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(180,60,0,0.45);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Popup 彈出卡重設計
+   ══════════════════════════════════════════════════════════ */
+.popup-demo {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  max-width: 300px;
+  position: relative;
+}
+
+.popup-demo::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.popup-title-v2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+}
+
+.popup-close {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.popup-close:hover { background: var(--bg-void); }
+.popup-close svg { width: 10px; height: 10px; color: var(--text-muted); }
+
+.popup-summary {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-bottom: 12px;
+}
+
+.popup-footer {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.popup-btn-v2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 13px;
+  border-radius: var(--radius-xs);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid;
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+
+.popup-btn-v2 svg { width: 11px; height: 11px; }
+
+.popup-btn-v2.primary {
+  background: var(--brand-crimson-glow);
+  border-color: rgba(192,57,43,0.4);
+  color: #E8856A;
+}
+.popup-btn-v2.primary:hover { background: rgba(192,57,43,0.25); }
+
+.popup-btn-v2.ghost {
+  background: rgba(100,130,200,0.08);
+  border-color: var(--border-bright);
+  color: var(--text-secondary);
+}
+.popup-btn-v2.ghost:hover {
+  background: rgba(100,130,200,0.15);
+  color: var(--text-primary);
+}
+
+/* ══════════════════════════════════════════════════════════
+   程式碼展示
+   ══════════════════════════════════════════════════════════ */
+.code-block {
+  background: #080E1C;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 20px 24px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.8;
+  color: #8A9BB8;
+  overflow-x: auto;
+  white-space: pre;
+  margin-top: 16px;
+}
+
+.code-block .kw { color: #C0392B; }
+.code-block .prop { color: #E8A020; }
+.code-block .val { color: #5DADE2; }
+.code-block .comment { color: #4A5878; font-style: italic; }
+
+/* 小標題 */
+.subsection-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  margin-top: 32px;
+}
+.subsection-title:first-child { margin-top: 0; }
+
+/* 分隔 */
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 64px 0;
+}
+
+/* 說明文字 */
+.note {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-top: 12px;
+  line-height: 1.6;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border-left: 2px solid var(--border-bright);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+}
+</style>
+</head>
+<body>
+<div class="doc-wrapper">
+
+  <!-- ══ 首頁標題 ══ -->
+  <div class="doc-header">
+    <div class="doc-kicker">Taiwan News Map · VI Design System · 2026</div>
+    <h1 class="doc-title">視覺識別<br>強化方案</h1>
+    <p class="doc-subtitle">將台灣即時事件地圖從「功能性工具」提升為具備得獎潛力的設計作品。本頁包含完整可移植的 CSS Token、圖示系統、與元件範例。</p>
+  </div>
+
+  <!-- ══ 1. 色彩系統 ══ -->
+  <div class="section">
+    <div class="section-label">01 · 色彩計畫</div>
+
+    <div class="subsection-title">品牌色 — 社會警示感 × 台灣本土溫度</div>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#C0392B;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">警示紅</span>
+          <span class="swatch-desc">--brand-crimson</span>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#D35400;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">香火橙</span>
+          <span class="swatch-desc">--brand-incense</span>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#E8A020;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">燭光金</span>
+          <span class="swatch-desc">--brand-candle</span>
+        </div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#7D5A3C;"></div>
+        <div class="swatch-info">
+          <span class="swatch-name">木魚棕</span>
+          <span class="swatch-desc">--brand-muyu</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsection-title">事件類別色</div>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#C0392B;"></div>
+        <div class="swatch-info"><span class="swatch-name">災害事故</span><span class="swatch-desc">disaster</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#8E44AD;"></div>
+        <div class="swatch-info"><span class="swatch-name">刑事案件</span><span class="swatch-desc">criminal</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#2471A3;"></div>
+        <div class="swatch-info"><span class="swatch-name">交通事故</span><span class="swatch-desc">traffic</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#D35400;"></div>
+        <div class="swatch-info"><span class="swatch-name">醫療緊急</span><span class="swatch-desc">medical</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#1E8449;"></div>
+        <div class="swatch-info"><span class="swatch-name">活動</span><span class="swatch-desc">activity</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#4A5878;"></div>
+        <div class="swatch-info"><span class="swatch-name">其他</span><span class="swatch-desc">other</span></div>
+      </div>
+    </div>
+
+    <div class="subsection-title">背景色階（深色模式）</div>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#060A14;"></div>
+        <div class="swatch-info"><span class="swatch-name">Void</span><span class="swatch-desc">--bg-void</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#0C1120;"></div>
+        <div class="swatch-info"><span class="swatch-name">Deep</span><span class="swatch-desc">--bg-deep</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#101828;"></div>
+        <div class="swatch-info"><span class="swatch-name">Panel</span><span class="swatch-desc">--bg-panel</span></div>
+      </div>
+      <div class="color-swatch">
+        <div class="swatch-block" style="background:#162035;"></div>
+        <div class="swatch-info"><span class="swatch-name">Card</span><span class="swatch-desc">--bg-card</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 2. 圖示系統 ══ -->
+  <div class="section">
+    <div class="section-label">02 · 自定義圖示系統</div>
+    <p class="doc-subtitle" style="margin-bottom:24px;">每個類別擁有獨立的線條 SVG 圖示，線條粗細統一為 2px，圓角率 1.5px，視覺語彙一致。</p>
+
+    <div class="icon-grid">
+      <!-- 災害 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(192,57,43,0.15);border:1px solid rgba(192,57,43,0.3);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#C0392B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 19h20L12 2z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+        </div>
+        <span class="icon-label">災害事故</span>
+        <span class="icon-sublabel">disaster</span>
+      </div>
+
+      <!-- 刑事 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(142,68,173,0.15);border:1px solid rgba(142,68,173,0.3);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#8E44AD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"/>
+            <path d="M21 21l-4.35-4.35"/>
+            <line x1="11" y1="8" x2="11" y2="14"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </div>
+        <span class="icon-label">刑事案件</span>
+        <span class="icon-sublabel">criminal</span>
+      </div>
+
+      <!-- 交通 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(36,113,163,0.15);border:1px solid rgba(36,113,163,0.3);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#2471A3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h2l2-3h8l2 3h2a2 2 0 012 2v6a2 2 0 01-2 2h-2"/>
+            <circle cx="7.5" cy="17.5" r="2.5"/>
+            <circle cx="16.5" cy="17.5" r="2.5"/>
+            <line x1="10" y1="17.5" x2="14" y2="17.5"/>
+          </svg>
+        </div>
+        <span class="icon-label">交通事故</span>
+        <span class="icon-sublabel">traffic</span>
+      </div>
+
+      <!-- 醫療 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(211,84,0,0.15);border:1px solid rgba(211,84,0,0.3);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#D35400" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+        <span class="icon-label">醫療緊急</span>
+        <span class="icon-sublabel">medical</span>
+      </div>
+
+      <!-- 活動 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(30,132,73,0.15);border:1px solid rgba(30,132,73,0.3);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#1E8449" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+            <path d="M16 3.13a4 4 0 010 7.75"/>
+          </svg>
+        </div>
+        <span class="icon-label">活動</span>
+        <span class="icon-sublabel">activity</span>
+      </div>
+
+      <!-- 其他 -->
+      <div class="icon-card">
+        <div class="event-icon-wrap" style="background:rgba(74,88,120,0.2);border:1px solid rgba(74,88,120,0.35);">
+          <svg class="evt-svg" viewBox="0 0 24 24" fill="none" stroke="#4A5878" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <span class="icon-label">其他事件</span>
+        <span class="icon-sublabel">other</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 3. 地圖 Marker 系統 ══ -->
+  <div class="section">
+    <div class="section-label">03 · 地圖 Marker</div>
+    <p class="doc-subtitle" style="margin-bottom:28px;">採用淚滴形 Pin，與圓形 Marker 做區分。緊急事件加入脈衝動畫強調即時性。</p>
+
+    <div class="marker-row">
+      <!-- 災害 Pin -->
+      <div class="marker-demo">
+        <div class="pin-outer" style="width:54px;height:60px;">
+          <div style="position:relative;display:flex;align-items:center;justify-content:center;width:54px;height:60px;">
+            <div class="pin-pulse" style="background:#C0392B;width:54px;height:54px;top:0;left:0;"></div>
+            <div class="pin-body" style="width:42px;height:42px;background:#C0392B;border:2px solid rgba(255,255,255,0.2);">
+              <div class="pin-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span class="marker-label">disaster · 脈衝</span>
+      </div>
+
+      <!-- 刑事 Pin -->
+      <div class="marker-demo">
+        <div style="position:relative;width:42px;height:50px;">
+          <div class="pin-body" style="width:42px;height:42px;background:#8E44AD;border:2px solid rgba(255,255,255,0.2);">
+            <div class="pin-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+            </div>
+          </div>
+        </div>
+        <span class="marker-label">criminal</span>
+      </div>
+
+      <!-- 交通 Pin -->
+      <div class="marker-demo">
+        <div style="position:relative;width:42px;height:50px;">
+          <div class="pin-body" style="width:42px;height:42px;background:#2471A3;border:2px solid rgba(255,255,255,0.2);">
+            <div class="pin-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h2l2-3h8l2 3h2a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>
+            </div>
+          </div>
+        </div>
+        <span class="marker-label">traffic</span>
+      </div>
+
+      <!-- 醫療 Pin -->
+      <div class="marker-demo">
+        <div style="position:relative;width:42px;height:50px;">
+          <div class="pin-body" style="width:42px;height:42px;background:#D35400;border:2px solid rgba(255,255,255,0.2);">
+            <div class="pin-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+          </div>
+        </div>
+        <span class="marker-label">medical</span>
+      </div>
+
+      <!-- 活動 Pin -->
+      <div class="marker-demo">
+        <div style="position:relative;width:42px;height:50px;">
+          <div class="pin-body" style="width:42px;height:42px;background:#1E8449;border:2px solid rgba(255,255,255,0.2);">
+            <div class="pin-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+            </div>
+          </div>
+        </div>
+        <span class="marker-label">activity</span>
+      </div>
+    </div>
+
+    <div class="note">淚滴 Pin 採用 border-radius: 50% 50% 50% 0; transform: rotate(-45deg); 實現，不需要額外圖片資源。緊急事件的 .pin-pulse 元素加入 animation: pulse-ring 2s ease-out infinite 以強調即時性。</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 4. 事件卡片 ══ -->
+  <div class="section">
+    <div class="section-label">04 · 事件卡片重設計</div>
+    <p class="doc-subtitle" style="margin-bottom:24px;">更清晰的資訊層級、更精緻的類別徽章、以及統一的來源標籤系統。</p>
+
+    <div class="card-demo-grid">
+
+      <!-- 災害卡 -->
+      <div class="event-card-v2" style="--card-color:#C0392B;" onclick="">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:#C0392B;border-radius:0 2px 2px 0;opacity:0;transition:opacity 0.2s;" class="card-bar"></div>
+        <div class="card-v2-left">
+          <div class="card-v2-meta">
+            <span class="city-tag">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+              花蓮縣
+            </span>
+            <span class="cat-badge-v2" style="background:rgba(192,57,43,0.15);border:1px solid rgba(192,57,43,0.3);color:#E8856A;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
+              災害事故
+            </span>
+            <span class="time-tag">14:32</span>
+          </div>
+          <div class="card-v2-title">地震後山區道路落石，蘇花公路部分路段管制</div>
+          <div class="card-v2-content">蘇花公路因餘震出現落石，和平至大清水路段已進行臨時交通管制，用路人請改走替代道路。</div>
+        </div>
+        <div class="card-v2-right">
+          <span class="src-badge-v2" style="background:rgba(30,132,73,0.15);color:#58D68D;border:1px solid rgba(30,132,73,0.25);">TDX</span>
+        </div>
+      </div>
+
+      <!-- 刑事卡 -->
+      <div class="event-card-v2" onclick="">
+        <div class="card-v2-left">
+          <div class="card-v2-meta">
+            <span class="city-tag">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+              高雄市
+            </span>
+            <span class="cat-badge-v2" style="background:rgba(142,68,173,0.15);border:1px solid rgba(142,68,173,0.3);color:#BB8FCE;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              刑事案件
+            </span>
+            <span class="time-tag">13:05</span>
+          </div>
+          <div class="card-v2-title">三民區發生持械糾紛，警方到場處置中</div>
+          <div class="card-v2-content">民族一路附近傳出糾紛，警方接報後快速趕赴現場，嫌疑人已被控制，調查持續進行。</div>
+        </div>
+        <div class="card-v2-right">
+          <span class="src-badge-v2" style="background:rgba(93,173,226,0.12);color:#5DADE2;border:1px solid rgba(93,173,226,0.25);">AI</span>
+        </div>
+      </div>
+
+      <!-- 交通卡 -->
+      <div class="event-card-v2" onclick="">
+        <div class="card-v2-left">
+          <div class="card-v2-meta">
+            <span class="city-tag">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s-8-4.5-8-11.8A8 8 0 0112 2a8 8 0 018 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></svg>
+              國道
+            </span>
+            <span class="cat-badge-v2" style="background:rgba(36,113,163,0.15);border:1px solid rgba(36,113,163,0.3);color:#7FB3D3;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h2l2-3h8l2 3h2a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>
+              交通事故
+            </span>
+            <span class="time-tag">12:48</span>
+          </div>
+          <div class="card-v2-title">國道 1 號南向林口段車輛故障，外車道占用</div>
+          <div class="card-v2-content">林口交流道前約 500 公尺處有車輛故障，占用外車道，後方車流已達 3 公里，請提前改道。</div>
+        </div>
+        <div class="card-v2-right">
+          <span class="src-badge-v2" style="background:rgba(30,132,73,0.15);color:#58D68D;border:1px solid rgba(30,132,73,0.25);">TDX</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 5. 情感互動元件 ══ -->
+  <div class="section">
+    <div class="section-label">05 · 情感互動元件</div>
+    <p class="doc-subtitle" style="margin-bottom:24px;">木魚棕與燭光金來自台灣廟宇文化，為悼念功能賦予本土溫度。未按過的狀態保持低調，互動後顯現完整色彩。</p>
+
+    <div class="reaction-section">
+      <!-- 未互動狀態 -->
+      <div class="reaction-demo-card">
+        <div class="reaction-title">台南市中西區 — 火災意外</div>
+        <div class="reaction-location">📍 赤崁樓附近，民族路二段</div>
+        <div class="reaction-bar">
+          <button class="react-btn muyu" onclick="toggleReact(this, 'muyu-group')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="10" rx="7" ry="6"/><path d="M8 16c0 2.2 1.8 4 4 4s4-1.8 4-4"/><line x1="12" y1="4" x2="12" y2="2"/></svg>
+            <span>敲木魚</span>
+            <span class="react-count" id="muyu-count-1">28</span>
+          </button>
+          <div class="react-divider"></div>
+          <button class="react-btn candle" onclick="toggleReact(this, 'candle-group')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><path d="M8 10c0-2.2 1.8-4 4-4s4 1.8 4 4v8a4 4 0 01-8 0v-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+            <span>點蠟燭</span>
+            <span class="react-count" id="candle-count-1">54</span>
+          </button>
+          <span class="react-total">82 人回應</span>
+        </div>
+      </div>
+
+      <!-- 已互動（木魚啟用）狀態 -->
+      <div class="reaction-demo-card">
+        <div class="reaction-title">台北市信義區 — 車禍事故</div>
+        <div class="reaction-location">📍 信義路五段，已造成 2 人輕傷</div>
+        <div class="reaction-bar">
+          <button class="react-btn muyu active">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="10" rx="7" ry="6"/><path d="M8 16c0 2.2 1.8 4 4 4s4-1.8 4-4"/><line x1="12" y1="4" x2="12" y2="2"/></svg>
+            <span>敲木魚</span>
+            <span class="react-count">✓ 13</span>
+          </button>
+          <div class="react-divider"></div>
+          <button class="react-btn candle" disabled style="opacity:0.35;cursor:not-allowed;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"/><path d="M8 10c0-2.2 1.8-4 4-4s4 1.8 4 4v8a4 4 0 01-8 0v-8z"/><line x1="10" y1="22" x2="14" y2="22"/></svg>
+            <span>點蠟燭</span>
+            <span class="react-count">7</span>
+          </button>
+          <span class="react-total">已回應 ·  20 人</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 6. 篩選濾波片 ══ -->
+  <div class="section">
+    <div class="section-label">06 · 類別篩選器</div>
+
+    <div class="filter-demo">
+      <button class="filter-chip-v2 active" style="background:#C0392B;border-color:#C0392B;color:#fff;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L2 19h20L12 2z"/><line x1="12" y1="9" x2="12" y2="13"/></svg>
+        災害事故
+      </button>
+      <button class="filter-chip-v2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        刑事案件
+      </button>
+      <button class="filter-chip-v2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 17H3a2 2 0 01-2-2V9a2 2 0 012-2h2l2-3h8l2 3h2a2 2 0 012 2v6a2 2 0 01-2 2h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>
+        交通事故
+      </button>
+      <button class="filter-chip-v2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        醫療緊急
+      </button>
+      <button class="filter-chip-v2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        活動
+      </button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 7. 其他元件 ══ -->
+  <div class="section">
+    <div class="section-label">07 · 搜尋列 · 狀態徽章 · Popup</div>
+
+    <div class="subsection-title">搜尋列</div>
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:32px;">
+      <div class="search-v2">
+        <svg class="s-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <input type="text" placeholder="搜尋事件、城市、街道...">
+      </div>
+      <button class="fuel-btn">⛽ 幫地圖加油</button>
+    </div>
+
+    <div class="subsection-title">狀態徽章</div>
+    <div class="status-demo" style="margin-bottom:32px;">
+      <div class="status-pill" style="background:rgba(46,204,113,0.1);border-color:rgba(46,204,113,0.3);color:#2ECC71;">
+        <div class="status-dot live"></div>
+        LIVE · 每30分鐘更新
+      </div>
+      <div class="status-pill" style="background:var(--bg-card);border-color:var(--border);color:var(--text-muted);">
+        顯示 24 筆事件
+      </div>
+      <div class="status-pill" style="background:rgba(192,57,43,0.1);border-color:rgba(192,57,43,0.3);color:#E8856A;">
+        ⚠ 3 件高度警示
+      </div>
+    </div>
+
+    <div class="subsection-title">地圖 Popup 卡</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;">
+      <!-- 災害 Popup -->
+      <div class="popup-demo" style="--popup-color:#C0392B;">
+        <div style="position:absolute;top:0;left:0;right:0;height:3px;background:#C0392B;border-radius:var(--radius-lg) var(--radius-lg) 0 0;"></div>
+        <div class="popup-header">
+          <div>
+            <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+              <span class="cat-badge-v2" style="background:rgba(192,57,43,0.15);border:1px solid rgba(192,57,43,0.3);color:#E8856A;font-size:10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;"><path d="M12 2L2 19h20L12 2z"/></svg>
+                災害事故
+              </span>
+              <span style="font-size:10px;font-family:var(--font-mono);color:var(--text-muted);">花蓮縣</span>
+            </div>
+            <div class="popup-title-v2">地震後山區道路落石，蘇花公路管制中</div>
+          </div>
+          <div class="popup-close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="popup-summary">蘇花公路和平至大清水路段因餘震落石暫時管制，用路人請改走替代道路。</div>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+          <button class="react-btn muyu" style="padding:5px 11px;font-size:11px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><ellipse cx="12" cy="10" rx="7" ry="6"/></svg>
+            <span>敲木魚</span><span class="react-count">28</span>
+          </button>
+          <button class="react-btn candle" style="padding:5px 11px;font-size:11px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;"><path d="M8 10c0-2.2 1.8-4 4-4s4 1.8 4 4v8a4 4 0 01-8 0v-8z"/></svg>
+            <span>點蠟燭</span><span class="react-count">54</span>
+          </button>
+        </div>
+        <div class="popup-footer">
+          <a href="#" class="popup-btn-v2 primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            查看原文
+          </a>
+          <button class="popup-btn-v2 ghost">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+            回報錯誤
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ══ 8. CSS 移植指南 ══ -->
+  <div class="section">
+    <div class="section-label">08 · 移植指南</div>
+    <p class="doc-subtitle" style="margin-bottom:20px;">將以下 CSS 變數貼入 index.html 的 <code style="font-family:var(--font-mono);font-size:13px;background:var(--bg-card);padding:2px 6px;border-radius:4px;">:root</code> 取代原有的色彩 Token，圖示 SVG 直接替換原本的 Font Awesome 類別即可。</p>
+
+    <div class="code-block"><span class="comment">/* ── 台灣即時事件地圖 VI Token — 可直接貼入 :root ── */</span>
+<span class="kw">--brand-crimson:</span>       <span class="val">#C0392B</span><span class="kw">;</span>   <span class="comment">/* 警示紅 · 緊急事件主視覺 */</span>
+<span class="kw">--brand-crimson-glow:</span>  <span class="val">rgba(192,57,43,0.18)</span><span class="kw">;</span>
+<span class="kw">--brand-incense:</span>        <span class="val">#D35400</span><span class="kw">;</span>   <span class="comment">/* 香火橙 · 中度警示 */</span>
+<span class="kw">--brand-candle:</span>         <span class="val">#E8A020</span><span class="kw">;</span>   <span class="comment">/* 燭光金 · 悼念情感 */</span>
+<span class="kw">--brand-muyu:</span>           <span class="val">#7D5A3C</span><span class="kw">;</span>   <span class="comment">/* 木魚棕 · 佛寺文化 */</span>
+
+<span class="kw">--cat-disaster:</span>         <span class="val">#C0392B</span><span class="kw">;</span>
+<span class="kw">--cat-criminal:</span>         <span class="val">#8E44AD</span><span class="kw">;</span>
+<span class="kw">--cat-traffic:</span>          <span class="val">#2471A3</span><span class="kw">;</span>
+<span class="kw">--cat-medical:</span>          <span class="val">#D35400</span><span class="kw">;</span>
+<span class="kw">--cat-activity:</span>         <span class="val">#1E8449</span><span class="kw">;</span>
+<span class="kw">--cat-other:</span>            <span class="val">#4A5878</span><span class="kw">;</span>
+
+<span class="kw">--bg-void:</span>              <span class="val">#060A14</span><span class="kw">;</span>
+<span class="kw">--bg-deep:</span>              <span class="val">#0C1120</span><span class="kw">;</span>
+<span class="kw">--bg-panel:</span>             <span class="val">#101828</span><span class="kw">;</span>
+<span class="kw">--bg-card:</span>              <span class="val">#162035</span><span class="kw">;</span>
+
+<span class="kw">--font-body:</span>    <span class="val">"Space Grotesk", sans-serif</span><span class="kw">;</span>
+<span class="kw">--font-display:</span> <span class="val">"Noto Serif TC", serif</span><span class="kw">;</span>
+<span class="kw">--font-mono:</span>    <span class="val">"JetBrains Mono", monospace</span><span class="kw">;</span></div>
+  </div>
+
+</div>
+
+<script>
+function toggleReact(btn, group) {
+  const isActive = btn.classList.contains('active');
+  if (isActive) return;
+  btn.classList.add('active');
+  const countEl = btn.querySelector('.react-count');
+  if (countEl) {
+    const n = parseInt(countEl.textContent) || 0;
+    countEl.textContent = '✓ ' + (n + 1);
+  }
+  const siblings = btn.closest('.reaction-bar').querySelectorAll('.react-btn');
+  siblings.forEach(s => {
+    if (s !== btn) {
+      s.disabled = true;
+      s.style.opacity = '0.35';
+      s.style.cursor = 'not-allowed';
+    }
+  });
+}
+
+document.querySelectorAll('.event-card-v2').forEach(card => {
+  const bar = card.querySelector('.card-bar');
+  if (!bar) return;
+  card.addEventListener('mouseenter', () => bar.style.opacity = '1');
+  card.addEventListener('mouseleave', () => bar.style.opacity = '0');
+});
+</script>
+</body>
+</html>
