@@ -1,4 +1,16 @@
-const { getReaction, incrementReaction } = require("../reaction-store");
+const { getReaction, getReactions, incrementReaction } = require("../reaction-store");
+
+const MAX_BATCH_REACTIONS = 100;
+
+function normalizeEventIds(value) {
+  const raw = Array.isArray(value) ? value.join(",") : String(value || "");
+  return Array.from(new Set(
+    raw
+      .split(",")
+      .map((eventId) => eventId.trim())
+      .filter(Boolean)
+  )).slice(0, MAX_BATCH_REACTIONS);
+}
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -6,6 +18,21 @@ module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   if (req.method === "OPTIONS") return res.status(204).end();
+  if (req.method !== "GET" && req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  if (req.method === "GET") {
+    const eventIds = normalizeEventIds(req.query?.eventIds);
+    if (eventIds.length > 0) {
+      try {
+        return res.status(200).json({ reactions: await getReactions(eventIds) });
+      } catch (error) {
+        console.error("[reaction] batch API error:", error.message);
+        return res.status(200).json({ reactions: {} });
+      }
+    }
+  }
 
   const { eventId } = req.method === "GET" ? req.query : req.body;
 

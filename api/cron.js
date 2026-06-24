@@ -22,12 +22,6 @@ const { classifyEventVisibility, isLowRealtimeEvent } = require("../event-conten
 
 const Parser = require("rss-parser");
 const axios = require("axios");
-let OpenAI = null;
-try {
-  ({ OpenAI } = require("openai"));
-} catch {
-  OpenAI = null;
-}
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
@@ -38,7 +32,7 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const parser = new Parser();
 
 const openaiApiKey = process.env.OPENAI_API_KEY;
-const openai = openaiApiKey && OpenAI ? new OpenAI({ apiKey: openaiApiKey }) : null;
+const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
@@ -755,8 +749,36 @@ async function fetchKktixActivityEvents(startedAt) {
   }
 }
 
+async function createOpenAiChatCompletion(body, timeoutMs = OPENAI_TIMEOUT_MS) {
+  const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openaiApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
+  });
+
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const errorBody = await response.json();
+      detail = errorBody?.error?.message || errorBody?.error?.code || "";
+    } catch {}
+    throw new Error(`OpenAI ${response.status}${detail ? `: ${detail}` : ""}`);
+  }
+
+  return response.json();
+}
+
+function parseOpenAiJsonCompletion(completion) {
+  const content = completion?.choices?.[0]?.message?.content || "{}";
+  return JSON.parse(content);
+}
+
 async function extractAiEvents(newsItems) {
-  if (!openai || !newsItems.length) return [];
+  if (!openaiApiKey || !newsItems.length) return [];
 
   const simplifiedNews = newsItems.slice(0, MAX_NEWS_FOR_AI).map((item) => ({
     title: item.title || "",
@@ -779,7 +801,7 @@ async function extractAiEvents(newsItems) {
   ].join(" ");
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await createOpenAiChatCompletion({
       model: "gpt-4o-mini",
       temperature: 0,
       messages: [
@@ -819,9 +841,9 @@ async function extractAiEvents(newsItems) {
           },
         },
       },
-    });
+    }, OPENAI_TIMEOUT_MS);
 
-    const parsed = completion.choices?.[0]?.message?.parsed || JSON.parse(completion.choices?.[0]?.message?.content || "{}");
+    const parsed = parseOpenAiJsonCompletion(completion);
     return Array.isArray(parsed?.events) ? parsed.events : [];
   } catch (error) {
     console.error("[cron] AI extraction failed:", error.message);
@@ -830,7 +852,7 @@ async function extractAiEvents(newsItems) {
 }
 
 async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
-  if (!openai || !newsItems.length) return [];
+  if (!openaiApiKey || !newsItems.length) return [];
 
   const simplifiedNews = await prepareNewsContexts(newsItems, {
     axios,
@@ -860,7 +882,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
   ].join(" ");
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await createOpenAiChatCompletion({
       model: "gpt-4o-mini",
       temperature: 0,
       messages: [
@@ -906,9 +928,9 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
           },
         },
       },
-    });
+    }, Math.max(800, Math.min(OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
 
-    const parsed = completion.choices?.[0]?.message?.parsed || JSON.parse(completion.choices?.[0]?.message?.content || "{}");
+    const parsed = parseOpenAiJsonCompletion(completion);
     return normalizeAiExtractedEvents(parsed?.events);
   } catch (error) {
     console.error("[cron] AI context extraction failed:", error.message);

@@ -84,6 +84,17 @@ function getAiProviderConfig() {
   const azureEndpoint = String(process.env.AZURE_OPENAI_ENDPOINT || "").trim().replace(/\/+$/, "");
   const azureApiKey = String(process.env.AZURE_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "").trim();
   const azureDeployment = String(process.env.AZURE_OPENAI_DEPLOYMENT || process.env.AZURE_OPENAI_DEPLOYMENT_NAME || "").trim();
+  const hasPartialAzureConfig = Boolean(azureEndpoint || process.env.AZURE_OPENAI_API_KEY || azureDeployment);
+  if (hasPartialAzureConfig && (!azureEndpoint || !azureApiKey || !azureDeployment)) {
+    const missing = [];
+    if (!azureEndpoint) missing.push("AZURE_OPENAI_ENDPOINT");
+    if (!azureApiKey) missing.push("AZURE_OPENAI_API_KEY");
+    if (!azureDeployment) missing.push("AZURE_OPENAI_DEPLOYMENT");
+    return {
+      provider: "azure-incomplete",
+      missing,
+    };
+  }
   if (azureEndpoint && azureApiKey && azureDeployment) {
     const apiVersion = String(process.env.AZURE_OPENAI_API_VERSION || "2024-02-15-preview").trim();
     return {
@@ -115,6 +126,9 @@ function getAiProviderConfig() {
 async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) {
   const aiConfig = getAiProviderConfig();
   if (!aiConfig) return fallbackAiReview("AI 未啟用，需人工覆核。");
+  if (aiConfig.provider === "azure-incomplete") {
+    return fallbackAiReview(`Azure OpenAI 設定不完整，缺少 ${aiConfig.missing.join(", ")}，需人工覆核。`);
+  }
 
   const promptPayload = {
     event: {
