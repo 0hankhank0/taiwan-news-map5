@@ -12,6 +12,7 @@ Beta 版台灣事件地圖。此專案把新聞、交通、活動與公共事件
 - `assets/index/modules/`: 前端 ES modules，包含資料信任面板、事件委派、地圖 token、回報、反應與個人化警戒區輔助工具。
 - `assets/index/index.css`: 主頁、卡片、地圖 marker、popup、modal、RWD 樣式。
 - `assets/index/data-trust.js`: 舊相容入口；實際資料信任面板由 `assets/index/modules/data-trust.mjs` 管理。
+- `brand-logo.jpg`: 正式 Logo 圖檔。
 - `event-display.js`: 前後端共用事件顯示純函式，包含分類、狀態、定位品質、覆核與顯示標籤。
 - `api/`: Vercel Serverless Functions。Hobby plan 上限是 12 個 function，目前維持 11 個。
 - `event-store.js`: 事件快取、KV/SQLite fallback、人工覆核更新。
@@ -25,8 +26,6 @@ Beta 版台灣事件地圖。此專案把新聞、交通、活動與公共事件
 ## Public Pages
 
 - `/`: 事件地圖 beta 主頁。
-- `/poster-gallery.html`, `/poster-export.html`: 海報/圖像輸出相關頁面。
-- `/video-opening.html`: 開場視覺頁面。
 
 ## Admin Pages
 
