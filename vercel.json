@@ -15,6 +15,14 @@
     {
       "source": "/api/reactions/total",
       "destination": "/api/reactions-total.js"
+    },
+    {
+      "source": "/video",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/video/",
+      "destination": "/index.html"
     }
   ]
 }
