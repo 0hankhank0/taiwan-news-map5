@@ -27,6 +27,9 @@ import {
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
+    const VIDEO_DEMO_ROUTE = window.location.pathname.replace(/\/+$/, "") === "/video";
+    const VIDEO_DEMO_TOTAL_MS = 46000;
+    const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     
     // 測試 Mapbox Token 是否有效
     async function checkMapboxToken() {
@@ -874,7 +877,7 @@ import {
         getReviewStateLabel
     });
 
-    let currentMapMode = localStorage.getItem("map_mode") || "normal";
+    let currentMapMode = VIDEO_DEMO_ROUTE ? "normal" : (localStorage.getItem("map_mode") || "normal");
     let isNearbyMode = false;
     let userLocation = null;
     let nearbyRadiusMeters = Number(localStorage.getItem("nearby_radius") || 3000);
@@ -2318,6 +2321,11 @@ import {
     }
 
     function checkBetaModal(){
+        if (VIDEO_DEMO_ROUTE) {
+            localStorage.setItem("beta_accepted", "true");
+            betaModal.classList.remove("visible");
+            return;
+        }
         if(!localStorage.getItem("beta_accepted")) betaModal.classList.add("visible");
     }
     function closeBetaModal(){
@@ -2326,6 +2334,351 @@ import {
     }
 
     // ── DONATE ───────────────────────────────────────────────
+    let videoDemoStarted = false;
+
+    function videoDemoWait(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function videoDemoWaitFor(predicate, timeout = 8000, interval = 120) {
+        const end = Date.now() + timeout;
+        while (Date.now() < end) {
+            try {
+                if (predicate()) return true;
+            } catch {
+                // Keep polling while the map and data settle.
+            }
+            await videoDemoWait(interval);
+        }
+        return false;
+    }
+
+    function ensureVideoDemoShell() {
+        let overlay = document.getElementById("video-demo-overlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "video-demo-overlay";
+            overlay.className = "video-demo-overlay";
+            overlay.setAttribute("aria-hidden", "true");
+            overlay.innerHTML = `
+                <div class="video-demo-caption">
+                    <div class="video-demo-kicker">Island Pulse / Product Demo</div>
+                    <div class="video-demo-step"></div>
+                    <h1></h1>
+                    <p></p>
+                </div>
+                <div class="video-demo-frame"></div>
+                <div class="video-demo-click"></div>
+                <div class="video-demo-cursor"><i class="fa-solid fa-arrow-pointer"></i></div>
+                <div class="video-demo-progress"><span></span></div>
+                <div class="video-demo-summary">
+                    <article><span>01</span><strong>Sense</strong><small>nearby events</small></article>
+                    <article><span>02</span><strong>Understand</strong><small>context</small></article>
+                    <article><span>03</span><strong>Act</strong><small>with confidence</small></article>
+                    <article><span>04</span><strong>Correct</strong><small>public signals</small></article>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        return {
+            overlay,
+            caption: overlay.querySelector(".video-demo-caption"),
+            step: overlay.querySelector(".video-demo-step"),
+            title: overlay.querySelector(".video-demo-caption h1"),
+            copy: overlay.querySelector(".video-demo-caption p"),
+            frame: overlay.querySelector(".video-demo-frame"),
+            click: overlay.querySelector(".video-demo-click"),
+            cursor: overlay.querySelector(".video-demo-cursor"),
+            progress: overlay.querySelector(".video-demo-progress span"),
+            summary: overlay.querySelector(".video-demo-summary")
+        };
+    }
+
+    function setVideoDemoCaption(title, copy, step = "") {
+        const shell = ensureVideoDemoShell();
+        shell.step.textContent = step;
+        shell.title.textContent = title;
+        shell.copy.textContent = copy;
+    }
+
+    function setVideoDemoSummary(visible) {
+        const shell = ensureVideoDemoShell();
+        shell.summary.classList.toggle("visible", Boolean(visible));
+    }
+
+    function getVideoDemoElement(target) {
+        if (!target) return null;
+        if (target instanceof Element) return target;
+        return document.querySelector(target);
+    }
+
+    function frameVideoDemoElement(target, padding = 12) {
+        const shell = ensureVideoDemoShell();
+        const el = getVideoDemoElement(target);
+        if (!el) {
+            shell.frame.classList.remove("visible");
+            return null;
+        }
+        const rect = el.getBoundingClientRect();
+        const left = Math.max(8, rect.left - padding);
+        const top = Math.max(8, rect.top - padding);
+        const width = Math.min(window.innerWidth - left - 8, rect.width + padding * 2);
+        const height = Math.min(window.innerHeight - top - 8, rect.height + padding * 2);
+        shell.frame.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+        shell.frame.style.width = `${Math.max(42, width)}px`;
+        shell.frame.style.height = `${Math.max(42, height)}px`;
+        shell.frame.classList.add("visible");
+        return rect;
+    }
+
+    async function moveVideoDemoCursorTo(target, placement = "center", delay = 650) {
+        const shell = ensureVideoDemoShell();
+        const el = getVideoDemoElement(target);
+        let x = window.innerWidth * 0.72;
+        let y = window.innerHeight * 0.34;
+        if (el) {
+            const rect = el.getBoundingClientRect();
+            if (placement === "right") {
+                x = rect.right - 18;
+                y = rect.top + rect.height / 2;
+            } else if (placement === "left") {
+                x = rect.left + 18;
+                y = rect.top + rect.height / 2;
+            } else if (placement === "bottom") {
+                x = rect.left + rect.width / 2;
+                y = rect.bottom - 18;
+            } else {
+                x = rect.left + rect.width / 2;
+                y = rect.top + rect.height / 2;
+            }
+        }
+        shell.cursor.classList.add("visible");
+        shell.cursor.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        await videoDemoWait(delay);
+    }
+
+    function pulseVideoDemoClick(target) {
+        const shell = ensureVideoDemoShell();
+        const rect = frameVideoDemoElement(target, 10);
+        if (!rect) return;
+        shell.click.style.left = `${rect.left + rect.width / 2}px`;
+        shell.click.style.top = `${rect.top + rect.height / 2}px`;
+        shell.click.classList.remove("visible");
+        shell.click.getBoundingClientRect();
+        shell.click.classList.add("visible");
+        setTimeout(() => shell.click.classList.remove("visible"), 520);
+    }
+
+    function restartVideoDemoProgress(duration = VIDEO_DEMO_TOTAL_MS) {
+        const shell = ensureVideoDemoShell();
+        shell.progress.style.animation = "none";
+        shell.progress.getBoundingClientRect();
+        shell.progress.style.animation = `videoDemoProgress ${duration}ms linear forwards`;
+    }
+
+    function pickVideoDemoEvent(preferredCategory = "") {
+        const events = parsedEvents
+            .filter(ev => shouldShowRealtimeEvent(ev) && shouldRenderLocationMarker(ev))
+            .filter(ev => Number.isFinite(Number(ev.lat)) && Number.isFinite(Number(ev.lng)));
+        if (preferredCategory) {
+            return events.find(ev => inferEventGroupCategory(ev) === preferredCategory) || events[0] || null;
+        }
+        return events[0] || null;
+    }
+
+    function getVideoDemoLocation() {
+        const seed = pickVideoDemoEvent("traffic") || pickVideoDemoEvent();
+        if (!seed) return { ...VIDEO_DEMO_FALLBACK_LOCATION };
+        return {
+            lat: Number(seed.lat) + 0.003,
+            lng: Number(seed.lng) + 0.003,
+            accuracy: 20
+        };
+    }
+
+    function prepareVideoDemoBaseline() {
+        document.documentElement.classList.add("video-demo-mode");
+        document.body.classList.add("video-demo-mode");
+        document.body.classList.remove("tw-online-mode", "stats-mode");
+        localStorage.setItem("beta_accepted", "true");
+        betaModal.classList.remove("visible");
+        settingsModal.classList.remove("visible");
+        reportModal.classList.remove("visible");
+        currentMapMode = "normal";
+        activeCategory = "all";
+        alertZoneFilterEnabled = false;
+        isNearbyMode = false;
+        userLocation = null;
+        clearUserLocationMarker();
+        ["city-filter", "city-filter-mobile"].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = "all";
+        });
+        setNearbyRadius(3000);
+        applyMapMode("normal");
+        switchMode(true);
+        renderCategoryButtons();
+        renderEvents();
+        updateNearbyControls();
+        scheduleMapResize();
+    }
+
+    function activateVideoDemoNearbyMode() {
+        userLocation = getVideoDemoLocation();
+        isNearbyMode = true;
+        activeCategory = "all";
+        setNearbyRadius(3000);
+        if (!window._fallbackMap) updateUserLocationMarker();
+        renderCategoryButtons();
+        renderEvents();
+        updateNearbyControls();
+        if (window._fallbackMap && typeof window._fallbackMap.setView === "function") {
+            window._fallbackMap.setView([userLocation.lat, userLocation.lng], 12);
+        } else {
+            flyToLatLng([userLocation.lat, userLocation.lng], 12.2, 1100);
+        }
+    }
+
+    function openVideoDemoReportModal() {
+        const reportButton = eventList.querySelector('[data-action="open-report"]');
+        if (reportButton) {
+            const payload = readReportPayload(reportButton);
+            openReportModal(payload.identifier, payload.title);
+        } else {
+            const ev = pickVideoDemoEvent();
+            openReportModal(ev?.id || ev?.title || "demo-event", ev?.title || "Demo event");
+        }
+        const typeEl = document.getElementById("report-type");
+        if (typeEl && typeEl.options.length > 1) typeEl.selectedIndex = 1;
+        const messageEl = document.getElementById("report-message");
+        if (messageEl) {
+            messageEl.value = "示範：位置可能偏移，建議修正到附近路口。";
+            messageEl.dispatchEvent(new Event("input", { bubbles: true }));
+        }
+    }
+
+    async function runVideoDemoSequence() {
+        const shell = ensureVideoDemoShell();
+        shell.overlay.classList.add("ready");
+
+        while (VIDEO_DEMO_ROUTE) {
+            prepareVideoDemoBaseline();
+            setVideoDemoSummary(false);
+            restartVideoDemoProgress();
+
+            setVideoDemoCaption(
+                "事件地圖 / Event Map",
+                "即時事件以分類標記聚合在台灣地圖上，先看到全局分布。",
+                "14-18 秒"
+            );
+            flyToLatLng([23.7, 120.95], 7.1, 1200);
+            frameVideoDemoElement("#map-stage", 14);
+            await moveVideoDemoCursorTo("#map-stage", "center", 900);
+            await videoDemoWait(2400);
+
+            const firstPin = document.querySelector(".map-pin.event-marker");
+            setVideoDemoCaption(
+                "地圖標記 / Signals",
+                "不同顏色與圖示代表交通、災害、活動等公共事件訊號。",
+                "18-22 秒"
+            );
+            if (firstPin) {
+                frameVideoDemoElement(firstPin, 18);
+                await moveVideoDemoCursorTo(firstPin, "center", 650);
+                pulseVideoDemoClick(firstPin);
+                firstPin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            }
+            await videoDemoWait(3000);
+            closeActivePopup();
+
+            setVideoDemoCaption(
+                "事件卡片 / Event Cards",
+                "左側卡片同步呈現事件摘要、來源與可回報的修正入口。",
+                "22-26 秒"
+            );
+            eventList.scrollTo({ top: 0, behavior: "smooth" });
+            const firstCard = eventList.querySelector(".event-card-v2");
+            frameVideoDemoElement(firstCard || "#event-list", 14);
+            await moveVideoDemoCursorTo(firstCard || "#event-list", "right", 700);
+            await videoDemoWait(2700);
+
+            setVideoDemoCaption(
+                "分類篩選 / Categories",
+                "用分類快速降低資訊噪音，讓使用者先看最相關的訊號。",
+                "26-29 秒"
+            );
+            const trafficChip = catFilters.querySelector('[data-category="traffic"]') || catFilters.querySelector("[data-category]");
+            frameVideoDemoElement("#category-filters", 12);
+            await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 650);
+            pulseVideoDemoClick(trafficChip || "#category-filters");
+            if (trafficChip) trafficChip.click();
+            await videoDemoWait(2600);
+
+            setVideoDemoCaption(
+                "附近模式 / Nearby Mode",
+                "切到目前位置半徑，讓公共事件從全台地圖變成附近可行動的提醒。",
+                "29-32 秒"
+            );
+            activateVideoDemoNearbyMode();
+            const nearbyToggle = document.getElementById("nearby-toggle-desktop") || document.getElementById("nearby-toggle-mobile");
+            frameVideoDemoElement(nearbyToggle || "#map-stage", 14);
+            await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 650);
+            await videoDemoWait(2800);
+
+            setVideoDemoCaption(
+                "回報與修正 / Report Loop",
+                "使用者可以補充錯誤位置或內容，讓公共訊號形成可修正的閉環。",
+                "32-45 秒"
+            );
+            isNearbyMode = false;
+            userLocation = null;
+            clearUserLocationMarker();
+            activeCategory = "all";
+            renderCategoryButtons();
+            renderEvents();
+            eventList.scrollTo({ top: 0, behavior: "smooth" });
+            await videoDemoWait(500);
+            const reportButton = eventList.querySelector('[data-action="open-report"]') || eventList.querySelector(".event-card-v2");
+            frameVideoDemoElement(reportButton, 12);
+            await moveVideoDemoCursorTo(reportButton, "center", 650);
+            pulseVideoDemoClick(reportButton);
+            openVideoDemoReportModal();
+            await videoDemoWait(500);
+            frameVideoDemoElement("#report-modal .modal-box", 16);
+            await videoDemoWait(9500);
+
+            closeReportModal();
+            shell.frame.classList.remove("visible");
+            shell.cursor.classList.remove("visible");
+            setVideoDemoCaption(
+                "公共感知閉環 / Public Signal Loop",
+                "Sense nearby events. Understand context. Act with confidence. Correct public signals.",
+                "45-60 秒"
+            );
+            setVideoDemoSummary(true);
+            await videoDemoWait(7200);
+            setVideoDemoSummary(false);
+            await videoDemoWait(1000);
+        }
+    }
+
+    async function startVideoDemoWhenReady(dataPromise) {
+        if (!VIDEO_DEMO_ROUTE || videoDemoStarted) return;
+        videoDemoStarted = true;
+        document.documentElement.classList.add("video-demo-mode");
+        document.body.classList.add("video-demo-mode");
+        localStorage.setItem("beta_accepted", "true");
+        try {
+            await dataPromise;
+        } catch {
+            // syncNewsAndRender already falls back to mock data.
+        }
+        await videoDemoWaitFor(() => parsedEvents.length && document.querySelector(".event-card-v2"), 10000);
+        await videoDemoWaitFor(() => window._fallbackMap || !map || !map.isStyleLoaded || map.isStyleLoaded(), 10000);
+        await videoDemoWait(700);
+        runVideoDemoSequence();
+    }
+
     async function handleDonate(amount, btn){
         try{
             const orig=btn.innerHTML;
@@ -2426,6 +2779,12 @@ import {
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
 
     function bootstrapApp(){
+        if (VIDEO_DEMO_ROUTE) {
+            document.documentElement.classList.add("video-demo-mode");
+            document.body.classList.add("video-demo-mode");
+            localStorage.setItem("beta_accepted", "true");
+            currentMapMode = "normal";
+        }
         populateCityFilters();
         removeMapOverlays();
         initMobileFilterCollapse();
@@ -2435,8 +2794,9 @@ import {
         renderAlertZoneSettings();
         renderAlertZoneSummary();
         updateNearbyControls();
-        syncNewsAndRender();
+        const dataPromise = syncNewsAndRender();
         loadTwGeoJSON();
+        if (VIDEO_DEMO_ROUTE) startVideoDemoWhenReady(dataPromise);
     }
 
     if (document.readyState === "loading") {
