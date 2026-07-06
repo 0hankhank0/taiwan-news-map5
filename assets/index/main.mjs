@@ -30,6 +30,8 @@ import {
     const VIDEO_DEMO_ROUTE = window.location.pathname.replace(/\/+$/, "") === "/video";
     const VIDEO_DEMO_TOTAL_MS = 46000;
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
+    const VIDEO_DEMO_MARKER_LIMIT = 28;
+    const VIDEO_DEMO_CARD_LIMIT = 8;
     
     // 測試 Mapbox Token 是否有效
     async function checkMapboxToken() {
@@ -1746,8 +1748,8 @@ import {
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const isMobile = isMobileViewport();
-        const markerLimit = isMobile ? MOBILE_MARKER_LIMIT : Infinity;
-        const cardLimit = isMobile ? MOBILE_CARD_LIMIT : Infinity;
+        const markerLimit = VIDEO_DEMO_ROUTE ? VIDEO_DEMO_MARKER_LIMIT : (isMobile ? MOBILE_MARKER_LIMIT : Infinity);
+        const cardLimit = VIDEO_DEMO_ROUTE ? VIDEO_DEMO_CARD_LIMIT : (isMobile ? MOBILE_CARD_LIMIT : Infinity);
 
         if (alertZoneFilterEnabled && !isNearbyMode) {
             events = sortAlertZoneEvents(events);
@@ -2535,7 +2537,7 @@ import {
         if (window._fallbackMap && typeof window._fallbackMap.setView === "function") {
             window._fallbackMap.setView([userLocation.lat, userLocation.lng], 12);
         } else {
-            flyToLatLng([userLocation.lat, userLocation.lng], 12.2, 1100);
+            flyToLatLng([userLocation.lat, userLocation.lng], 12.2, 650);
         }
     }
 
@@ -2571,7 +2573,7 @@ import {
                 "即時事件以分類標記聚合在台灣地圖上，先看到全局分布。",
                 "14-18 秒"
             );
-            flyToLatLng([23.7, 120.95], 7.1, 1200);
+            flyToLatLng([23.7, 120.95], 7.1, 700);
             frameVideoDemoElement("#map-stage", 14);
             await moveVideoDemoCursorTo("#map-stage", "center", 900);
             await videoDemoWait(2400);
@@ -2596,7 +2598,7 @@ import {
                 "左側卡片同步呈現事件摘要、來源與可回報的修正入口。",
                 "22-26 秒"
             );
-            eventList.scrollTo({ top: 0, behavior: "smooth" });
+            eventList.scrollTop = 0;
             const firstCard = eventList.querySelector(".event-card-v2");
             frameVideoDemoElement(firstCard || "#event-list", 14);
             await moveVideoDemoCursorTo(firstCard || "#event-list", "right", 700);
@@ -2636,7 +2638,7 @@ import {
             activeCategory = "all";
             renderCategoryButtons();
             renderEvents();
-            eventList.scrollTo({ top: 0, behavior: "smooth" });
+            eventList.scrollTop = 0;
             await videoDemoWait(500);
             const reportButton = eventList.querySelector('[data-action="open-report"]') || eventList.querySelector(".event-card-v2");
             frameVideoDemoElement(reportButton, 12);
