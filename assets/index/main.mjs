@@ -28,7 +28,6 @@ import {
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
     const VIDEO_DEMO_ROUTE = window.location.pathname.replace(/\/+$/, "") === "/video";
-    const VIDEO_DEMO_TOTAL_MS = 46000;
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_MARKER_LIMIT = 28;
     const VIDEO_DEMO_CARD_LIMIT = 8;
@@ -2372,7 +2371,6 @@ import {
                 <div class="video-demo-frame"></div>
                 <div class="video-demo-click"></div>
                 <div class="video-demo-cursor"><i class="fa-solid fa-arrow-pointer"></i></div>
-                <div class="video-demo-progress"><span></span></div>
                 <div class="video-demo-summary">
                     <article><span>01</span><strong>Sense</strong><small>nearby events</small></article>
                     <article><span>02</span><strong>Understand</strong><small>context</small></article>
@@ -2391,7 +2389,6 @@ import {
             frame: overlay.querySelector(".video-demo-frame"),
             click: overlay.querySelector(".video-demo-click"),
             cursor: overlay.querySelector(".video-demo-cursor"),
-            progress: overlay.querySelector(".video-demo-progress span"),
             summary: overlay.querySelector(".video-demo-summary")
         };
     }
@@ -2469,13 +2466,6 @@ import {
         shell.click.getBoundingClientRect();
         shell.click.classList.add("visible");
         setTimeout(() => shell.click.classList.remove("visible"), 520);
-    }
-
-    function restartVideoDemoProgress(duration = VIDEO_DEMO_TOTAL_MS) {
-        const shell = ensureVideoDemoShell();
-        shell.progress.style.animation = "none";
-        shell.progress.getBoundingClientRect();
-        shell.progress.style.animation = `videoDemoProgress ${duration}ms linear forwards`;
     }
 
     function pickVideoDemoEvent(preferredCategory = "") {
@@ -2566,7 +2556,6 @@ import {
         while (VIDEO_DEMO_ROUTE) {
             prepareVideoDemoBaseline();
             setVideoDemoSummary(false);
-            restartVideoDemoProgress();
 
             setVideoDemoCaption(
                 "事件地圖 / Event Map",
