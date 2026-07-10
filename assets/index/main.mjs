@@ -8,7 +8,7 @@ import {
 } from "./modules/dom-utils.mjs";
 import { readReportPayload } from "./modules/reports.mjs";
 import { readReactionPayload } from "./modules/reactions.mjs";
-import { getMapboxToken } from "./modules/map.mjs";
+import { getMapboxToken, shouldRenderLocationMarker as shouldRenderMapLocationMarker } from "./modules/map.mjs";
 import {
     ALERT_ZONE_MAX_ITEMS,
     ALERT_ZONE_RADII,
@@ -337,7 +337,10 @@ import {
     }
 
     function shouldRenderLocationMarker(ev) {
-        return getLocationDisplayMode(ev) !== "list_only";
+        return shouldRenderMapLocationMarker(ev, {
+            getLocationQuality,
+            getLocationDisplayMode
+        });
     }
 
     function getLocationConfidenceLabel(ev) {

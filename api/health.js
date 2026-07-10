@@ -26,6 +26,19 @@ function hasEnv(name) {
   return Boolean(String(process.env[name] || "").trim());
 }
 
+function roundRatio(part, total) {
+  if (!total) return 0;
+  return Math.round((part / total) * 1000) / 1000;
+}
+
+function isMarkerableEvent(event) {
+  return Number.isFinite(Number(event.lat))
+    && Number.isFinite(Number(event.lng))
+    && event.locationDisplayMode !== "list_only"
+    && event.locationPrecision !== "city"
+    && event.locationQuality !== "low";
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
@@ -45,6 +58,11 @@ module.exports = async (req, res) => {
   const pendingReports = reports.filter((report) => ["new", "ai_reviewed"].includes(report.status));
   const newest = newestTimestamp(events);
   const ageMinutes = newest ? Math.round((Date.now() - newest) / 60000) : null;
+  const markerableCount = events.filter(isMarkerableEvent).length;
+  const listOnlyCount = events.filter((event) => event.locationDisplayMode === "list_only").length;
+  const refresh = cache.refreshStatus || {};
+  const geocodingAttempts = Number(refresh.geocodingAttempts || 0);
+  const geocodingHits = Number(refresh.geocodingHits || 0);
 
   return sendJson(res, 200, {
     beta: true,
@@ -60,12 +78,30 @@ module.exports = async (req, res) => {
       byLocationQuality: countBy(events, (event) => event.locationQuality),
       byLocationDisplayMode: countBy(events, (event) => event.locationDisplayMode),
       byReviewState: countBy(events, (event) => event.reviewState),
+      markerable: markerableCount,
+      listOnly: listOnlyCount,
+      markerableRatio: roundRatio(markerableCount, events.length),
+      listOnlyRatio: roundRatio(listOnlyCount, events.length),
     },
     cache: {
       hasKv: Boolean(cache.hasKv),
       eventCount: cache.eventCount,
       lastLocalUpdate: cache.lastLocalUpdate,
       localEntries: cache.localEntries,
+    },
+    refresh: {
+      status: refresh.status || "unknown",
+      lastRunId: refresh.runId || "",
+      lastMode: refresh.mode || "",
+      lastCompletedAt: refresh.completedAt || "",
+      lastSuccessAt: refresh.lastSuccessAt || "",
+      lastError: refresh.lastError || null,
+      durationMs: refresh.durationMs || 0,
+      sourceCounts: refresh.sourceCounts || {},
+      geocodingAttempts,
+      geocodingHits,
+      geocodingHitRate: roundRatio(geocodingHits, geocodingAttempts),
+      cronLock: cache.cronLock || { locked: false },
     },
     reports: {
       total: reports.length,

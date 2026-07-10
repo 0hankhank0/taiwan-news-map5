@@ -41,9 +41,12 @@ const display = require("../event-display");
   const low = {
     locationPrecision: "city",
     locationQuality: "low",
+    locationConfidence: 0.34,
     locationDisplayMode: "list_only",
   };
   assert.equal(display.getLocationPrecisionLabel(low), "定位待確認");
+  assert.equal(display.getLocationDisplayMode(low), "list_only");
+  assert.equal(display.getLocationConfidenceLabel(low), "34%");
 }
 
 {

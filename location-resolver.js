@@ -53,6 +53,37 @@ const TAIWAN_CITY_COORDS = {
   Highway: { city: "省道", lat: 23.8, lng: 120.9 },
 };
 
+const LEGACY_CITY_COORDS = {
+  "台北市": { lat: 25.0330, lng: 121.5654 },
+  "臺北市": { lat: 25.0330, lng: 121.5654 },
+  "新北市": { lat: 25.0120, lng: 121.4628 },
+  "桃園市": { lat: 24.9936, lng: 121.3010 },
+  "台中市": { lat: 24.1477, lng: 120.6736 },
+  "臺中市": { lat: 24.1477, lng: 120.6736 },
+  "台南市": { lat: 23.1728, lng: 120.2793 },
+  "臺南市": { lat: 23.1728, lng: 120.2793 },
+  "高雄市": { lat: 22.6273, lng: 120.3014 },
+  "基隆市": { lat: 25.1276, lng: 121.7392 },
+  "新竹市": { lat: 24.8138, lng: 120.9675 },
+  "新竹縣": { lat: 24.8387, lng: 121.0177 },
+  "苗栗縣": { lat: 24.5602, lng: 120.8214 },
+  "彰化縣": { lat: 24.0518, lng: 120.5161 },
+  "南投縣": { lat: 23.9609, lng: 120.9718 },
+  "雲林縣": { lat: 23.7092, lng: 120.4313 },
+  "嘉義市": { lat: 23.4800, lng: 120.4491 },
+  "嘉義縣": { lat: 23.4518, lng: 120.2554 },
+  "屏東縣": { lat: 22.5519, lng: 120.5487 },
+  "宜蘭縣": { lat: 24.7021, lng: 121.7377 },
+  "花蓮縣": { lat: 23.9871, lng: 121.6015 },
+  "台東縣": { lat: 22.7583, lng: 121.1444 },
+  "臺東縣": { lat: 22.7583, lng: 121.1444 },
+  "澎湖縣": { lat: 23.5711, lng: 119.5793 },
+  "金門縣": { lat: 24.4493, lng: 118.3765 },
+  "連江縣": { lat: 26.1505, lng: 119.9289 },
+  "國道": { lat: 24.0, lng: 121.0 },
+  "省道": { lat: 24.0, lng: 121.0 },
+};
+
 const TAIWAN_CITY_BOUNDS = {
   "台北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
   "臺北市": { minLat: 24.94, maxLat: 25.22, minLng: 121.43, maxLng: 121.68 },
@@ -137,6 +168,8 @@ const CITY_ALIASES = {
   "臺東縣": "台東縣",
 };
 
+const POINT_LOCATION_PATTERN = /國道\s*\d|國\d|台\s*\d+線|台\d+線|省道|快速道路|高架|交流道|路|街|巷|段|橋|隧道|車站|火車站|捷運站|機場|港|碼頭|工地|廠|溪|河濱|公園|市場|夜市|百貨|大學|學校|國小|國中|高中|醫院|分院|宮|廟|園區|大樓|中心|館|場|店|所|部落|古道|濕地/;
+
 function normalizeText(value, fallback = "") {
   return String(value ?? fallback).replace(/\s+/g, " ").trim();
 }
@@ -184,6 +217,24 @@ function isCityCenterCoord(city, lat, lng) {
     && Math.abs(Number(lng) - fallback.lng) < 0.0002;
 }
 
+function distanceDegrees(lat, lng, coord) {
+  if (!coord) return Infinity;
+  return Math.sqrt((Number(lat) - coord.lat) ** 2 + (Number(lng) - coord.lng) ** 2);
+}
+
+function getFallbackCenterCandidates(city) {
+  const normalizedCity = normalizeCity(city);
+  return [
+    TAIWAN_CITY_COORDS[normalizedCity],
+    LEGACY_CITY_COORDS[normalizedCity],
+  ].filter(Boolean);
+}
+
+function isLikelyFallbackCenterCoord(city, lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return false;
+  return getFallbackCenterCandidates(city).some((coord) => distanceDegrees(lat, lng, coord) <= 0.03);
+}
+
 function getCityFallback(city) {
   const fallback = TAIWAN_CITY_COORDS[normalizeCity(city)];
   if (!fallback) return null;
@@ -204,6 +255,19 @@ function getLocationText(event, title = "", content = "") {
     title,
     content,
   ].filter(Boolean).join(" ")).replace(/臺/g, "台");
+}
+
+function hasPointLocationEvidence(event, title = "", content = "") {
+  const text = normalizeText([
+    event.address,
+    event.location,
+    event.venue,
+    event.district,
+    event.locationEvidence,
+    event.locationQuery,
+    title,
+  ].filter(Boolean).join(" ")).replace(/臺/g, "台");
+  return POINT_LOCATION_PATTERN.test(text);
 }
 
 function resolveKnownLocationCoord(event, city, title = "", content = "") {
@@ -280,6 +344,7 @@ function defaultLocationConfidence(source, precision) {
   if (normalizedSource === "manual") return 1;
   if (normalizedSource === "official") return 0.98;
   if (normalizedSource === "known-location") return 0.94;
+  if (normalizedSource.includes("nominatim")) return normalizedPrecision === "exact" ? 0.82 : 0.6;
   if (normalizedSource.includes("mapbox")) return normalizedPrecision === "exact" ? 0.82 : 0.62;
   if (normalizedSource.includes("geoapify")) return normalizedPrecision === "exact" ? 0.8 : 0.6;
   if (normalizedSource === "provided") return normalizedPrecision === "exact" ? 0.74 : 0.55;
@@ -426,8 +491,20 @@ function resolveLocationSync(event, options = {}) {
 
   if (existing && isValidTaiwanCoord(existing.lat, existing.lng)) {
     const outsideCity = !isCoordInCity(city, existing.lat, existing.lng);
-    const cityCenter = isCityCenterCoord(city, existing.lat, existing.lng);
-    if (!outsideCity && !cityCenter) {
+    const manualCoordinate = normalizeText(event.locationSource).toLowerCase() === "manual";
+    const likelyFallbackCenter = isLikelyFallbackCenterCoord(city, existing.lat, existing.lng);
+    const pointEvidence = hasPointLocationEvidence(event, title, content);
+    if (!outsideCity && manualCoordinate) {
+      return withLocationQuality({
+        ...existing,
+        city,
+        district,
+        locationPrecision: event.locationPrecision || "exact",
+        locationSource: "manual",
+        locationQuery,
+      }, event);
+    }
+    if (!outsideCity && (!likelyFallbackCenter || pointEvidence)) {
       return withLocationQuality({
         ...existing,
         city,
@@ -437,14 +514,19 @@ function resolveLocationSync(event, options = {}) {
         locationQuery,
       }, event);
     }
-    if (!outsideCity && cityCenter) {
+    if (!outsideCity && likelyFallbackCenter) {
+      const fallback = getCityFallback(city) || existing;
       return withLocationQuality({
-        ...existing,
+        ...fallback,
         city,
         district,
-        locationPrecision: event.locationPrecision || "city",
-        locationSource: event.locationSource || "city-fallback",
+        locationPrecision: "city",
+        locationSource: "city-fallback",
+        locationConfidence: 0.34,
+        locationQuality: "low",
+        locationDisplayMode: "list_only",
         locationQuery,
+        locationReason: "legacy-city-center-fallback",
       }, event);
     }
   }

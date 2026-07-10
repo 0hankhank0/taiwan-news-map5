@@ -4,6 +4,7 @@ const {
   rankGeocodingCandidates,
   resolveLocationSync,
 } = require("../location-resolver");
+const { normalizeEvent } = require("../event-normalizer");
 
 function approx(actual, expected, tolerance = 0.0005) {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} should be close to ${expected}`);
@@ -63,6 +64,74 @@ function approx(actual, expected, tolerance = 0.0005) {
   assert.equal(location.locationPrecision, "city");
   assert.equal(location.locationQuality, "low");
   assert.equal(location.locationDisplayMode, "list_only");
+}
+
+{
+  const event = {
+    title: "台北防颱整備會議",
+    content: "台北市政府說明防颱整備，未提供事件發生的街道或地標。",
+    city: "台北市",
+    address: "台北市",
+    source: "自由地方",
+    lat: 25.0347,
+    lng: 121.5668,
+    locationPrecision: "exact",
+    locationSource: "provided",
+    locationConfidence: 0.74,
+    locationDisplayMode: "estimated",
+  };
+  const location = resolveLocationSync(event);
+  approx(location.lat, 25.033);
+  approx(location.lng, 121.5654);
+  assert.equal(location.locationPrecision, "city");
+  assert.equal(location.locationSource, "city-fallback");
+  assert.equal(location.locationQuality, "low");
+  assert.equal(location.locationDisplayMode, "list_only");
+
+  const normalized = normalizeEvent(event);
+  assert.equal(normalized.locationPrecision, "city");
+  assert.equal(normalized.locationSource, "city-fallback");
+  assert.equal(normalized.locationQuality, "low");
+  assert.equal(normalized.locationDisplayMode, "list_only");
+}
+
+{
+  const event = {
+    title: "台北市信義區松仁路發生火警",
+    content: "消防局在台北市信義區松仁路附近處理，周邊短暫管制。",
+    city: "台北市",
+    address: "台北市信義區松仁路",
+    source: "自由社會",
+    lat: 25.0347,
+    lng: 121.5668,
+    locationPrecision: "exact",
+    locationSource: "nominatim",
+    locationConfidence: 0.82,
+    locationDisplayMode: "point",
+  };
+  const location = resolveLocationSync(event);
+  approx(location.lat, 25.0347);
+  approx(location.lng, 121.5668);
+  assert.equal(location.locationPrecision, "exact");
+  assert.equal(location.locationSource, "nominatim");
+  assert.equal(location.locationDisplayMode, "point");
+}
+
+{
+  const event = {
+    title: "警廣即時路況",
+    source: "PBS",
+    sourceName: "PBS",
+    city: "高雄市",
+    lat: 22.6251,
+    lng: 120.3009,
+  };
+  const location = resolveLocationSync(event);
+  approx(location.lat, 22.6251);
+  approx(location.lng, 120.3009);
+  assert.equal(location.locationPrecision, "exact");
+  assert.equal(location.locationSource, "official");
+  assert.equal(location.locationDisplayMode, "point");
 }
 
 {

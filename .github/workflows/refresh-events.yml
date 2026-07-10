@@ -1,0 +1,43 @@
+name: Refresh Events
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Refresh mode"
+        required: false
+        default: "all"
+        type: choice
+        options:
+          - all
+          - news
+          - traffic
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call cron endpoint
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          APP_BASE_URL_SECRET: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          MODE: ${{ inputs.mode || 'all' }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${APP_BASE_URL:-$APP_BASE_URL_SECRET}"
+          if [ -z "$BASE_URL" ]; then
+            echo "::error::Set APP_BASE_URL as a repository variable or secret."
+            exit 1
+          fi
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::Set CRON_SECRET as a repository secret."
+            exit 1
+          fi
+          BASE_URL="${BASE_URL%/}"
+          curl -fsS -X POST "$BASE_URL/api/cron?mode=$MODE" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json"

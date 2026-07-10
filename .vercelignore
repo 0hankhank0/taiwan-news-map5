@@ -2,6 +2,14 @@ node_modules
 exports
 tests
 UI設計
+assets/poster
+poster-gallery.html
+poster-export.html
+export-posters.js
+logo-preview.html
+video-opening.html
+brand-preview-*.png
+island-pulse-main-visual.png
 .git
 .agents
 .codex

@@ -3,10 +3,26 @@ const os = require("os");
 const path = require("path");
 const { Redis } = require("@upstash/redis");
 
+const NEWS_CACHE_KEY = "taiwan_news_cache";
+const TRAFFIC_CACHE_KEY = "taiwan_traffic_cache";
 const EVENT_CACHE_KEY = "taiwan_traffic_events";
 const MERGED_EVENT_CACHE_KEY = "events:merged";
-const EVENT_BUCKET_KEYS = ["events:traffic", "events:news", "events:activities"];
+const EVENT_BUCKET_KEY_MAP = Object.freeze({
+  traffic: "events:traffic",
+  news: "events:news",
+  activities: "events:activities",
+});
+const EVENT_BUCKET_KEYS = Object.values(EVENT_BUCKET_KEY_MAP);
 const EVENT_REVIEW_LOG_KEY = "events:review-log";
+const EVENT_REFRESH_STATUS_KEY = "events:refresh-status";
+const CRON_LOCK_KEY = "cron:lock";
+const CLEARABLE_EVENT_CACHE_KEYS = [
+  NEWS_CACHE_KEY,
+  TRAFFIC_CACHE_KEY,
+  EVENT_CACHE_KEY,
+  MERGED_EVENT_CACHE_KEY,
+  ...EVENT_BUCKET_KEYS,
+];
 
 function createKvClient() {
   const url = process.env.KV_REST_API_URL;
@@ -82,6 +98,28 @@ async function setKvValue(key, value, options = {}) {
   }
 }
 
+async function trySetKvValue(key, value, options = {}) {
+  if (!kv) return undefined;
+  try {
+    const result = await kv.set(key, value, { ...options, nx: true });
+    return result === "OK" || result === "ok" || result === true;
+  } catch (error) {
+    console.warn(`[event-store] KV nx set failed for ${key}:`, error.message);
+    return undefined;
+  }
+}
+
+async function deleteKvValue(key) {
+  if (!kv) return false;
+  try {
+    await kv.del(key);
+    return true;
+  } catch (error) {
+    console.warn(`[event-store] KV delete failed for ${key}:`, error.message);
+    return false;
+  }
+}
+
 function getSqliteValue(key) {
   if (shouldSkipLocalCache()) return undefined;
 
@@ -153,6 +191,25 @@ function setSqliteValue(key, value, options = {}) {
   }
 }
 
+function trySetSqliteValue(key, value, options = {}) {
+  if (shouldSkipLocalCache()) return false;
+  if (getSqliteValue(key) !== undefined) return false;
+  return setSqliteValue(key, value, options);
+}
+
+function deleteSqliteValue(key) {
+  if (shouldSkipLocalCache()) return false;
+
+  try {
+    const db = getSqliteDb();
+    db.prepare("DELETE FROM cache_entries WHERE key = ?").run(key);
+    return true;
+  } catch (error) {
+    console.warn(`[event-store] SQLite delete failed for ${key}:`, error.message);
+    return false;
+  }
+}
+
 async function getCachedValue(key) {
   const kvValue = await getKvValue(key);
   if (kvValue !== undefined) {
@@ -165,6 +222,22 @@ async function getCachedValue(key) {
 async function setCachedValue(key, value, options = {}) {
   const kvOk = await setKvValue(key, value, options);
   const sqliteOk = setSqliteValue(key, value, options);
+  return kvOk || sqliteOk;
+}
+
+async function trySetCachedValue(key, value, options = {}) {
+  const kvResult = await trySetKvValue(key, value, options);
+  if (kvResult === true) {
+    setSqliteValue(key, value, options);
+    return true;
+  }
+  if (kvResult === false) return false;
+  return trySetSqliteValue(key, value, options);
+}
+
+async function deleteCachedValue(key) {
+  const kvOk = await deleteKvValue(key);
+  const sqliteOk = deleteSqliteValue(key);
   return kvOk || sqliteOk;
 }
 
@@ -188,11 +261,15 @@ async function getEventCacheStatus() {
     .filter(Number.isFinite)
     .sort((a, b) => b - a)[0];
   const events = await getCachedEvents();
+  const refreshStatus = await getRefreshStatus();
+  const cronLock = await getCronLockStatus();
   return {
     hasKv: Boolean(kv),
     localEntries: entries,
     lastLocalUpdate: lastLocalUpdate ? new Date(lastLocalUpdate).toISOString() : null,
     eventCount: Array.isArray(events) ? events.length : 0,
+    refreshStatus,
+    cronLock,
   };
 }
 
@@ -201,6 +278,121 @@ async function setCachedEvents(events, options = {}) {
   const legacyOk = await setCachedValue(EVENT_CACHE_KEY, safeEvents, options);
   const mergedOk = await setCachedValue(MERGED_EVENT_CACHE_KEY, safeEvents, options);
   return legacyOk || mergedOk;
+}
+
+function getEventBucketGroups(events) {
+  const safeEvents = Array.isArray(events) ? events : [];
+  const trafficEvents = safeEvents.filter((event) => ["traffic", "construction", "accident"].includes(event?.category));
+  const activityEvents = safeEvents.filter((event) => event?.category === "activity");
+  const newsEvents = safeEvents.filter((event) => !trafficEvents.includes(event) && event?.category !== "activity");
+  return {
+    traffic: trafficEvents,
+    news: newsEvents,
+    activities: activityEvents,
+  };
+}
+
+async function writeEventBuckets(events, options = { ex: 600 }) {
+  const buckets = getEventBucketGroups(events);
+  await Promise.all([
+    setCachedValue(EVENT_BUCKET_KEY_MAP.traffic, buckets.traffic, options),
+    setCachedValue(EVENT_BUCKET_KEY_MAP.news, buckets.news, options),
+    setCachedValue(EVENT_BUCKET_KEY_MAP.activities, buckets.activities, options),
+  ]);
+  return {
+    traffic: buckets.traffic.length,
+    news: buckets.news.length,
+    activities: buckets.activities.length,
+  };
+}
+
+async function clearEventCaches(keys = CLEARABLE_EVENT_CACHE_KEYS) {
+  const uniqueKeys = Array.from(new Set(keys));
+  const results = await Promise.all(uniqueKeys.map(async (key) => ({
+    key,
+    cleared: await deleteCachedValue(key),
+  })));
+  return {
+    clearedKeys: results.filter((result) => result.cleared).map((result) => result.key),
+    attemptedKeys: uniqueKeys,
+  };
+}
+
+async function setRefreshStatus(status = {}) {
+  const previous = await getRefreshStatus();
+  const completedAt = status.completedAt || status.updatedAt || new Date().toISOString();
+  const payload = {
+    ...(previous || {}),
+    ...status,
+    lastSuccessAt: previous?.lastSuccessAt || "",
+    lastSuccessRunId: previous?.lastSuccessRunId || "",
+    lastError: previous?.lastError || null,
+    updatedAt: status.updatedAt || new Date().toISOString(),
+  };
+
+  if (status.status === "success") {
+    payload.lastSuccessAt = completedAt;
+    payload.lastSuccessRunId = status.runId || "";
+  }
+  if (status.status === "error") {
+    payload.lastError = {
+      message: status.error || "unknown error",
+      runId: status.runId || "",
+      at: completedAt,
+    };
+  }
+
+  await setCachedValue(EVENT_REFRESH_STATUS_KEY, payload);
+  return payload;
+}
+
+async function getRefreshStatus() {
+  const value = await getCachedValue(EVENT_REFRESH_STATUS_KEY);
+  return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function createLockPayload(owner, ttlSeconds) {
+  const now = Date.now();
+  return {
+    owner,
+    startedAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + ttlSeconds * 1000).toISOString(),
+  };
+}
+
+async function acquireCronLock(options = {}) {
+  const ttlSeconds = Math.max(30, Number(options.ttlSeconds || process.env.CRON_LOCK_TTL_SECONDS || 540));
+  const owner = String(options.owner || `cron-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const lock = createLockPayload(owner, ttlSeconds);
+  const acquired = await trySetCachedValue(CRON_LOCK_KEY, lock, { ex: ttlSeconds });
+  if (acquired) return { acquired: true, lock };
+  return { acquired: false, lock: await getCronLockStatus() };
+}
+
+async function releaseCronLock(owner) {
+  const current = await getCachedValue(CRON_LOCK_KEY);
+  if (owner && current?.owner && current.owner !== owner) return false;
+  return deleteCachedValue(CRON_LOCK_KEY);
+}
+
+async function getCronLockStatus() {
+  const lock = await getCachedValue(CRON_LOCK_KEY);
+  if (!lock || typeof lock !== "object" || Array.isArray(lock)) {
+    return { locked: false };
+  }
+
+  const expiresAtMs = Date.parse(lock.expiresAt || "");
+  if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
+    await deleteCachedValue(CRON_LOCK_KEY);
+    return { locked: false };
+  }
+
+  return {
+    locked: true,
+    owner: lock.owner || "",
+    startedAt: lock.startedAt || "",
+    expiresAt: lock.expiresAt || "",
+  };
 }
 
 function findEventIndex(events, eventId) {
@@ -334,14 +526,29 @@ function dedupeEvents(events) {
 }
 
 module.exports = {
+  NEWS_CACHE_KEY,
+  TRAFFIC_CACHE_KEY,
   EVENT_CACHE_KEY,
   MERGED_EVENT_CACHE_KEY,
+  EVENT_BUCKET_KEY_MAP,
   EVENT_BUCKET_KEYS,
   EVENT_REVIEW_LOG_KEY,
+  EVENT_REFRESH_STATUS_KEY,
+  CRON_LOCK_KEY,
+  CLEARABLE_EVENT_CACHE_KEYS,
+  acquireCronLock,
+  clearEventCaches,
+  deleteCachedValue,
+  getCronLockStatus,
   getCachedEvents,
   getEventCacheStatus,
   getCachedValue,
+  getEventBucketGroups,
+  getRefreshStatus,
+  releaseCronLock,
   setCachedEvents,
   setCachedValue,
+  setRefreshStatus,
   updateCachedEvent,
+  writeEventBuckets,
 };

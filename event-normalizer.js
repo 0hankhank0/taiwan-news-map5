@@ -278,17 +278,17 @@ function normalizeEvent(event, index = 0) {
     venue: normalizeText(event.venue || ""),
     lat,
     lng,
-    locationPrecision: normalizeText(event.locationPrecision || location.locationPrecision || "unknown"),
-    locationSource: normalizeText(event.locationSource || location.locationSource || "unknown"),
-    locationQuery: normalizeText(event.locationQuery || location.locationQuery || ""),
-    locationConfidence: Number.isFinite(Number(event.locationConfidence ?? location.locationConfidence))
-      ? Number(event.locationConfidence ?? location.locationConfidence)
+    locationPrecision: normalizeText(location.locationPrecision || event.locationPrecision || "unknown"),
+    locationSource: normalizeText(location.locationSource || event.locationSource || "unknown"),
+    locationQuery: normalizeText(location.locationQuery || event.locationQuery || ""),
+    locationConfidence: Number.isFinite(Number(location.locationConfidence ?? event.locationConfidence))
+      ? Number(location.locationConfidence ?? event.locationConfidence)
       : 0,
-    locationQuality: normalizeText(event.locationQuality || location.locationQuality || "low"),
-    locationDisplayMode: normalizeText(event.locationDisplayMode || location.locationDisplayMode || "list_only"),
-    locationEvidence: normalizeText(event.locationEvidence || location.locationEvidence || ""),
+    locationQuality: normalizeText(location.locationQuality || event.locationQuality || "low"),
+    locationDisplayMode: normalizeText(location.locationDisplayMode || event.locationDisplayMode || "list_only"),
+    locationEvidence: normalizeText(location.locationEvidence || event.locationEvidence || ""),
     locationAmbiguity: Boolean(event.locationAmbiguity),
-    locationReason: normalizeText(event.locationReason || ""),
+    locationReason: normalizeText(location.locationReason || event.locationReason || ""),
     locationCandidates: Array.isArray(event.locationCandidates) ? event.locationCandidates.slice(0, 8) : undefined,
     severity: inferSeverity(event, rawCategory),
     source: normalizeText(event.source || event.sourceName || "news"),
