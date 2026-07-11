@@ -11,6 +11,7 @@ process.env.CRON_SECRET = "cron-test-secret";
 const eventRefresh = require("../event-refresh");
 const {
   CRON_LOCK_KEY,
+  DEFAULT_CRON_LOCK_TTL_SECONDS,
   EVENT_BUCKET_KEY_MAP,
   EVENT_REFRESH_STATUS_KEY,
   acquireCronLock,
@@ -52,6 +53,7 @@ async function call(handler, req) {
   await deleteCachedValue(EVENT_REFRESH_STATUS_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
 
+  assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
   assert.equal(eventRefresh.DEFAULT_EVENT_CACHE_TTL_SECONDS, 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
