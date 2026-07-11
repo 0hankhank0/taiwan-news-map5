@@ -97,6 +97,7 @@ module.exports = async (req, res) => {
       lastSuccessAt: refresh.lastSuccessAt || "",
       lastError: refresh.lastError || null,
       durationMs: refresh.durationMs || 0,
+      cacheTtlSeconds: refresh.cacheTtlSeconds || 0,
       sourceCounts: refresh.sourceCounts || {},
       geocodingAttempts,
       geocodingHits,

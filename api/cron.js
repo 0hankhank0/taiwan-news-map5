@@ -56,8 +56,9 @@ module.exports = async (req, res) => {
 
   try {
     const result = await runEventRefresh({ runId, mode, startedAt });
+    const { events, ...summary } = result;
     return sendJson(res, 200, {
-      ...result,
+      ...summary,
       skippedByLock: false,
     });
   } catch (error) {
