@@ -59,6 +59,18 @@ async function call(handler, req) {
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("7200"), 7200);
 
+  const kktixMeta = eventRefresh.parseKktixMeta({
+    content: [
+      "時間：2026/07/20 19:00 ~ 2026/07/20 21:00",
+      "地點：Legacy Taipei / 台北市中正區八德路一段1號",
+    ].join("\n"),
+  });
+  assert.equal(kktixMeta.timeLine, "2026/07/20 19:00 ~ 2026/07/20 21:00");
+  assert.ok(kktixMeta.startAt);
+  assert.ok(kktixMeta.endAt);
+  assert.equal(kktixMeta.venue, "Legacy Taipei");
+  assert.equal(kktixMeta.address, "台北市中正區八德路一段1號");
+
   const now = Date.now();
   const officialTraffic = {
     id: "tdx_official_1",
