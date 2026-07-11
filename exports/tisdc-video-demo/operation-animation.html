@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Island Pulse Operation Animation</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #050812;
+      font-family: "Aptos", "Segoe UI", "Microsoft JhengHei UI", sans-serif;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: #050812;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="stage" width="1920" height="1080" aria-label="Island Pulse operation animation"></canvas>
+
+  <script>
+    const W = 1920;
+    const H = 1080;
+    const FPS = 30;
+    const DURATION = 46;
+    const canvas = document.getElementById("stage");
+    const ctx = canvas.getContext("2d", { alpha: false });
+
+    const assets = {
+      desktop: "../tisdc-2026-v2/assets/live-desktop.png",
+      mobile: "../tisdc-2026-v2/assets/live-mobile.png",
+    };
+
+    function clamp(value, min, max) {
+      return Math.min(max, Math.max(min, value));
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function ease(t) {
+      const x = clamp(t, 0, 1);
+      return x * x * (3 - 2 * x);
+    }
+
+    function between(t, start, end) {
+      return clamp((t - start) / (end - start), 0, 1);
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = reject;
+        image.src = src;
+      });
+    }
+
+    let cachedImages = null;
+
+    async function loadAssets() {
+      if (!cachedImages) {
+        const [desktop, mobile] = await Promise.all([
+          loadImage(assets.desktop),
+          loadImage(assets.mobile),
+        ]);
+        cachedImages = { desktop, mobile };
+      }
+      return cachedImages;
+    }
+
+    function roundedRect(x, y, w, h, r) {
+      const rr = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + rr, y);
+      ctx.arcTo(x + w, y, x + w, y + h, rr);
+      ctx.arcTo(x + w, y + h, x, y + h, rr);
+      ctx.arcTo(x, y + h, x, y, rr);
+      ctx.arcTo(x, y, x + w, y, rr);
+      ctx.closePath();
+    }
+
+    function fillRound(x, y, w, h, r, fill, stroke = "", lineWidth = 1) {
+      roundedRect(x, y, w, h, r);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+      }
+    }
+
+    function drawGrid(alpha = 0.08) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "#8fb0dc";
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= W; x += 120) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+      }
+      for (let y = 0; y <= H; y += 120) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawVignette() {
+      const gradient = ctx.createRadialGradient(W * 0.52, H * 0.48, 120, W * 0.52, H * 0.48, 1040);
+      gradient.addColorStop(0, "rgba(9, 17, 32, 0)");
+      gradient.addColorStop(0.68, "rgba(3, 6, 13, 0.34)");
+      gradient.addColorStop(1, "rgba(1, 3, 8, 0.86)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    function text(str, x, y, size, weight = 700, color = "#f5f8ff", align = "left") {
+      ctx.font = `${weight} ${size}px Aptos, Segoe UI, Microsoft JhengHei UI, sans-serif`;
+      ctx.fillStyle = color;
+      ctx.textAlign = align;
+      ctx.textBaseline = "alphabetic";
+      ctx.fillText(str, x, y);
+    }
+
+    function drawLabel(label, x, y) {
+      ctx.save();
+      ctx.font = "800 18px Aptos, Segoe UI, Microsoft JhengHei UI, sans-serif";
+      const width = ctx.measureText(label).width + 34;
+      fillRound(x, y, width, 42, 21, "rgba(8, 13, 24, 0.78)", "rgba(242, 200, 95, 0.22)", 1.2);
+      ctx.fillStyle = "#f2c85f";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, x + 17, y + 22);
+      ctx.restore();
+    }
+
+    function drawImageFocus(image, dx, dy, dw, dh, centerX, centerY, zoom) {
+      const cropW = image.width / zoom;
+      const cropH = image.height / zoom;
+      const sx = clamp(centerX - cropW / 2, 0, image.width - cropW);
+      const sy = clamp(centerY - cropH / 2, 0, image.height - cropH);
+      ctx.drawImage(image, sx, sy, cropW, cropH, dx, dy, dw, dh);
+    }
+
+    function drawScreen(image, x, y, w, h, r, centerX, centerY, zoom, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      fillRound(x, y, w, h, r, "rgba(9, 14, 26, 0.92)", "rgba(180, 203, 236, 0.18)", 1.5);
+      roundedRect(x, y, w, h, r);
+      ctx.clip();
+      drawImageFocus(image, x, y, w, h, centerX, centerY, zoom);
+      ctx.fillStyle = "rgba(4, 8, 16, 0.18)";
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+
+    function drawPhone(image, x, y, h, alpha = 1) {
+      const w = h * 0.462;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      fillRound(x - 18, y - 18, w + 36, h + 36, 48, "rgba(8, 13, 24, 0.95)", "rgba(180, 203, 236, 0.18)", 1.5);
+      fillRound(x, y, w, h, 38, "#070c16", "rgba(255,255,255,0.08)", 1);
+      roundedRect(x, y, w, h, 38);
+      ctx.clip();
+      ctx.drawImage(image, 0, 0, image.width, image.height, x, y, w, h);
+      ctx.fillStyle = "rgba(4, 8, 16, 0.16)";
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+      return w;
+    }
+
+    function drawCursor(x, y, scale = 1, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(x, y);
+      ctx.scale(scale, scale);
+      ctx.shadowColor = "rgba(78, 165, 255, 0.55)";
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(0, 54);
+      ctx.lineTo(15, 42);
+      ctx.lineTo(27, 69);
+      ctx.lineTo(43, 62);
+      ctx.lineTo(31, 36);
+      ctx.lineTo(51, 36);
+      ctx.closePath();
+      ctx.fillStyle = "#f5f8ff";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(4, 8, 16, 0.78)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawPulse(x, y, radius, color, t, alpha = 1) {
+      const pulse = (Math.sin(t * Math.PI * 2) + 1) / 2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(x, y, radius + pulse * 26, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = alpha * 0.18;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x, y, radius + pulse * 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawRangeCircle(x, y, radius, t, alpha = 1) {
+      const phase = (Math.sin(t * Math.PI * 2) + 1) / 2;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      const fill = ctx.createRadialGradient(x, y, 8, x, y, radius);
+      fill.addColorStop(0, "rgba(78, 165, 255, 0.18)");
+      fill.addColorStop(0.72, "rgba(78, 165, 255, 0.08)");
+      fill.addColorStop(1, "rgba(78, 165, 255, 0.02)");
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = "rgba(88, 174, 255, 0.92)";
+      ctx.lineWidth = 5;
+      ctx.setLineDash([18, 14]);
+      ctx.lineDashOffset = -t * 28;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.strokeStyle = `rgba(88, 174, 255, ${0.24 + phase * 0.22})`;
+      ctx.lineWidth = 18;
+      ctx.beginPath();
+      ctx.arc(x, y, radius + phase * 10, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.shadowColor = "rgba(78, 165, 255, 0.7)";
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = "#4ea5ff";
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      fillRound(x - 126, y + radius + 26, 252, 46, 23, "rgba(8, 13, 24, 0.82)", "rgba(78, 165, 255, 0.34)", 1.2);
+      text("Selected range / 3 km", x, y + radius + 57, 18, 850, "#dcecff", "center");
+      ctx.restore();
+    }
+
+    function drawCategoryFocus(t, alpha = 1) {
+      const p = ease(between(t, 7, 11.8));
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      fillRound(42, 288, 448, 124, 28, "rgba(8, 13, 24, 0.34)", "rgba(242, 200, 95, 0.36)", 2);
+      drawCaption("Category filter", "Filter first; map pins stay in view.", 1270, 760, 560);
+      drawPulse(214, 338, 42, "rgba(242, 200, 95, 0.86)", t / 1.7, 0.76);
+      drawCursor(lerp(560, 222, p), lerp(520, 338, p), 0.74, 1);
+      ctx.restore();
+    }
+
+    function drawCaption(title, body, x, y, w) {
+      fillRound(x, y, w, 162, 28, "rgba(12, 21, 38, 0.88)", "rgba(180, 203, 236, 0.18)", 1.2);
+      text(title, x + 32, y + 58, 34, 850, "#f5f8ff");
+      text(body, x + 32, y + 112, 24, 650, "rgba(223, 234, 250, 0.82)");
+    }
+
+    function drawSectionA(images, t) {
+      const a = ease(between(t, 0, 18));
+      const focusX = lerp(960, 1280, a);
+      const focusY = lerp(540, 520, a);
+      const zoom = lerp(1.02, 1.16, a);
+      drawScreen(images.desktop, 0, 0, W, H, 0, focusX, focusY, zoom, 1);
+      ctx.fillStyle = "rgba(3, 6, 13, 0.36)";
+      ctx.fillRect(0, 0, W, H);
+      drawGrid(0.035);
+      drawVignette();
+
+      const panelAlpha = t < 7 ? 1 : clamp(1 - between(t, 7, 8.6), 0, 1);
+      ctx.save();
+      ctx.globalAlpha = panelAlpha;
+      drawLabel("CORE OPERATION", 88, 82);
+      text("Event Map", 88, 170, 76, 850);
+      text("事件地圖", 88, 238, 48, 780, "rgba(245, 248, 255, 0.92)");
+      text("Scan public signals by location, category and context.", 88, 304, 28, 620, "rgba(223, 234, 250, 0.78)");
+      ctx.restore();
+
+      if (t < 7) {
+        drawPulse(1348, 444, 92, "rgba(255, 156, 56, 0.86)", t / 2, 0.9);
+        drawPulse(1282, 642, 88, "rgba(78, 165, 255, 0.86)", t / 2 + 0.35, 0.75);
+        const p = ease(between(t, 1.5, 5.6));
+        drawCursor(lerp(1590, 1360, p), lerp(210, 445, p), 0.82, 1);
+      } else if (t < 12.5) {
+        drawCategoryFocus(t, 1);
+      } else {
+        drawCaption("Nearby Mode", "The selected radius stays visible while nearby signals update.", 88, 780, 840);
+        const p = ease(between(t, 12.5, 17.4));
+        drawCursor(lerp(1250, 1580, p), lerp(120, 102, p), 0.82, 1);
+        drawPulse(1580, 102, 32, "rgba(78, 165, 255, 0.9)", t, 0.72);
+        drawRangeCircle(1290, 526, 205, t / 2, ease(between(t, 12.8, 14.2)));
+      }
+    }
+
+    function drawReportChip(x, y, title, body, color) {
+      fillRound(x, y, 330, 122, 24, "rgba(12, 21, 38, 0.86)", "rgba(180, 203, 236, 0.16)", 1.2);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + 30, y + 36, 7, 0, Math.PI * 2);
+      ctx.fill();
+      text(title, x + 52, y + 44, 24, 850, "#f5f8ff");
+      text(body, x + 52, y + 86, 20, 650, "rgba(223, 234, 250, 0.76)");
+    }
+
+    function drawSectionB(images, t) {
+      ctx.fillStyle = "#050812";
+      ctx.fillRect(0, 0, W, H);
+      drawGrid(0.045);
+      drawVignette();
+
+      drawLabel("REPORT LOOP", 88, 82);
+      text("回報與修正", 88, 170, 70, 850);
+      text("Users correct local context.", 88, 236, 28, 620, "rgba(223, 234, 250, 0.78)");
+
+      const p = ease(between(t, 18, 31));
+      drawScreen(images.desktop, 84, 324, 1110, 625, 34, lerp(1030, 620, p), lerp(520, 560, p), lerp(1.08, 1.28, p), 0.95);
+      drawPhone(images.mobile, 1338, 168, 808, 0.95);
+
+      drawPulse(520, 686, 96, "rgba(56, 217, 130, 0.82)", t / 2, 0.65);
+      drawCursor(lerp(1180, 1480, ease(between(t, 20, 27))), lerp(780, 625, ease(between(t, 20, 27))), 0.8, 1);
+
+      fillRound(620, 122, 560, 122, 26, "rgba(12, 21, 38, 0.86)", "rgba(56, 217, 130, 0.2)", 1.2);
+      text("Report feedback", 652, 174, 32, 850, "#f5f8ff");
+      text("錯誤、重複、地方資訊，回到系統修正。", 652, 218, 24, 720, "rgba(223, 234, 250, 0.82)");
+
+      const chipsY = 690;
+      drawReportChip(1270, chipsY, "錯誤座標", "correct location", "#4ea5ff");
+      drawReportChip(1270, chipsY + 132, "重複事件", "merge duplicate", "#f2c85f");
+      drawReportChip(1270, chipsY + 264, "地方資訊", "add context", "#38d982");
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(242, 200, 95, 0.52)";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 12]);
+      ctx.beginPath();
+      ctx.moveTo(1180, 720);
+      ctx.bezierCurveTo(1260, 728, 1260, chipsY + 50, 1270, chipsY + 50);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawSummaryCard(x, y, w, h, index, title, body, color, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      fillRound(x, y, w, h, 28, "rgba(12, 21, 38, 0.88)", "rgba(180, 203, 236, 0.16)", 1.2);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(x + 34, y + 42, 8, 0, Math.PI * 2);
+      ctx.fill();
+      text(index, x + 54, y + 49, 17, 850, "#f2c85f");
+      text(title, x + 30, y + 105, 34, 850, "#f5f8ff");
+      text(body, x + 30, y + 150, 22, 650, "rgba(223, 234, 250, 0.78)");
+      ctx.restore();
+    }
+
+    function drawSectionC(images, t) {
+      drawScreen(images.desktop, 0, 0, W, H, 0, 1260, 530, 1.18, 1);
+      ctx.fillStyle = "rgba(3, 6, 13, 0.72)";
+      ctx.fillRect(0, 0, W, H);
+      drawGrid(0.04);
+      drawVignette();
+
+      drawLabel("SUMMARY", 88, 82);
+      text("Sense nearby events.", 88, 184, 76, 850);
+      text("Understand context. Act with confidence.", 88, 262, 56, 820, "rgba(245, 248, 255, 0.92)");
+      text("Correct public signals.", 88, 328, 56, 820, "rgba(245, 248, 255, 0.92)");
+
+      const start = 31;
+      const cards = [
+        ["01", "感知 Sense", "Nearby events become visible.", "#4ea5ff"],
+        ["02", "理解 Understand", "Context explains why it matters.", "#f2c85f"],
+        ["03", "回應 Act", "People choose safer next steps.", "#ff9c38"],
+        ["04", "修正 Correct", "Public feedback improves signals.", "#38d982"],
+      ];
+      cards.forEach((card, i) => {
+        const alpha = ease(between(t, start + 1.2 + i * 1.2, start + 2.6 + i * 1.2));
+        drawSummaryCard(88 + i * 442, 520, 398, 220, card[0], card[1], card[2], card[3], alpha);
+      });
+
+      const progress = ease(between(t, 38, 45));
+      ctx.save();
+      ctx.strokeStyle = "rgba(242, 200, 95, 0.7)";
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(88, 814);
+      ctx.lineTo(88 + 1600 * progress, 814);
+      ctx.stroke();
+      ctx.restore();
+
+      const endAlpha = ease(between(t, 40, 45));
+      ctx.save();
+      ctx.globalAlpha = endAlpha;
+      text("Island Pulse", 88, 938, 64, 850);
+      text("島嶼脈搏", 88, 994, 36, 760, "rgba(245, 248, 255, 0.84)");
+      text("Public event awareness for Taiwan.", 1490, 970, 28, 700, "rgba(223, 234, 250, 0.76)", "right");
+      ctx.restore();
+    }
+
+    function drawFrame(images, t) {
+      ctx.fillStyle = "#050812";
+      ctx.fillRect(0, 0, W, H);
+      if (t < 18) {
+        drawSectionA(images, t);
+      } else if (t < 31) {
+        drawSectionB(images, t);
+      } else {
+        drawSectionC(images, t);
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      text("ISLAND PULSE / CONCEPT DEMO", 66, 1040, 16, 800, "rgba(223, 234, 250, 0.42)");
+      text(`${Math.min(46, Math.floor(t)).toString().padStart(2, "0")} / 46`, 1854, 1040, 16, 800, "rgba(223, 234, 250, 0.42)", "right");
+      ctx.restore();
+    }
+
+    async function blobToBase64(blob) {
+      const buffer = await blob.arrayBuffer();
+      let binary = "";
+      const bytes = new Uint8Array(buffer);
+      const chunkSize = 0x8000;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      return btoa(binary);
+    }
+
+    window.renderAnimation = async function renderAnimation() {
+      const images = await loadAssets();
+      drawFrame(images, 0);
+
+      const candidates = [
+        "video/mp4;codecs=h264",
+        "video/webm;codecs=vp9",
+        "video/webm;codecs=vp8",
+        "video/webm",
+      ];
+      const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || "";
+      const stream = canvas.captureStream(FPS);
+      const recorder = new MediaRecorder(stream, {
+        mimeType,
+        videoBitsPerSecond: 7000000,
+      });
+      const chunks = [];
+      recorder.ondataavailable = event => {
+        if (event.data && event.data.size) chunks.push(event.data);
+      };
+      const stopped = new Promise(resolve => {
+        recorder.onstop = resolve;
+      });
+
+      const start = performance.now();
+      recorder.start(500);
+      await new Promise(resolve => {
+        function tick(now) {
+          const elapsed = (now - start) / 1000;
+          drawFrame(images, Math.min(elapsed, DURATION));
+          if (elapsed < DURATION) {
+            requestAnimationFrame(tick);
+          } else {
+            resolve();
+          }
+        }
+        requestAnimationFrame(tick);
+      });
+      recorder.stop();
+      await stopped;
+      stream.getTracks().forEach(track => track.stop());
+
+      const blob = new Blob(chunks, { type: recorder.mimeType || mimeType || "video/webm" });
+      return {
+        mimeType: blob.type,
+        duration: DURATION,
+        base64: await blobToBase64(blob),
+      };
+    };
+
+    window.previewFrame = async function previewFrame(t) {
+      const images = await loadAssets();
+      drawFrame(images, clamp(Number(t) || 0, 0, DURATION));
+      return true;
+    };
+  </script>
+</body>
+</html>
