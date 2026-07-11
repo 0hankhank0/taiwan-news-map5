@@ -61,6 +61,7 @@ jobs:
             cacheTtlSeconds: payload.cacheTtlSeconds,
             durationMs: payload.durationMs,
             sourceCounts: counts,
+            lock: payload.lock || null,
           };
           console.log(`[cron-summary] ${JSON.stringify(summary)}`);
 
@@ -68,7 +69,10 @@ jobs:
             console.error("::error::Cron endpoint did not report success.");
             process.exit(1);
           }
-          if (payload.skippedByLock) process.exit(0);
+          if (payload.skippedByLock) {
+            console.error(`::error::Cron skipped by active lock: ${JSON.stringify(payload.lock || {})}`);
+            process.exit(1);
+          }
           if (process.env.MODE === "all" && count <= 0) {
             console.error("::error::Cron returned zero active events for mode=all.");
             process.exit(1);
