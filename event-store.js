@@ -16,6 +16,7 @@ const EVENT_BUCKET_KEYS = Object.values(EVENT_BUCKET_KEY_MAP);
 const EVENT_REVIEW_LOG_KEY = "events:review-log";
 const EVENT_REFRESH_STATUS_KEY = "events:refresh-status";
 const CRON_LOCK_KEY = "cron:lock";
+const DEFAULT_CRON_LOCK_TTL_SECONDS = 120;
 const CLEARABLE_EVENT_CACHE_KEYS = [
   NEWS_CACHE_KEY,
   TRAFFIC_CACHE_KEY,
@@ -361,7 +362,7 @@ function createLockPayload(owner, ttlSeconds) {
 }
 
 async function acquireCronLock(options = {}) {
-  const ttlSeconds = Math.max(30, Number(options.ttlSeconds || process.env.CRON_LOCK_TTL_SECONDS || 540));
+  const ttlSeconds = Math.max(30, Number(options.ttlSeconds || process.env.CRON_LOCK_TTL_SECONDS || DEFAULT_CRON_LOCK_TTL_SECONDS));
   const owner = String(options.owner || `cron-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const lock = createLockPayload(owner, ttlSeconds);
   const acquired = await trySetCachedValue(CRON_LOCK_KEY, lock, { ex: ttlSeconds });
@@ -535,6 +536,7 @@ module.exports = {
   EVENT_REVIEW_LOG_KEY,
   EVENT_REFRESH_STATUS_KEY,
   CRON_LOCK_KEY,
+  DEFAULT_CRON_LOCK_TTL_SECONDS,
   CLEARABLE_EVENT_CACHE_KEYS,
   acquireCronLock,
   clearEventCaches,
