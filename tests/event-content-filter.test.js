@@ -27,6 +27,11 @@ function expectVisible(input, expectedVisibility = null) {
   "交通政策論壇今日登場，專家討論預算與修法",
   "行政院統計報告出爐，表揚績優單位",
   "社福津貼資格名冊公告，民眾可查詢補發進度",
+  "高雄市府推動青年租金方案，說明申請資格與受理時程",
+  "縣府宣布產業升級計畫核定，將編列預算補助地方業者",
+  "市議會審查追加預算，局處說明施政成果與採購進度",
+  "工務局舉行道路改善說明會，邀請居民報名參加座談",
+  "農業部視察地方農損，爭取救助補助與產銷調節",
 ].forEach(expectHidden);
 
 [
@@ -57,6 +62,8 @@ function expectVisible(input, expectedVisibility = null) {
   "飛彈車事故造成道路封閉，警方提醒改道",
   "養殖區淹水達警戒，居民緊急疏散撤離",
   "農產市場火災延燒，周邊封路管制",
+  "市府宣布地下水管破裂搶修，三里今晚停水並實施交通管制",
+  "工務局道路改善工程今晨封路，公車改道並禁止通行",
 ].forEach((text) => expectVisible(text, VISIBILITY.VISIBLE_POLICY_IMPACT));
 
 [
@@ -69,6 +76,7 @@ function expectVisible(input, expectedVisibility = null) {
   { title: "9月演唱會首辦，卡司公布並開賣", category: "activity", city: "台北市", venue: "台北小巨蛋" },
   { title: "數月後大型展覽公布活動卡司", category: "activity", lat: 25.033, lng: 121.565 },
   { title: "國際賽事明年登場", category: "activity", location: "高雄巨蛋" },
+  { title: "高雄在地講座今晚登場", category: "activity", city: "高雄市", venue: "高雄市立圖書館" },
 ].forEach((input) => expectVisible(input));
 
 console.log("event-content-filter tests passed");
