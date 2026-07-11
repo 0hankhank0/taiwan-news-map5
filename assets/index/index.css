@@ -3251,6 +3251,16 @@ body.video-demo-mode .modal-box {
     will-change: transform, opacity;
 }
 
+.video-demo-caption[data-placement="right"] {
+    left: auto;
+    right: clamp(24px, 5vw, 96px);
+}
+
+.video-demo-caption[data-placement="left"] {
+    left: clamp(24px, 4vw, 72px);
+    right: auto;
+}
+
 .video-demo-caption::before {
     content: "";
     position: absolute;
@@ -3317,6 +3327,65 @@ body.video-demo-mode .modal-box {
 
 .video-demo-frame.visible {
     opacity: 1;
+}
+
+.video-demo-range {
+    position: fixed;
+    left: 0;
+    top: 0;
+    display: grid;
+    place-items: end center;
+    padding-bottom: 18px;
+    border: 4px dashed rgba(78, 165, 255, 0.95);
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at center, rgba(78, 165, 255, 0.18) 0%, rgba(78, 165, 255, 0.08) 56%, rgba(78, 165, 255, 0.02) 100%);
+    box-shadow:
+        0 0 0 16px rgba(78, 165, 255, 0.1),
+        0 0 42px rgba(78, 165, 255, 0.34),
+        inset 0 0 38px rgba(78, 165, 255, 0.16);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate3d(-400px, -400px, 0);
+    transition: transform 0.62s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.24s ease;
+    will-change: transform, opacity;
+}
+
+.video-demo-range.visible {
+    opacity: 1;
+    animation: videoDemoRangePulse 2.4s ease-in-out infinite;
+}
+
+.video-demo-range span {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #4ea5ff;
+    box-shadow: 0 0 22px rgba(78, 165, 255, 0.92);
+    transform: translate(-50%, -50%);
+}
+
+.video-demo-range strong {
+    display: inline-grid;
+    place-items: center;
+    min-width: 104px;
+    height: 36px;
+    padding: 0 18px;
+    border: 1px solid rgba(111, 190, 255, 0.46);
+    border-radius: 999px;
+    color: #eef7ff;
+    background: rgba(7, 14, 26, 0.82);
+    font: 800 16px var(--font-mono, monospace);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34);
+    transform: translateY(46px);
+}
+
+@keyframes videoDemoRangePulse {
+    0%, 100% { box-shadow: 0 0 0 12px rgba(78, 165, 255, 0.08), 0 0 42px rgba(78, 165, 255, 0.3), inset 0 0 38px rgba(78, 165, 255, 0.14); }
+    50% { box-shadow: 0 0 0 22px rgba(78, 165, 255, 0.14), 0 0 58px rgba(78, 165, 255, 0.42), inset 0 0 48px rgba(78, 165, 255, 0.2); }
 }
 
 .video-demo-cursor {

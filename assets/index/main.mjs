@@ -2381,24 +2381,31 @@ import {
             overlay.id = "video-demo-overlay";
             overlay.className = "video-demo-overlay";
             overlay.setAttribute("aria-hidden", "true");
-            overlay.innerHTML = `
-                <div class="video-demo-caption">
-                    <div class="video-demo-kicker">Island Pulse / Product Demo</div>
-                    <div class="video-demo-step"></div>
-                    <h1></h1>
-                    <p></p>
-                </div>
-                <div class="video-demo-frame"></div>
-                <div class="video-demo-click"></div>
-                <div class="video-demo-cursor"><i class="fa-solid fa-arrow-pointer"></i></div>
-                <div class="video-demo-summary">
-                    <article><span>01</span><strong>Sense</strong><small>nearby events</small></article>
-                    <article><span>02</span><strong>Understand</strong><small>context</small></article>
-                    <article><span>03</span><strong>Act</strong><small>with confidence</small></article>
-                    <article><span>04</span><strong>Correct</strong><small>public signals</small></article>
-                </div>
-            `;
+            overlay.innerHTML = [
+                '<div class="video-demo-caption">',
+                '<div class="video-demo-kicker">Island Pulse / 網頁操作導覽</div>',
+                '<div class="video-demo-step"></div>',
+                '<h1></h1>',
+                '<p></p>',
+                '</div>',
+                '<div class="video-demo-frame"></div>',
+                '<div class="video-demo-range"><span></span><strong>3 km</strong></div>',
+                '<div class="video-demo-click"></div>',
+                '<div class="video-demo-cursor"><i class="fa-solid fa-arrow-pointer"></i></div>',
+                '<div class="video-demo-summary">',
+                '<article><span>01</span><strong>先看位置</strong><small>用地圖掌握事件在哪裡</small></article>',
+                '<article><span>02</span><strong>再篩類型</strong><small>把不相關的訊息降到最低</small></article>',
+                '<article><span>03</span><strong>切到附近</strong><small>只留下目前半徑內的事件</small></article>',
+                '<article><span>04</span><strong>回報修正</strong><small>讓公共訊號越來越準</small></article>',
+                '</div>'
+            ].join("");
             document.body.appendChild(overlay);
+        }
+        if (!overlay.querySelector(".video-demo-range")) {
+            const range = document.createElement("div");
+            range.className = "video-demo-range";
+            range.innerHTML = "<span></span><strong>3 km</strong>";
+            overlay.insertBefore(range, overlay.querySelector(".video-demo-click"));
         }
         return {
             overlay,
@@ -2407,14 +2414,16 @@ import {
             title: overlay.querySelector(".video-demo-caption h1"),
             copy: overlay.querySelector(".video-demo-caption p"),
             frame: overlay.querySelector(".video-demo-frame"),
+            range: overlay.querySelector(".video-demo-range"),
             click: overlay.querySelector(".video-demo-click"),
             cursor: overlay.querySelector(".video-demo-cursor"),
             summary: overlay.querySelector(".video-demo-summary")
         };
     }
 
-    function setVideoDemoCaption(title, copy, step = "") {
+    function setVideoDemoCaption(title, copy, step = "", placement = "left") {
         const shell = ensureVideoDemoShell();
+        shell.caption.dataset.placement = placement;
         shell.step.textContent = step;
         shell.title.textContent = title;
         shell.copy.textContent = copy;
@@ -2443,9 +2452,9 @@ import {
         const top = Math.max(8, rect.top - padding);
         const width = Math.min(window.innerWidth - left - 8, rect.width + padding * 2);
         const height = Math.min(window.innerHeight - top - 8, rect.height + padding * 2);
-        shell.frame.style.transform = `translate3d(${left}px, ${top}px, 0)`;
-        shell.frame.style.width = `${Math.max(42, width)}px`;
-        shell.frame.style.height = `${Math.max(42, height)}px`;
+        shell.frame.style.transform = "translate3d(" + left + "px, " + top + "px, 0)";
+        shell.frame.style.width = Math.max(42, width) + "px";
+        shell.frame.style.height = Math.max(42, height) + "px";
         shell.frame.classList.add("visible");
         return rect;
     }
@@ -2472,7 +2481,7 @@ import {
             }
         }
         shell.cursor.classList.add("visible");
-        shell.cursor.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+        shell.cursor.style.transform = "translate3d(" + Math.round(x) + "px, " + Math.round(y) + "px, 0)";
         await videoDemoWait(delay);
     }
 
@@ -2480,12 +2489,30 @@ import {
         const shell = ensureVideoDemoShell();
         const rect = frameVideoDemoElement(target, 10);
         if (!rect) return;
-        shell.click.style.left = `${rect.left + rect.width / 2}px`;
-        shell.click.style.top = `${rect.top + rect.height / 2}px`;
+        shell.click.style.left = (rect.left + rect.width / 2) + "px";
+        shell.click.style.top = (rect.top + rect.height / 2) + "px";
         shell.click.classList.remove("visible");
         shell.click.getBoundingClientRect();
         shell.click.classList.add("visible");
         setTimeout(() => shell.click.classList.remove("visible"), 520);
+    }
+
+    function setVideoDemoRange(visible, target = null) {
+        const shell = ensureVideoDemoShell();
+        if (!shell.range) return;
+        if (!visible) {
+            shell.range.classList.remove("visible");
+            return;
+        }
+        const mapEl = getVideoDemoElement(target) || mapContainer || document.getElementById("map-stage");
+        const mapRect = mapEl?.getBoundingClientRect();
+        const x = mapRect ? mapRect.left + mapRect.width * 0.52 : window.innerWidth * 0.64;
+        const y = mapRect ? mapRect.top + mapRect.height * 0.48 : window.innerHeight * 0.48;
+        const size = Math.min(window.innerWidth, window.innerHeight) * 0.31;
+        shell.range.style.width = Math.round(size) + "px";
+        shell.range.style.height = Math.round(size) + "px";
+        shell.range.style.transform = "translate3d(" + Math.round(x - size / 2) + "px, " + Math.round(y - size / 2) + "px, 0)";
+        shell.range.classList.add("visible");
     }
 
     function pickVideoDemoEvent(preferredCategory = "") {
@@ -2501,11 +2528,7 @@ import {
     function getVideoDemoLocation() {
         const seed = pickVideoDemoEvent("traffic") || pickVideoDemoEvent();
         if (!seed) return { ...VIDEO_DEMO_FALLBACK_LOCATION };
-        return {
-            lat: Number(seed.lat) + 0.003,
-            lng: Number(seed.lng) + 0.003,
-            accuracy: 20
-        };
+        return { lat: Number(seed.lat) + 0.003, lng: Number(seed.lng) + 0.003, accuracy: 20 };
     }
 
     function prepareVideoDemoBaseline() {
@@ -2564,7 +2587,7 @@ import {
         if (typeEl && typeEl.options.length > 1) typeEl.selectedIndex = 1;
         const messageEl = document.getElementById("report-message");
         if (messageEl) {
-            messageEl.value = "示範：位置可能偏移，建議修正到附近路口。";
+            messageEl.value = "這個事件的位置或內容需要補充，請協助更新。";
             messageEl.dispatchEvent(new Event("input", { bubbles: true }));
         }
     }
@@ -2572,75 +2595,64 @@ import {
     async function runVideoDemoSequence() {
         const shell = ensureVideoDemoShell();
         shell.overlay.classList.add("ready");
-
         while (VIDEO_DEMO_ROUTE) {
-            prepareVideoDemoBaseline();
             setVideoDemoSummary(false);
-
-            setVideoDemoCaption(
-                "事件地圖 / Event Map",
-                "即時事件以分類標記聚合在台灣地圖上，先看到全局分布。",
-                "14-18 秒"
-            );
+            setVideoDemoRange(false);
+            try {
+                prepareVideoDemoBaseline();
+            } catch (error) {
+                console.warn("[video-demo] baseline setup skipped", error);
+            }
+            setVideoDemoCaption("先看整張事件地圖", "我先把台灣拉到全島視角。每一個圖釘都是一個正在發生、可能影響交通或生活的公共事件。", "00-06 秒", "left");
             flyToLatLng([23.7, 120.95], 7.1, 700);
             frameVideoDemoElement("#map-stage", 14);
             await moveVideoDemoCursorTo("#map-stage", "center", 900);
-            await videoDemoWait(2400);
-
+            await videoDemoWait(3300);
             const firstPin = document.querySelector(".map-pin.event-marker");
-            setVideoDemoCaption(
-                "地圖標記 / Signals",
-                "不同顏色與圖示代表交通、災害、活動等公共事件訊號。",
-                "18-22 秒"
-            );
+            setVideoDemoCaption("點圖釘看事件摘要", "接著點一個圖釘。使用者可以直接看類型、地點、更新時間和資料來源，不用先讀完整清單。", "06-13 秒", "right");
             if (firstPin) {
                 frameVideoDemoElement(firstPin, 18);
                 await moveVideoDemoCursorTo(firstPin, "center", 650);
                 pulseVideoDemoClick(firstPin);
                 firstPin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             }
-            await videoDemoWait(3000);
+            await videoDemoWait(4200);
             closeActivePopup();
-
-            setVideoDemoCaption(
-                "事件卡片 / Event Cards",
-                "左側卡片同步呈現事件摘要、來源與可回報的修正入口。",
-                "22-26 秒"
-            );
+            setVideoDemoCaption("左側清單保留判斷細節", "地圖告訴你在哪裡，左側卡片補上標題、可信度、影響狀態和回報入口，讓使用者能做下一步判斷。", "13-21 秒", "right");
             eventList.scrollTop = 0;
             const firstCard = eventList.querySelector(".event-card-v2");
             frameVideoDemoElement(firstCard || "#event-list", 14);
             await moveVideoDemoCursorTo(firstCard || "#event-list", "right", 700);
-            await videoDemoWait(2700);
-
-            setVideoDemoCaption(
-                "分類篩選 / Categories",
-                "用分類快速降低資訊噪音，讓使用者先看最相關的訊號。",
-                "26-29 秒"
-            );
+            await videoDemoWait(4200);
+            setVideoDemoCaption("用分類篩掉雜訊", "現在點交通分類。畫面會只留下交通相關事件，讓使用者先看最相關的訊號。", "21-29 秒", "right");
             const trafficChip = catFilters.querySelector('[data-category="traffic"]') || catFilters.querySelector("[data-category]");
             frameVideoDemoElement("#category-filters", 12);
             await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 650);
             pulseVideoDemoClick(trafficChip || "#category-filters");
             if (trafficChip) trafficChip.click();
-            await videoDemoWait(2600);
-
-            setVideoDemoCaption(
-                "附近模式 / Nearby Mode",
-                "切到目前位置半徑，讓公共事件從全台地圖變成附近可行動的提醒。",
-                "29-32 秒"
-            );
-            activateVideoDemoNearbyMode();
+            await videoDemoWait(4500);
+            setVideoDemoCaption("切到附近模式", "接著切換目前位置半徑。地圖上的藍色圈圈就是使用者選擇的 3 公里範圍，清單也會同步變成附近事件。", "29-39 秒", "left");
+            try {
+                activateVideoDemoNearbyMode();
+            } catch (error) {
+                console.warn("[video-demo] nearby setup skipped", error);
+            }
+            await videoDemoWait(500);
             const nearbyToggle = document.getElementById("nearby-toggle-desktop") || document.getElementById("nearby-toggle-mobile");
             frameVideoDemoElement(nearbyToggle || "#map-stage", 14);
             await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 650);
-            await videoDemoWait(2800);
-
-            setVideoDemoCaption(
-                "回報與修正 / Report Loop",
-                "使用者可以補充錯誤位置或內容，讓公共訊號形成可修正的閉環。",
-                "32-45 秒"
-            );
+            pulseVideoDemoClick(nearbyToggle || "#map-stage");
+            setVideoDemoRange(true, "#map-stage");
+            await videoDemoWait(5600);
+            setVideoDemoCaption("調整半徑就是調整關注範圍", "右上角的 3 km 控制目前範圍；圈圈留在地圖上，使用者一眼就知道自己正在看哪個區域。", "39-47 秒", "left");
+            const radiusBtn = document.getElementById("nearby-radius-desktop") || document.getElementById("nearby-radius-mobile");
+            frameVideoDemoElement(radiusBtn || nearbyToggle || "#map-stage", 14);
+            await moveVideoDemoCursorTo(radiusBtn || nearbyToggle || "#map-stage", "center", 650);
+            pulseVideoDemoClick(radiusBtn || nearbyToggle || "#map-stage");
+            setVideoDemoRange(true, "#map-stage");
+            await videoDemoWait(4300);
+            setVideoDemoCaption("最後用回報修正公共訊號", "如果位置、分類或內容有問題，使用者可以從事件卡片回報，讓後續資料更準。", "47-58 秒", "right");
+            setVideoDemoRange(false);
             isNearbyMode = false;
             userLocation = null;
             clearUserLocationMarker();
@@ -2654,18 +2666,13 @@ import {
             await moveVideoDemoCursorTo(reportButton, "center", 650);
             pulseVideoDemoClick(reportButton);
             openVideoDemoReportModal();
-            await videoDemoWait(500);
+            await videoDemoWait(700);
             frameVideoDemoElement("#report-modal .modal-box", 16);
-            await videoDemoWait(9500);
-
+            await videoDemoWait(5600);
             closeReportModal();
             shell.frame.classList.remove("visible");
             shell.cursor.classList.remove("visible");
-            setVideoDemoCaption(
-                "公共感知閉環 / Public Signal Loop",
-                "Sense nearby events. Understand context. Act with confidence. Correct public signals.",
-                "45-60 秒"
-            );
+            setVideoDemoCaption("完整流程：看見、理解、行動、修正", "這個網頁不是新聞列表，而是把公共事件變成可操作的地圖，幫使用者判斷身邊正在發生什麼。", "58-66 秒", "left");
             setVideoDemoSummary(true);
             await videoDemoWait(7200);
             setVideoDemoSummary(false);
