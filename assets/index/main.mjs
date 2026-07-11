@@ -238,6 +238,22 @@ import {
         return 5;
     }
 
+    function getEventLocationSortWeight(ev) {
+        const quality = getLocationQuality(ev);
+        const displayMode = getLocationDisplayMode(ev);
+        const precision = normalizeText(ev.locationPrecision || "").toLowerCase();
+        if (quality === "high" && displayMode === "point") return 0;
+        if (quality === "medium" || displayMode === "estimated" || precision === "district") return 1;
+        return 2;
+    }
+
+    function getEventSourceSortWeight(ev) {
+        const source = normalizeSource(ev.sourceName || ev.source || "");
+        if (source === "TDX CMS") return 0;
+        if (source === "RSS" || source === "news") return 1;
+        return 1;
+    }
+
     function getEventText(ev) {
         return normalizeText([ev.title, ev.content, ev.summary, ev.location, ev.address, ev.impact, ev.advice].filter(Boolean).join(" "));
     }
@@ -1759,9 +1775,10 @@ import {
             events.sort((a,b)=>{
                 const weightDelta = getEventSortWeight(a) - getEventSortWeight(b);
                 if (weightDelta !== 0) return weightDelta;
-                const aNews=(a.source==="news"||a.source==="RSS")?1:0;
-                const bNews=(b.source==="news"||b.source==="RSS")?1:0;
-                if (bNews !== aNews) return bNews-aNews;
+                const locationDelta = getEventLocationSortWeight(a) - getEventLocationSortWeight(b);
+                if (locationDelta !== 0) return locationDelta;
+                const sourceDelta = getEventSourceSortWeight(a) - getEventSourceSortWeight(b);
+                if (sourceDelta !== 0) return sourceDelta;
                 const at = Date.parse(a.updatedAt || a.publishedAt || a.createdAt || "") || 0;
                 const bt = Date.parse(b.updatedAt || b.publishedAt || b.createdAt || "") || 0;
                 return bt - at;
