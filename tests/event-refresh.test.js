@@ -52,6 +52,11 @@ async function call(handler, req) {
   await deleteCachedValue(EVENT_REFRESH_STATUS_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
 
+  assert.equal(eventRefresh.DEFAULT_EVENT_CACHE_TTL_SECONDS, 60 * 60 * 6);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds("7200"), 7200);
+
   const now = Date.now();
   const officialTraffic = {
     id: "tdx_official_1",
@@ -105,6 +110,7 @@ async function call(handler, req) {
 
   assert.equal(refreshResult.success, true);
   assert.equal(refreshResult.count, 2);
+  assert.equal(refreshResult.cacheTtlSeconds, 60 * 60);
   assert.equal(refreshResult.buckets.traffic, 1);
   assert.equal(refreshResult.buckets.activities, 1);
   assert.equal(refreshResult.sourceCounts.tdx, 2);
@@ -168,6 +174,7 @@ async function call(handler, req) {
   assert.equal(ok.statusCode, 200);
   assert.equal(ok.payload.skippedByLock, false);
   assert.equal(ok.payload.mode, "traffic");
+  assert.equal(ok.payload.events, undefined);
   assert.equal(ok.payload.geocodingHits, 0);
 
   await acquireCronLock({ owner: "other-run", ttlSeconds: 60 });
