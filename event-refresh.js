@@ -690,7 +690,7 @@ function readKktixMetaLine(text, labels) {
   const lines = String(text || "").split(/\n+/).map((line) => line.trim()).filter(Boolean);
   for (const label of labels) {
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`^\\s*${escaped}\\s*[:?謅?\\s*(.+)$`, "i");
+    const pattern = new RegExp(`^\\s*${escaped}\\s*[:：]\\s*(.+)$`, "i");
     const matched = lines.find((line) => pattern.test(line));
     if (matched) return matched.match(pattern)?.[1]?.trim() || "";
   }
@@ -1484,6 +1484,7 @@ module.exports = {
   isDuplicateEvent,
   mergeRefreshEvents,
   normalizeFinalEvents,
+  parseKktixMeta,
   resolveEventCacheTtlSeconds,
   runEventRefresh,
 };
