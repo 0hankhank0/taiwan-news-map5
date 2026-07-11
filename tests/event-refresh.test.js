@@ -11,6 +11,7 @@ process.env.CRON_SECRET = "cron-test-secret";
 const eventRefresh = require("../event-refresh");
 const {
   CRON_LOCK_KEY,
+  DEFAULT_CRON_LOCK_TTL_SECONDS,
   EVENT_BUCKET_KEY_MAP,
   EVENT_REFRESH_STATUS_KEY,
   acquireCronLock,
@@ -51,6 +52,24 @@ async function call(handler, req) {
   await clearEventCaches();
   await deleteCachedValue(EVENT_REFRESH_STATUS_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
+
+  assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
+  assert.equal(eventRefresh.DEFAULT_EVENT_CACHE_TTL_SECONDS, 60 * 60 * 6);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
+  assert.equal(eventRefresh.resolveEventCacheTtlSeconds("7200"), 7200);
+
+  const kktixMeta = eventRefresh.parseKktixMeta({
+    content: [
+      "時間：2026/07/20 19:00 ~ 2026/07/20 21:00",
+      "地點：Legacy Taipei / 台北市中正區八德路一段1號",
+    ].join("\n"),
+  });
+  assert.equal(kktixMeta.timeLine, "2026/07/20 19:00 ~ 2026/07/20 21:00");
+  assert.ok(kktixMeta.startAt);
+  assert.ok(kktixMeta.endAt);
+  assert.equal(kktixMeta.venue, "Legacy Taipei");
+  assert.equal(kktixMeta.address, "台北市中正區八德路一段1號");
 
   const now = Date.now();
   const officialTraffic = {
@@ -105,6 +124,7 @@ async function call(handler, req) {
 
   assert.equal(refreshResult.success, true);
   assert.equal(refreshResult.count, 2);
+  assert.equal(refreshResult.cacheTtlSeconds, 60 * 60);
   assert.equal(refreshResult.buckets.traffic, 1);
   assert.equal(refreshResult.buckets.activities, 1);
   assert.equal(refreshResult.sourceCounts.tdx, 2);
@@ -168,6 +188,7 @@ async function call(handler, req) {
   assert.equal(ok.statusCode, 200);
   assert.equal(ok.payload.skippedByLock, false);
   assert.equal(ok.payload.mode, "traffic");
+  assert.equal(ok.payload.events, undefined);
   assert.equal(ok.payload.geocodingHits, 0);
 
   await acquireCronLock({ owner: "other-run", ttlSeconds: 60 });

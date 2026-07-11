@@ -12,7 +12,9 @@
     VISIBLE_POLICY_IMPACT: "visible_policy_impact",
   };
 
-  const POLICY_OR_INSTITUTIONAL_PATTERN = /制度|政策|補助|申請|修法|預算|會議|論壇|統計|表揚|撥款|禮金|津貼|福利|資格|名冊|公告|行政服務|申辦|領取|發放|補發|入帳|線上填寫|多元領取/;
+  const POLICY_OR_INSTITUTIONAL_PATTERN = /制度|政策|補助|申請|修法|預算|會議|論壇|統計|表揚|撥款|禮金|津貼|福利|資格|名冊|公告|行政服務|申辦|領取|發放|補發|入帳|線上填寫|多元領取|法案|條例|自治條例|辦法|規範|施政|計畫|方案|措施|專案|成果|政績|招商|招標|採購|補強計畫|說明會|公聽會|座談會|研討會|記者會|宣導|呼籲|提醒|核定|審議|審查|通過|三讀|編列|追加預算|決算|績效|民調|排名|評鑑|表揚|頒獎|視察|考察|拜會|爭取|盤點/;
+  const GOVERNMENT_ACTOR_PATTERN = /市府|縣府|縣市政府|區公所|鄉公所|鎮公所|公所|局處|中央|行政院|立法院|議會|市議會|縣議會|部會|委員會|交通部|經濟部|教育部|農業部|衛福部|勞動部|內政部|環境部|文化部|觀光署|水利署|農糧署|工務局|社會局|民政局|教育局|都發局|警察局|消防局/;
+  const GOVERNMENT_PROCESS_PATTERN = /宣布|公布|表示|指出|說明|推動|研議|規劃|辦理|啟動|核定|補助|發放|撥款|編列|追加|通過|審查|審議|宣導|提醒|呼籲|舉行|召開|視察|考察|拜會|爭取|成立|表揚|頒獎|受理|開放申請|受理申請|徵件|開辦|開課|招生|開放報名|受理報名/;
   const RECAP_OR_BACKGROUND_PATTERN = /回顧|盤點|懶人包|昔日|周年|週年|歷史|判決回顧|專題整理|整理|懷舊|往事|一文看懂|懶人整理/;
   const DIRECT_IMPACT_PATTERN = /封路|交通管制|管制|停水|停電|停班停課|停課|停班|疏散|撤離|改道|搶修|災害|公共安全|今日生效|今天生效|即日生效|警戒|停駛|停航|停運|封閉|禁止通行|交通影響|影響交通|道路中斷|積淹水|淹水|坍方|土石流|危險設施|拆除|颱風|豪雨|警報|火警|火災|爆炸|有毒氣體|避難|停車管制|人潮管制|大規模影響/;
   const OPERATIONAL_IMPACT_PATTERN = /封路|交通管制|管制|停水|停電|停班停課|停課|停班|疏散|撤離|改道|搶修|災害|公共安全|今日生效|今天生效|即日生效|警戒|停駛|停航|停運|封閉|禁止通行|交通影響|影響交通|道路中斷|積淹水|淹水|坍方|土石流|危險設施|拆除|颱風|豪雨|警報|火警|火災|爆炸|有毒氣體|避難|停車管制|人潮管制|大規模影響/;
@@ -66,7 +68,8 @@
     }
 
     const hasRecapSignal = RECAP_OR_BACKGROUND_PATTERN.test(text);
-    const hasLowRealtimeSignal = POLICY_OR_INSTITUTIONAL_PATTERN.test(text) || hasRecapSignal;
+    const hasGovernmentProcessSignal = GOVERNMENT_ACTOR_PATTERN.test(text) && GOVERNMENT_PROCESS_PATTERN.test(text);
+    const hasLowRealtimeSignal = POLICY_OR_INSTITUTIONAL_PATTERN.test(text) || hasGovernmentProcessSignal || hasRecapSignal;
     if (!hasLowRealtimeSignal) {
       return { visibility: VISIBILITY.VISIBLE, reason: "live-event" };
     }

@@ -2,7 +2,7 @@ name: Refresh Events
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -38,6 +38,43 @@ jobs:
             exit 1
           fi
           BASE_URL="${BASE_URL%/}"
-          curl -fsS -X POST "$BASE_URL/api/cron?mode=$MODE" \
+          response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=$MODE" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json")"
+          echo "$response"
+          CRON_RESPONSE="$response" node <<'NODE'
+          let payload;
+          try {
+            payload = JSON.parse(process.env.CRON_RESPONSE || "{}");
+          } catch (error) {
+            console.error("::error::Cron response was not valid JSON.");
+            process.exit(1);
+          }
+
+          const counts = payload.sourceCounts || {};
+          const count = Number(payload.count ?? counts.active ?? 0);
+          const summary = {
+            success: payload.success,
+            skippedByLock: Boolean(payload.skippedByLock),
+            mode: payload.mode,
+            count,
+            cacheTtlSeconds: payload.cacheTtlSeconds,
+            durationMs: payload.durationMs,
+            sourceCounts: counts,
+            lock: payload.lock || null,
+          };
+          console.log(`[cron-summary] ${JSON.stringify(summary)}`);
+
+          if (!payload.success) {
+            console.error("::error::Cron endpoint did not report success.");
+            process.exit(1);
+          }
+          if (payload.skippedByLock) {
+            console.error(`::error::Cron skipped by active lock: ${JSON.stringify(payload.lock || {})}`);
+            process.exit(1);
+          }
+          if (process.env.MODE === "all" && count <= 0) {
+            console.error("::error::Cron returned zero active events for mode=all.");
+            process.exit(1);
+          }
+          NODE
