@@ -64,9 +64,17 @@ const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
 const GEOCODING_CACHE_PREFIX = "geocode:v2:";
 const GEOCODING_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const MAX_GEOCODING_PER_CRON = Number(process.env.MAX_GEOCODING_PER_CRON || 20);
+const MIN_EVENT_CACHE_TTL_SECONDS = 60 * 60;
+const DEFAULT_EVENT_CACHE_TTL_SECONDS = 60 * 60 * 6;
 const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
+
+function resolveEventCacheTtlSeconds(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_EVENT_CACHE_TTL_SECONDS;
+  return Math.max(MIN_EVENT_CACHE_TTL_SECONDS, Math.floor(parsed));
+}
 
 const TDX_CITY_SOURCES = [
   { path: "Taipei", city: "Taipei", lat: 25.033, lng: 121.5654 },
@@ -1408,7 +1416,8 @@ async function runEventRefresh(options = {}) {
       ? options.existingEvents
       : await getCachedEvents();
     const activeEvents = mergeRefreshEvents(existingEvents, finalEvents, now);
-    const cacheOptions = { ex: Number(options.cacheTtlSeconds || 600) };
+    const cacheTtlSeconds = resolveEventCacheTtlSeconds(options.cacheTtlSeconds ?? process.env.EVENT_CACHE_TTL_SECONDS);
+    const cacheOptions = { ex: cacheTtlSeconds };
     let buckets = { traffic: 0, news: 0, activities: 0 };
 
     if (options.write !== false) {
@@ -1424,6 +1433,7 @@ async function runEventRefresh(options = {}) {
       mode,
       durationMs,
       count: activeEvents.length,
+      cacheTtlSeconds,
       buckets,
       sourceCounts,
       geocodingAttempts: geocodingStats.geocodingAttempts,
@@ -1437,6 +1447,7 @@ async function runEventRefresh(options = {}) {
         runId,
         mode,
         count: activeEvents.length,
+        cacheTtlSeconds,
         durationMs,
         sourceCounts,
         geocodingAttempts: geocodingStats.geocodingAttempts,
@@ -1466,11 +1477,13 @@ async function runEventRefresh(options = {}) {
 
 module.exports = {
   collectRefreshSources,
+  DEFAULT_EVENT_CACHE_TTL_SECONDS,
   enrichCronEvent,
   enrichEventLocations,
   fetchDefaultSources,
   isDuplicateEvent,
   mergeRefreshEvents,
   normalizeFinalEvents,
+  resolveEventCacheTtlSeconds,
   runEventRefresh,
 };
