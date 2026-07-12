@@ -9,6 +9,7 @@ process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
 process.env.CRON_SECRET = "cron-test-secret";
 
 const eventRefresh = require("../event-refresh");
+const eventNormalizer = require("../event-normalizer");
 const {
   CRON_LOCK_KEY,
   DEFAULT_CRON_LOCK_TTL_SECONDS,
@@ -58,6 +59,29 @@ async function call(handler, req) {
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("7200"), 7200);
+  assert.equal(eventRefresh.isGenericCmsNotice("天候不佳小心駕駛"), true);
+  assert.equal(eventRefresh.isGenericCmsNotice("中山高北上事故封閉，請改道"), false);
+
+  const genericCmsNotice = {
+    id: "cms_notice_1",
+    title: "New Taipei CMS - CMS",
+    content: "天候不佳小心駕駛",
+    category: "traffic",
+    city: "Taipei",
+    lat: 25.0478,
+    lng: 121.517,
+    source: "TDX CMS",
+  };
+  const directCmsEvent = {
+    ...genericCmsNotice,
+    id: "cms_event_1",
+    title: "國道一號 - CMS",
+    content: "北上事故封閉，車流回堵",
+  };
+  assert.equal(eventNormalizer.isGenericCmsNoticeEvent(genericCmsNotice), true);
+  assert.equal(eventNormalizer.isGenericCmsNoticeEvent(directCmsEvent), false);
+  assert.deepEqual(eventNormalizer.normalizeEventsForFrontend([genericCmsNotice, directCmsEvent]).map((event) => event.id), ["cms_event_1"]);
+  assert.deepEqual(eventRefresh.normalizeFinalEvents([genericCmsNotice, directCmsEvent]).map((event) => event.id), ["cms_event_1"]);
 
   const kktixMeta = eventRefresh.parseKktixMeta({
     content: [

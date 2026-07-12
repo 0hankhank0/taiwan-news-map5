@@ -70,6 +70,9 @@ const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 
+const CMS_DIRECT_EVENT_PATTERN = /事故|車禍|壅塞|回堵|封閉|封路|管制|施工|改道|坍方|落石|淹水|積水|號誌|車道|匝道|交流道|排除|拖吊|救援|警察|消防|救護|緊急|故障車|拋錨|障礙物|掉落物|塞車|車多|禁止通行|單線|雙向|邊坡|土石流|停電|停水|closure|closed|accident|congestion|construction|flood|rockfall|debris/i;
+const CMS_GENERIC_NOTICE_PATTERN = /小心駕駛|安全駕駛|請小心|注意安全|保持車距|請保持|請減速|減速慢行|勿疲勞|疲勞駕駛|酒後不開車|開車不喝酒|嚴禁酒駕|請繫安全帶|繫安全帶|天候不佳|雨天路滑|路況資訊|收聽警廣|旅途平安|祝.*平安|遵守交通規則|請勿超速|勿超速|注意車前|請開大燈|開亮頭燈|drive safely|safe driving|slow down|seat belt|weather|rainy|road information/i;
+
 function resolveEventCacheTtlSeconds(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return DEFAULT_EVENT_CACHE_TTL_SECONDS;
@@ -294,6 +297,23 @@ function normalizeCmsStaticRecord(item, source) {
   };
 }
 
+function normalizeCmsNoticeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function isGenericCmsNotice(message) {
+  const text = normalizeCmsNoticeText(message);
+  if (!text) return false;
+  return CMS_GENERIC_NOTICE_PATTERN.test(text) && !CMS_DIRECT_EVENT_PATTERN.test(text);
+}
+
+function isGenericCmsNoticeRecord(item) {
+  const source = normalizeCmsNoticeText(`${item?.source || ""} ${item?.sourceName || ""}`).toLowerCase();
+  const title = normalizeCmsNoticeText(item?.title || "");
+  if (!source.includes("tdx cms") && !title.endsWith("- CMS")) return false;
+  return isGenericCmsNotice(`${title} ${item?.content || ""} ${item?.summary || ""}`);
+}
+
 function normalizeCmsLiveRecord(item, source, staticLookup) {
   const cmsId = getCmsKey(item);
   const staticInfo = cmsId ? staticLookup.get(cmsId) : null;
@@ -315,6 +335,7 @@ function normalizeCmsLiveRecord(item, source, staticLookup) {
     .replace(/\s+/g, " ").trim();
 
   if (messageStatus === 0 || !message || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (isGenericCmsNotice(message)) return null;
 
   const roadName = staticInfo?.roadName || String(item.RoadName || item.roadName || item.LinkName || "").trim();
   const location = staticInfo?.location || String(item.LocationDescription || item.locationDescription || "").trim();
@@ -988,6 +1009,7 @@ function normalizeFinalEvents(events) {
       ...item,
       visibilityReason: classifyEventVisibility(item).reason,
     }))
+    .filter((item) => !isGenericCmsNoticeRecord(item))
     .filter((item) => !isInstitutionalEvent(item))
     .filter((item) => {
       const key = item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
@@ -1483,6 +1505,7 @@ module.exports = {
   enrichCronEvent,
   enrichEventLocations,
   fetchDefaultSources,
+  isGenericCmsNotice,
   isDuplicateEvent,
   mergeRefreshEvents,
   normalizeFinalEvents,

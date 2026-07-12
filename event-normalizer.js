@@ -2,6 +2,9 @@ const locationResolver = require("./location-resolver");
 const eventDisplay = require("./event-display");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 
+const CMS_DIRECT_EVENT_PATTERN = /事故|車禍|壅塞|回堵|封閉|封路|管制|施工|改道|坍方|落石|淹水|積水|號誌|車道|匝道|交流道|排除|拖吊|救援|警察|消防|救護|緊急|故障車|拋錨|障礙物|掉落物|塞車|車多|禁止通行|單線|雙向|邊坡|土石流|停電|停水|closure|closed|accident|congestion|construction|flood|rockfall|debris/i;
+const CMS_GENERIC_NOTICE_PATTERN = /小心駕駛|安全駕駛|請小心|注意安全|保持車距|請保持|請減速|減速慢行|勿疲勞|疲勞駕駛|酒後不開車|開車不喝酒|嚴禁酒駕|請繫安全帶|繫安全帶|天候不佳|雨天路滑|路況資訊|收聽警廣|旅途平安|祝.*平安|遵守交通規則|請勿超速|勿超速|注意車前|請開大燈|開亮頭燈|drive safely|safe driving|slow down|seat belt|weather|rainy|road information/i;
+
 const TAIWAN_CITY_COORDS = {
   "台北市": { lat: 25.033, lng: 121.5654 },
   "臺北市": { lat: 25.033, lng: 121.5654 },
@@ -337,6 +340,13 @@ function isInstitutionalNewsEvent(event) {
   return isLowRealtimeEvent(event);
 }
 
+function isGenericCmsNoticeEvent(event) {
+  const source = normalizeText(`${event.source || ""} ${event.sourceName || ""}`).toLowerCase();
+  if (!source.includes("tdx cms")) return false;
+  const text = normalizeText(`${event.title || ""} ${event.content || ""} ${event.summary || ""}`);
+  return CMS_GENERIC_NOTICE_PATTERN.test(text) && !CMS_DIRECT_EVENT_PATTERN.test(text);
+}
+
 function normalizeEventsForFrontend(value) {
   const seen = new Set();
   return parseStoredEvents(value)
@@ -348,6 +358,7 @@ function normalizeEventsForFrontend(value) {
     }))
     .filter((event) => !event.mergedIntoEventId)
     .filter((event) => !isInstitutionalNewsEvent(event))
+    .filter((event) => !isGenericCmsNoticeEvent(event))
     .filter((event) => {
       const key = normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();
       if (seen.has(key)) return false;
@@ -362,6 +373,7 @@ function normalizeEventsForFrontend(value) {
 }
 
 module.exports = {
+  isGenericCmsNoticeEvent,
   normalizeEvent,
   normalizeEventsForFrontend,
   parseStoredEvents,
