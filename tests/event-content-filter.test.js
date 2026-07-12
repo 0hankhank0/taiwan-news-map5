@@ -13,6 +13,14 @@ function expectHidden(input) {
   assert.equal(shouldShowEvent(input), false, JSON.stringify(input));
 }
 
+function expectHiddenReason(input, reason) {
+  const result = classifyEventVisibility(input);
+  assert.equal(result.visibility, VISIBILITY.LOW_REALTIME_HIDDEN, JSON.stringify(input));
+  assert.equal(result.reason, reason, JSON.stringify(input));
+  assert.equal(isLowRealtimeEvent(input), true, JSON.stringify(input));
+  assert.equal(shouldShowEvent(input), false, JSON.stringify(input));
+}
+
 function expectVisible(input, expectedVisibility = null) {
   const result = classifyEventVisibility(input);
   if (expectedVisibility) assert.equal(result.visibility, expectedVisibility, JSON.stringify(input));
@@ -20,6 +28,29 @@ function expectVisible(input, expectedVisibility = null) {
   assert.equal(isLowRealtimeEvent(input), false, JSON.stringify(input));
   assert.equal(shouldShowEvent(input), true, JSON.stringify(input));
 }
+
+[
+  "請保持安全距離",
+  "行車安全第一",
+  "雨天路滑請減速慢行",
+  "酒後不開車、開車不喝酒",
+  "請繫安全帶",
+  "注意車前狀況",
+  "禮讓行人",
+  "旅途平安",
+  "防詐宣導、提高警覺、小心詐騙",
+  "防火宣導",
+  "防災宣導",
+  "交通安全宣導",
+  { title: "CMS", content: "請減速慢行", category: "traffic" },
+].forEach((input) => expectHiddenReason(input, "generic-warning-slogan"));
+
+[
+  "前方車禍回堵，請減速慢行",
+  "事故封閉，請保持安全距離",
+  "落石坍方交通管制，請小心駕駛",
+  "火災搶修停電，請提高警覺",
+].forEach((input) => expectVisible(input));
 
 [
   "市府公布青年補助申請辦法，下月起開放線上填寫",

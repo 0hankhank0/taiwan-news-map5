@@ -18,6 +18,8 @@
   const RECAP_OR_BACKGROUND_PATTERN = /回顧|盤點|懶人包|昔日|周年|週年|歷史|判決回顧|專題整理|整理|懷舊|往事|一文看懂|懶人整理/;
   const DIRECT_IMPACT_PATTERN = /封路|交通管制|管制|停水|停電|停班停課|停課|停班|疏散|撤離|改道|搶修|災害|公共安全|今日生效|今天生效|即日生效|警戒|停駛|停航|停運|封閉|禁止通行|交通影響|影響交通|道路中斷|積淹水|淹水|坍方|土石流|危險設施|拆除|颱風|豪雨|警報|火警|火災|爆炸|有毒氣體|避難|停車管制|人潮管制|大規模影響/;
   const OPERATIONAL_IMPACT_PATTERN = /封路|交通管制|管制|停水|停電|停班停課|停課|停班|疏散|撤離|改道|搶修|災害|公共安全|今日生效|今天生效|即日生效|警戒|停駛|停航|停運|封閉|禁止通行|交通影響|影響交通|道路中斷|積淹水|淹水|坍方|土石流|危險設施|拆除|颱風|豪雨|警報|火警|火災|爆炸|有毒氣體|避難|停車管制|人潮管制|大規模影響/;
+  const GENERIC_WARNING_SLOGAN_PATTERN = /請保持安全距離|保持安全距離|行車安全第一|雨天路滑|請減速慢行|減速慢行|酒後不開車|開車不喝酒|請繫安全帶|繫安全帶|注意車前狀況|禮讓行人|旅途平安|防詐宣導|提高警覺|小心詐騙|防火宣導|防災宣導|交通安全宣導|小心駕駛|安全駕駛|請小心|注意安全|請勿超速|勿超速|疲勞駕駛|勿疲勞|開亮頭燈|請開大燈/;
+  const CONCRETE_EVENT_PATTERN = /車禍|事故|追撞|翻車|壅塞|回堵|封路|封閉|交通管制|管制|改道|施工|故障車|掉落物|障礙物|淹水|積淹水|坍方|落石|土石流|停水|停電|停駛|停航|停運|火災|火警|爆炸|疏散|撤離|搶修|災害|公共安全|警戒|禁止通行|道路中斷|交通影響|影響交通|危險設施|有毒氣體|避難|停車管制|人潮管制|大規模影響/;
   const CONSUMER_OR_ADMIN_SERVICE_PATTERN = /吃到|異物|保麗龍|客訴|消費糾紛|消費爭議|店家|店員|服務態度|評價|退費|退款|禮金|撥款|領取|發放|補發|入帳|申辦|線上填寫|多元領取|資格|名冊|福利|津貼/;
   const LOW_PUBLIC_VALUE_PATTERN = /水蜜桃.*(熱銷|滯銷|買氣|盛產|澄清)|農產.*(熱銷|滯銷|產銷|澄清)|文蛤.*(暴斃|救助|育苗|損失)|養殖.*(暴斃|救助|育苗|損失)|產業損失|農損|漁損|飛彈車|軍事部署|國軍.*(進駐|演訓|操演)|軍演/;
   const ACTIVITY_PATTERN = /活動|演唱會|音樂祭|展覽|展會|市集|賽事|路跑|球賽|煙火|燈會|祭典|遶境|卡司|售票|開賣|場館|舞台|大型活動/;
@@ -49,6 +51,10 @@
 
   function classifyEventVisibility(input) {
     const text = eventToText(input);
+
+    if (GENERIC_WARNING_SLOGAN_PATTERN.test(text) && !CONCRETE_EVENT_PATTERN.test(text)) {
+      return { visibility: VISIBILITY.LOW_REALTIME_HIDDEN, reason: "generic-warning-slogan" };
+    }
 
     if (CONSUMER_OR_ADMIN_SERVICE_PATTERN.test(text) && !DIRECT_IMPACT_PATTERN.test(text)) {
       return { visibility: VISIBILITY.LOW_REALTIME_HIDDEN, reason: "consumer-or-admin-service" };
