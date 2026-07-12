@@ -50,6 +50,14 @@ function expectVisible(input, expectedVisibility = null) {
   "事故封閉，請保持安全距離",
   "落石坍方交通管制，請小心駕駛",
   "火災搶修停電，請提高警覺",
+  "前方號誌故障，請減速慢行",
+  "交流道車多，請小心駕駛",
+  "前方拋錨車，請小心駕駛",
+  "單線雙向通行，請減速慢行",
+  "救援中，請減速慢行",
+  "外側車道有掉落物，請小心駕駛",
+  "accident congestion ahead, slow down",
+  "lane closed due to debris",
 ].forEach((input) => expectVisible(input));
 
 [
