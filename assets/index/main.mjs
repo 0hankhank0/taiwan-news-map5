@@ -2778,6 +2778,17 @@ import {
         setTimeout(() => shell.click.classList.remove("visible"), 520);
     }
 
+    function getVideoDemoLocationMarkerCenter() {
+        const markerEl = userLocationMarker?.getElement?.() || document.querySelector(".user-location-dot");
+        if (!markerEl) return null;
+        const rect = markerEl.getBoundingClientRect();
+        if (!rect.width && !rect.height) return null;
+        return {
+            x: rect.left + rect.width / 2,
+            y: rect.top + rect.height / 2
+        };
+    }
+
     function setVideoDemoRange(visible, target = null, radiusMeters = nearbyRadiusMeters) {
         const shell = ensureVideoDemoShell();
         if (!shell.range) return;
@@ -2787,8 +2798,9 @@ import {
         }
         const mapEl = getVideoDemoElement(target) || mapContainer || document.getElementById("map-stage");
         const mapRect = mapEl?.getBoundingClientRect();
-        const x = mapRect ? mapRect.left + mapRect.width * 0.52 : window.innerWidth * 0.64;
-        const y = mapRect ? mapRect.top + mapRect.height * 0.48 : window.innerHeight * 0.48;
+        const markerCenter = getVideoDemoLocationMarkerCenter();
+        const x = markerCenter ? markerCenter.x : (mapRect ? mapRect.left + mapRect.width * 0.52 : window.innerWidth * 0.64);
+        const y = markerCenter ? markerCenter.y : (mapRect ? mapRect.top + mapRect.height * 0.48 : window.innerHeight * 0.48);
         const base = Math.min(window.innerWidth, window.innerHeight);
         const size = Math.min(base * 0.48, Math.max(base * 0.29, base * (0.22 + Number(radiusMeters || 3000) / 22000)));
         const label = Number(radiusMeters || 3000) >= 5000 ? "5 km" : "3 km";
@@ -2798,6 +2810,9 @@ import {
         const labelEl = shell.range.querySelector("strong");
         if (labelEl) labelEl.textContent = label;
         shell.range.classList.add("visible");
+        if (VIDEO_DEMO_ROUTE) {
+            window.VIDEO_DEMO_RANGE_STATE = { x, y, size, radiusMeters: Number(radiusMeters || 3000) };
+        }
     }
 
     function pickVideoDemoEvent(preferredCategory = "") {
@@ -2951,6 +2966,8 @@ import {
                 await videoDemoWait(250);
                 activateVideoDemoNearbyMode();
                 setVideoDemoRange(true, "#map-stage", 3000);
+                requestAnimationFrame(() => setVideoDemoRange(true, "#map-stage", 3000));
+                setTimeout(() => setVideoDemoRange(true, "#map-stage", 3000), 720);
                 frameVideoDemoElement("#map-stage", 14);
                 await videoDemoWait(5200);
 
@@ -2967,6 +2984,7 @@ import {
                     setNearbyRadius(5000);
                 }
                 setVideoDemoRange(true, "#map-stage", 5000);
+                requestAnimationFrame(() => setVideoDemoRange(true, "#map-stage", 5000));
                 await videoDemoWait(3300);
 
                 setVideoDemoCaption("共同修正資料", "開啟回報視窗，補充錯誤位置或分類，送出後等待覆核。", "08｜回報修正");
@@ -2985,14 +3003,15 @@ import {
                 await moveVideoDemoCursorTo(reportButton || reportCard || "#event-list", "center", 420);
                 pulseVideoDemoClick(reportButton || reportCard || "#event-list");
                 openVideoDemoReportModal();
-                await videoDemoWait(350);
+                await videoDemoWait(1500);
                 frameVideoDemoElement("#report-modal .modal-box", 16);
                 const submitButton = document.getElementById("report-submit-btn");
                 await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 350);
                 pulseVideoDemoClick(submitButton || "#report-modal .modal-box");
                 if (submitButton) submitButton.click();
-                await videoDemoWait(2500);
+                await videoDemoWait(3800);
                 closeReportModal();
+                await videoDemoWait(300);
 
                 shell.frame.classList.remove("visible");
                 shell.cursor.classList.remove("visible");

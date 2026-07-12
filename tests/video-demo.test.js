@@ -73,6 +73,17 @@ const MAPBOX_STUB = `
     addTo() {
       const mapEl = document.getElementById("map") || document.body;
       const i = markerIndex++;
+      if (this.el.classList.contains("user-location-dot")) {
+        Object.assign(this.el.style, {
+          position: "absolute",
+          left: "52%",
+          top: "48%",
+          zIndex: "120",
+          transform: "translate(-50%, -50%)"
+        });
+        mapEl.appendChild(this.el);
+        return this;
+      }
       Object.assign(this.el.style, {
         position: "absolute",
         left: (46 + (i % 4) * 10) + "%",
@@ -197,6 +208,32 @@ async function launchChromium() {
       return state.visibleCount >= 9 && state.visibleCount <= 12 ? state : false;
     }, nearby3State.visibleCount, { timeout: 45000 }).then((handle) => handle.jsonValue());
 
+    const rangeAlignment = await page.waitForFunction(() => {
+      const range = document.querySelector(".video-demo-range.visible");
+      const marker = document.querySelector(".user-location-dot");
+      if (!range || !marker) return false;
+      const rangeRect = range.getBoundingClientRect();
+      const markerRect = marker.getBoundingClientRect();
+      if (!rangeRect.width || !markerRect.width) return false;
+      const dx = (rangeRect.left + rangeRect.width / 2) - (markerRect.left + markerRect.width / 2);
+      const dy = (rangeRect.top + rangeRect.height / 2) - (markerRect.top + markerRect.height / 2);
+      const distance = Math.hypot(dx, dy);
+      return distance < 5 ? { dx, dy, distance } : false;
+    }, null, { timeout: 45000 }).then((handle) => handle.jsonValue());
+
+    const successStartedAt = await page.waitForFunction(() => {
+      const success = document.getElementById("report-success");
+      if (!success || success.style.display !== "block") return false;
+      if (!/已送出，等待覆核/.test(success.textContent || "")) return false;
+      return Date.now();
+    }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
+    await page.waitForTimeout(3100);
+    const successStillVisible = await page.evaluate(() => {
+      const success = document.getElementById("report-success");
+      return Boolean(success && success.style.display === "block" && /已送出，等待覆核/.test(success.textContent || ""));
+    });
+    const successDurationMs = Date.now() - successStartedAt;
+
     try {
       await page.waitForFunction(() => window.VIDEO_DEMO_DONE === true, null, { timeout: 60000 });
     } catch (error) {
@@ -225,6 +262,9 @@ async function launchChromium() {
     assert.ok(trafficState.markerCount < initialState.markerCount, `traffic markers ${trafficState.markerCount} should be below ${initialState.markerCount}`);
     assert.ok(nearby3State.visibleCount < nearby5State.visibleCount, `3 km ${nearby3State.visibleCount} should be below 5 km ${nearby5State.visibleCount}`);
     assert.ok(nearby5State.visibleCount >= 9 && nearby5State.visibleCount <= 12, `5 km count ${nearby5State.visibleCount}`);
+    assert.ok(rangeAlignment.distance < 5, `range center is ${rangeAlignment.distance}px from user marker`);
+    assert.equal(successStillVisible, true, `report success disappeared after ${successDurationMs}ms`);
+    assert.ok(successDurationMs >= 3000, `report success lasted ${successDurationMs}ms`);
     assert.ok(elapsedMs < 50000, `video demo took ${elapsedMs}ms`);
     assert.match(result.caption, /分散資訊|在地判斷/);
     assert.equal(result.finalVisible, false);
