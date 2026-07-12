@@ -33,8 +33,8 @@ import {
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
     const VIDEO_DEMO_REPORT_EVENT_ID = "video-demo-report";
-    const VIDEO_DEMO_MARKER_LIMIT = 28;
-    const VIDEO_DEMO_CARD_LIMIT = 8;
+    const VIDEO_DEMO_MARKER_LIMIT = 80;
+    const VIDEO_DEMO_CARD_LIMIT = 10;
     if (VIDEO_DEMO_ROUTE) window.VIDEO_DEMO_DONE = false;
     
     // 測試 Mapbox Token 是否有效
@@ -69,7 +69,7 @@ import {
         other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     };
 
-    const VIDEO_DEMO_EVENTS = [
+    const VIDEO_DEMO_CORE_EVENTS = [
         {
             id: VIDEO_DEMO_PRIMARY_EVENT_ID,
             title: "中山北路夜間道路施工與改道",
@@ -152,6 +152,139 @@ import {
             url: "https://demo.island-pulse.local/report"
         }
     ];
+
+    const VIDEO_DEMO_NEARBY_EVENTS = [
+        ["video-demo-near-signal", "仁愛路號誌故障車流放慢", "traffic", "台北", 25.0372, 121.5566, "TDX CMS", "仁愛路與光復南路口號誌故障，警察到場指揮，車流放慢。"],
+        ["video-demo-near-fire", "基隆路店面火警交通管制", "fire", "台北", 25.0585, 121.5920, "RSS", "基隆路一段店面火警，消防車輛進出，周邊道路短暫管制。"],
+        ["video-demo-near-traffic", "市民大道車多回堵", "traffic", "台北", 25.0550, 121.5260, "TDX CMS", "市民大道往西車多，匝道口回堵，請改走平面道路。"],
+        ["video-demo-near-activity", "大安森林公園活動人潮", "activity", "台北", 25.0160, 121.5480, "RSS", "午後親子活動散場人潮增加，捷運出口與周邊公車站排隊。"],
+        ["video-demo-near-power", "內湖園區停電影響號誌", "other", "台北", 25.0690, 121.5600, "news", "內湖部分路段短暫停電，路口號誌改由警察協助指揮。"],
+        ["video-demo-near-road", "和平東路地下管線搶修", "traffic", "台北", 25.0015, 121.5570, "TDX CMS", "和平東路地下管線搶修，外側車道封閉，公車站位臨時調整。"]
+    ].map(([id, title, category, city, lat, lng, source, content], index) => ({
+        id,
+        title,
+        category,
+        city,
+        lat,
+        lng,
+        source,
+        content,
+        impact: category === "activity" ? "人潮影響步行與接駁" : "周邊通行速度降低",
+        advice: "出發前查看地圖並預留緩衝時間",
+        locationPrecision: "exact",
+        locationSource: "demo",
+        locationConfidence: 0.9,
+        locationQuality: "high",
+        locationDisplayMode: "point",
+        updatedAt: `2026-07-12T10:${String(44 - index).padStart(2, "0")}:00+08:00`,
+        publishedAt: `2026-07-12T10:${String(30 - index).padStart(2, "0")}:00+08:00`,
+        url: `https://demo.island-pulse.local/nearby-${index + 1}`
+    }));
+
+    const VIDEO_DEMO_REGION_GROUPS = [
+        ["台北", 25.08, 121.47, 6],
+        ["桃園", 24.99, 121.30, 6],
+        ["新竹", 24.81, 120.97, 4],
+        ["台中", 24.15, 120.67, 9],
+        ["彰化", 24.08, 120.54, 3],
+        ["南投", 23.96, 120.98, 3],
+        ["雲林", 23.71, 120.43, 3],
+        ["嘉義", 23.48, 120.45, 2],
+        ["台南", 23.00, 120.22, 8],
+        ["高雄", 22.63, 120.30, 9],
+        ["屏東", 22.55, 120.55, 4],
+        ["宜蘭", 24.70, 121.74, 2],
+        ["花蓮", 23.99, 121.60, 2],
+        ["台東", 22.76, 121.14, 2],
+        ["基隆", 25.13, 121.74, 1],
+        ["澎湖", 23.57, 119.58, 1],
+        ["金門", 24.43, 118.32, 1]
+    ];
+
+    const VIDEO_DEMO_CATEGORY_QUEUE = [
+        ...Array(24).fill("traffic"),
+        ...Array(9).fill("disaster"),
+        ...Array(13).fill("activity"),
+        ...Array(5).fill("fire"),
+        ...Array(6).fill("criminal"),
+        ...Array(9).fill("other")
+    ];
+
+    const VIDEO_DEMO_TEMPLATES = {
+        traffic: [
+            ["道路施工改道", "路面刨鋪施工占用外側車道，現場改道並出現短暫回堵。"],
+            ["車禍回堵", "路口發生追撞事故，拖吊與警察處理中，車流回堵。"],
+            ["號誌故障", "主要路口號誌故障，警察到場指揮，請改走替代道路。"],
+            ["匝道車多", "交流道匝道車多，排隊回堵至平面道路。"]
+        ],
+        disaster: [
+            ["豪雨積水", "午後強降雨造成低窪道路積水，車輛通行速度降低。"],
+            ["邊坡落石", "山區道路邊坡落石，公路單位到場清理並實施管制。"],
+            ["強風影響", "沿海強風影響機車與大型車通行，部分路段啟動警戒。"]
+        ],
+        activity: [
+            ["大型活動人潮", "場館周邊活動散場人潮增加，接駁與公車站排隊。"],
+            ["路跑交通管制", "清晨路跑活動進行，沿線道路分段管制。"],
+            ["展覽入場尖峰", "展覽入場尖峰造成周邊停車場滿位與人潮聚集。"]
+        ],
+        fire: [
+            ["建物火警", "消防車輛到場灌救，周邊道路暫時封閉。"],
+            ["店面火警", "商圈店面火警已通報消防，現場進行交通管制。"]
+        ],
+        criminal: [
+            ["公共安全警戒", "警方處理突發公共安全事件，周邊人車動線調整。"],
+            ["可疑物排除", "車站周邊發現可疑物，警察封鎖局部區域排除中。"]
+        ],
+        other: [
+            ["停電影響號誌", "區域停電造成部分路口號誌異常，台電搶修中。"],
+            ["停水搶修", "自來水管線破裂，工程單位搶修並影響部分道路。"],
+            ["公共設施異常", "天橋電梯與周邊設施異常，維修人員到場處理。"]
+        ]
+    };
+
+    function buildVideoDemoRegionalEvents() {
+        const events = [];
+        let globalIndex = 0;
+        VIDEO_DEMO_REGION_GROUPS.forEach(([city, baseLat, baseLng, count]) => {
+            for (let i = 0; i < count; i += 1) {
+                const category = VIDEO_DEMO_CATEGORY_QUEUE[globalIndex % VIDEO_DEMO_CATEGORY_QUEUE.length];
+                const templates = VIDEO_DEMO_TEMPLATES[category] || VIDEO_DEMO_TEMPLATES.other;
+                const [label, content] = templates[(globalIndex + i) % templates.length];
+                const latOffset = ((i % 3) - 1) * 0.032 + Math.floor(i / 3) * 0.018;
+                const lngOffset = (((i + 1) % 3) - 1) * 0.038 - Math.floor(i / 4) * 0.016;
+                const source = category === "traffic" ? "TDX CMS" : (category === "activity" ? "RSS" : "news");
+                events.push({
+                    id: `video-demo-${String(globalIndex + 1).padStart(2, "0")}`,
+                    title: `${city}${String(globalIndex + 1).padStart(2, "0")} ${label}`,
+                    category,
+                    city,
+                    lat: Number((baseLat + latOffset).toFixed(5)),
+                    lng: Number((baseLng + lngOffset).toFixed(5)),
+                    source,
+                    content: `${city}${String(globalIndex + 1).padStart(2, "0")} ${content}`,
+                    impact: category === "activity" ? "人潮與周邊交通受到影響" : "周邊通行與生活動線受到影響",
+                    advice: category === "traffic" ? "行經此區請提前改道" : "請查看位置並避開影響範圍",
+                    locationPrecision: "exact",
+                    locationSource: "demo",
+                    locationConfidence: 0.88 + ((globalIndex % 8) * 0.01),
+                    locationQuality: "high",
+                    locationDisplayMode: "point",
+                    updatedAt: `2026-07-12T09:${String(59 - (globalIndex % 50)).padStart(2, "0")}:00+08:00`,
+                    publishedAt: `2026-07-12T09:${String(42 - (globalIndex % 40)).padStart(2, "0")}:00+08:00`,
+                    url: `https://demo.island-pulse.local/event-${globalIndex + 1}`
+                });
+                globalIndex += 1;
+            }
+        });
+        return events;
+    }
+
+    const VIDEO_DEMO_EVENTS = [
+        ...VIDEO_DEMO_CORE_EVENTS,
+        ...VIDEO_DEMO_NEARBY_EVENTS,
+        ...buildVideoDemoRegionalEvents()
+    ].slice(0, 76);
+    if (VIDEO_DEMO_ROUTE) window.VIDEO_DEMO_EVENTS = VIDEO_DEMO_EVENTS;
 
     const ALERT_COLOR_MAP = {
         traffic:  { color: "#2471A3", glow: "rgba(36, 113, 163, 0.45)" },
@@ -2019,6 +2152,17 @@ import {
             : (isNearbyMode ? `附近 ${formatRadiusLabel(nearbyRadiusMeters)}：${events.length} 筆事件` : `顯示 ${events.length} 筆事件`));
         updateMobileFilterSummary(events.length);
         updateNearbyControls(events.length);
+        if (VIDEO_DEMO_ROUTE) {
+            window.VIDEO_DEMO_STATE = {
+                eventCount: parsedEvents.length,
+                visibleCount: events.length,
+                markerCount: document.querySelectorAll(".map-pin.event-marker").length,
+                cardCount: document.querySelectorAll(".event-card-v2").length,
+                activeCategory,
+                nearbyRadiusMeters,
+                isNearbyMode
+            };
+        }
     }
 
     // ── MOCK DATA ────────────────────────────────────────────
@@ -2758,55 +2902,64 @@ import {
                 prepareVideoDemoBaseline();
 
                 setVideoDemoCaption("資訊很多，卻不知道哪一件會影響自己", "公共事件散落在新聞、交通資訊與社群裡。", "01｜問題意識");
-                flyToLatLng([23.7, 120.95], 7.1, 700);
+                flyToLatLng([23.7, 120.95], 7.1, 520);
                 frameVideoDemoElement("#map-stage", 14);
-                await moveVideoDemoCursorTo("#map-stage", "center", 850);
-                await videoDemoWait(3150);
+                await moveVideoDemoCursorTo("#map-stage", "center", 450);
+                await videoDemoWait(2200);
 
                 setVideoDemoCaption("把事件轉成位置", "島嶼脈搏將分散資訊整理成可以直接判斷的地圖訊號。", "02｜地圖訊號");
                 renderEvents();
+                const primaryEvent = pickVideoDemoEvent("traffic") || pickVideoDemoEvent();
+                if (primaryEvent) flyToLatLng([Number(primaryEvent.lat), Number(primaryEvent.lng)], 11.8, 520);
                 frameVideoDemoElement("#map-stage", 14);
-                await moveVideoDemoCursorTo(getVideoDemoPin() || "#map-stage", "center", 650);
-                await videoDemoWait(4350);
+                await moveVideoDemoCursorTo(getVideoDemoPin() || "#map-stage", "center", 430);
+                await videoDemoWait(2700);
 
                 const primaryPin = getVideoDemoPin();
                 setVideoDemoCaption("看見事件", "點擊固定事件 PIN，位置、時間、來源與摘要會一起出現。", "03｜看見事件");
                 if (primaryPin) {
                     frameVideoDemoElement(primaryPin, 18);
-                    await moveVideoDemoCursorTo(primaryPin, "center", 650);
+                    await moveVideoDemoCursorTo(primaryPin, "center", 420);
                     pulseVideoDemoClick(primaryPin);
                     primaryPin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
                 } else {
                     frameVideoDemoElement("#map-stage", 14);
                 }
-                await videoDemoWait(7350);
+                await videoDemoWait(2900);
                 closeActivePopup();
 
-                setVideoDemoCaption("降低資訊噪音", "用分類只留下此刻關心的事件，先看最可能影響行動的訊號。", "04｜分類聚焦");
+                setVideoDemoCaption("左側保留判斷細節", "事件卡片補上來源、時間與摘要，讓評審看到資料如何被整理。", "04｜資料來源");
+                eventList.scrollTop = 0;
+                const primaryCard = getVideoDemoCard(VIDEO_DEMO_PRIMARY_EVENT_ID);
+                frameVideoDemoElement(primaryCard || "#event-list", 14);
+                await moveVideoDemoCursorTo(primaryCard || "#event-list", "right", 420);
+                await videoDemoWait(2200);
+
+                setVideoDemoCaption("降低資訊噪音", "用分類只留下此刻關心的事件，先看最可能影響行動的訊號。", "05｜分類聚焦");
                 const trafficChip = catFilters.querySelector('[data-category="traffic"]') || catFilters.querySelector("[data-category]");
                 frameVideoDemoElement(trafficChip || "#category-filters", 12);
-                await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 650);
+                await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 420);
                 pulseVideoDemoClick(trafficChip || "#category-filters");
                 if (trafficChip) trafficChip.click();
-                await videoDemoWait(7350);
+                await videoDemoWait(2600);
 
-                setVideoDemoCaption("切到附近模式", "先選擇目前位置，再看 3 km 內真正靠近自己的事件。", "05｜附近 3 km");
+                setVideoDemoCaption("切到附近模式", "先選擇目前位置，再看 3 km 內真正靠近自己的事件。", "06｜附近 3 km");
                 const nearbyToggle = document.getElementById("nearby-toggle-desktop") || document.getElementById("nearby-toggle-mobile");
                 frameVideoDemoElement(nearbyToggle || "#map-stage", 14);
-                await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 650);
+                await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 420);
                 pulseVideoDemoClick(nearbyToggle || "#map-stage");
-                await videoDemoWait(450);
+                await videoDemoWait(250);
                 activateVideoDemoNearbyMode();
                 setVideoDemoRange(true, "#map-stage", 3000);
                 frameVideoDemoElement("#map-stage", 14);
-                await videoDemoWait(9900);
+                await videoDemoWait(5200);
 
-                setVideoDemoCaption("調整關注範圍", "把 3 km 切成 5 km，地圖圓圈放大，事件清單同步納入更遠的影響。", "06｜半徑 5 km");
+                setVideoDemoCaption("調整關注範圍", "把 3 km 切成 5 km，地圖圓圈放大，事件清單同步納入更遠的影響。", "07｜半徑 5 km");
                 const radiusSelect = document.getElementById("nearby-radius-desktop") || document.getElementById("nearby-radius-mobile");
                 frameVideoDemoElement(radiusSelect || "#map-stage", 14);
-                await moveVideoDemoCursorTo(radiusSelect || "#map-stage", "center", 650);
+                await moveVideoDemoCursorTo(radiusSelect || "#map-stage", "center", 420);
                 pulseVideoDemoClick(radiusSelect || "#map-stage");
-                await videoDemoWait(450);
+                await videoDemoWait(250);
                 if (radiusSelect) {
                     radiusSelect.value = "5000";
                     radiusSelect.dispatchEvent(new Event("change", { bubbles: true }));
@@ -2814,9 +2967,9 @@ import {
                     setNearbyRadius(5000);
                 }
                 setVideoDemoRange(true, "#map-stage", 5000);
-                await videoDemoWait(5900);
+                await videoDemoWait(3300);
 
-                setVideoDemoCaption("共同修正資料", "開啟回報視窗，補充錯誤位置或分類，送出後等待覆核。", "07｜回報修正");
+                setVideoDemoCaption("共同修正資料", "開啟回報視窗，補充錯誤位置或分類，送出後等待覆核。", "08｜回報修正");
                 setVideoDemoRange(false);
                 isNearbyMode = false;
                 userLocation = null;
@@ -2825,28 +2978,28 @@ import {
                 renderCategoryButtons();
                 renderEvents();
                 eventList.scrollTop = 0;
-                await videoDemoWait(450);
+                await videoDemoWait(250);
                 const reportCard = getVideoDemoCard(VIDEO_DEMO_REPORT_EVENT_ID);
                 const reportButton = reportCard?.querySelector('[data-action="open-report"]') || eventList.querySelector('[data-action="open-report"]');
                 frameVideoDemoElement(reportButton || reportCard || "#event-list", 12);
-                await moveVideoDemoCursorTo(reportButton || reportCard || "#event-list", "center", 650);
+                await moveVideoDemoCursorTo(reportButton || reportCard || "#event-list", "center", 420);
                 pulseVideoDemoClick(reportButton || reportCard || "#event-list");
                 openVideoDemoReportModal();
-                await videoDemoWait(650);
+                await videoDemoWait(350);
                 frameVideoDemoElement("#report-modal .modal-box", 16);
                 const submitButton = document.getElementById("report-submit-btn");
-                await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 500);
+                await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 350);
                 pulseVideoDemoClick(submitButton || "#report-modal .modal-box");
                 if (submitButton) submitButton.click();
-                await videoDemoWait(5000);
+                await videoDemoWait(2500);
                 closeReportModal();
 
                 shell.frame.classList.remove("visible");
                 shell.cursor.classList.remove("visible");
-                setVideoDemoCaption("從分散資訊，到可以採取行動的在地判斷。", "看見、理解、行動、共同修正。", "08｜Island Pulse");
+                setVideoDemoCaption("從分散資訊，到可以採取行動的在地判斷。", "看見、理解、行動、共同修正。", "09｜Island Pulse");
                 setVideoDemoFinalSummary();
                 setVideoDemoSummary(true);
-                await videoDemoWait(6900);
+                await videoDemoWait(4500);
                 setVideoDemoSummary(false);
             } while (VIDEO_DEMO_LOOP);
         } catch (error) {

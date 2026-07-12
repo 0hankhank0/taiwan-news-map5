@@ -157,9 +157,48 @@ async function launchChromium() {
       route.fulfill({ status: 200, contentType: "text/css", body: "" });
     });
 
+    const startedAt = Date.now();
     await page.goto(`http://127.0.0.1:${port}/video`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => Array.isArray(window.VIDEO_DEMO_EVENTS) && window.VIDEO_DEMO_EVENTS.length >= 70 && window.VIDEO_DEMO_EVENTS.length <= 80);
+    let initialState;
     try {
-      await page.waitForFunction(() => window.VIDEO_DEMO_DONE === true, null, { timeout: 120000 });
+      initialState = await page.waitForFunction(() => {
+        const state = window.VIDEO_DEMO_STATE;
+        if (!state || state.activeCategory !== "all" || state.isNearbyMode) return false;
+        return state.markerCount > 60 ? state : false;
+      }, null, { timeout: 12000 }).then((handle) => handle.jsonValue());
+    } catch (error) {
+      const state = await page.evaluate(() => ({
+        demoEvents: window.VIDEO_DEMO_EVENTS?.length || 0,
+        state: window.VIDEO_DEMO_STATE || null,
+        markers: document.querySelectorAll(".map-pin.event-marker").length,
+        cards: document.querySelectorAll(".event-card-v2").length,
+      }));
+      console.error("initial marker state:", JSON.stringify(state));
+      throw error;
+    }
+
+    const trafficState = await page.waitForFunction((initialMarkers) => {
+      const state = window.VIDEO_DEMO_STATE;
+      if (!state || state.activeCategory !== "traffic" || state.isNearbyMode) return false;
+      return state.markerCount < initialMarkers ? state : false;
+    }, initialState.markerCount, { timeout: 25000 }).then((handle) => handle.jsonValue());
+
+    const nearby3State = await page.waitForFunction(() => {
+      const state = window.VIDEO_DEMO_STATE;
+      if (!state || !state.isNearbyMode || state.nearbyRadiusMeters !== 3000) return false;
+      return state.visibleCount >= 3 && state.visibleCount <= 5 ? state : false;
+    }, null, { timeout: 35000 }).then((handle) => handle.jsonValue());
+
+    const nearby5State = await page.waitForFunction((nearby3Count) => {
+      const state = window.VIDEO_DEMO_STATE;
+      if (!state || !state.isNearbyMode || state.nearbyRadiusMeters !== 5000) return false;
+      if (state.visibleCount <= nearby3Count) return false;
+      return state.visibleCount >= 9 && state.visibleCount <= 12 ? state : false;
+    }, nearby3State.visibleCount, { timeout: 45000 }).then((handle) => handle.jsonValue());
+
+    try {
+      await page.waitForFunction(() => window.VIDEO_DEMO_DONE === true, null, { timeout: 60000 });
     } catch (error) {
       const state = await page.evaluate(() => ({
         done: window.VIDEO_DEMO_DONE,
@@ -175,10 +214,18 @@ async function launchChromium() {
     }
     const result = await page.evaluate(() => ({
       done: window.VIDEO_DEMO_DONE === true,
+      eventCount: window.VIDEO_DEMO_EVENTS?.length || 0,
       caption: document.querySelector(".video-demo-caption h1")?.textContent || "",
       finalVisible: document.querySelector(".video-demo-summary.visible") !== null,
     }));
+    const elapsedMs = Date.now() - startedAt;
     assert.equal(result.done, true);
+    assert.ok(result.eventCount >= 70 && result.eventCount <= 80, `unexpected event count ${result.eventCount}`);
+    assert.ok(initialState.markerCount > 60, `initial marker count ${initialState.markerCount}`);
+    assert.ok(trafficState.markerCount < initialState.markerCount, `traffic markers ${trafficState.markerCount} should be below ${initialState.markerCount}`);
+    assert.ok(nearby3State.visibleCount < nearby5State.visibleCount, `3 km ${nearby3State.visibleCount} should be below 5 km ${nearby5State.visibleCount}`);
+    assert.ok(nearby5State.visibleCount >= 9 && nearby5State.visibleCount <= 12, `5 km count ${nearby5State.visibleCount}`);
+    assert.ok(elapsedMs < 50000, `video demo took ${elapsedMs}ms`);
     assert.match(result.caption, /分散資訊|在地判斷/);
     assert.equal(result.finalVisible, false);
     await browser.close();
