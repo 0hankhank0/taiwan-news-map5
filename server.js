@@ -32,7 +32,7 @@ mountHandler("/api/create-payment", "./api/create-payment");
 
 app.use(express.static(rootDir));
 
-app.get(/.*/, (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(rootDir, "index.html"));
 });
 

@@ -28,9 +28,14 @@ import {
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
     const VIDEO_DEMO_ROUTE = window.location.pathname.replace(/\/+$/, "") === "/video";
+    const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && new URLSearchParams(window.location.search).get("loop") === "1";
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
+    const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
+    const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
+    const VIDEO_DEMO_REPORT_EVENT_ID = "video-demo-report";
     const VIDEO_DEMO_MARKER_LIMIT = 28;
     const VIDEO_DEMO_CARD_LIMIT = 8;
+    if (VIDEO_DEMO_ROUTE) window.VIDEO_DEMO_DONE = false;
     
     // 測試 Mapbox Token 是否有效
     async function checkMapboxToken() {
@@ -63,6 +68,90 @@ import {
         activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
         other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     };
+
+    const VIDEO_DEMO_EVENTS = [
+        {
+            id: VIDEO_DEMO_PRIMARY_EVENT_ID,
+            title: "中山北路夜間道路施工與改道",
+            category: "traffic",
+            city: "台北",
+            lat: 25.0412,
+            lng: 121.5638,
+            source: "TDX CMS",
+            content: "中山北路二段晚間進行路面刨鋪，外側車道封閉並導引用路人改道。",
+            impact: "外側車道封閉，周邊路口易回堵",
+            advice: "提前改走承德路或新生北路",
+            locationPrecision: "exact",
+            locationSource: "official",
+            locationConfidence: 1,
+            locationQuality: "high",
+            locationDisplayMode: "point",
+            updatedAt: "2026-07-12T11:00:00+08:00",
+            publishedAt: "2026-07-12T10:48:00+08:00",
+            url: "https://demo.island-pulse.local/roadwork"
+        },
+        {
+            id: "video-demo-activity",
+            title: "松山文創園區大型活動人潮聚集",
+            category: "activity",
+            city: "台北",
+            lat: 25.0439,
+            lng: 121.5594,
+            source: "RSS",
+            content: "週末大型展演活動入場尖峰，周邊人行空間與接駁站出現排隊人潮。",
+            impact: "活動散場時段可能影響周邊步行與接駁",
+            advice: "避開尖峰或改搭捷運至鄰近站點",
+            locationPrecision: "exact",
+            locationSource: "demo",
+            locationConfidence: 0.96,
+            locationQuality: "high",
+            locationDisplayMode: "point",
+            startsAt: "2026-07-12T14:00:00+08:00",
+            updatedAt: "2026-07-12T10:35:00+08:00",
+            publishedAt: "2026-07-12T10:20:00+08:00",
+            url: "https://demo.island-pulse.local/activity"
+        },
+        {
+            id: "video-demo-rain",
+            title: "信義快速道路豪雨積水影響通行",
+            category: "disaster",
+            city: "台北",
+            lat: 25.0144,
+            lng: 121.5942,
+            source: "news",
+            content: "午後強降雨造成信義快速道路匝道附近短時積水，車流放慢並回堵。",
+            impact: "積水與車速降低造成交通影響",
+            advice: "行經低窪路段請放慢並留意即時管制",
+            locationPrecision: "exact",
+            locationSource: "demo",
+            locationConfidence: 0.92,
+            locationQuality: "high",
+            locationDisplayMode: "point",
+            updatedAt: "2026-07-12T10:55:00+08:00",
+            publishedAt: "2026-07-12T10:40:00+08:00",
+            url: "https://demo.island-pulse.local/rain"
+        },
+        {
+            id: VIDEO_DEMO_REPORT_EVENT_ID,
+            title: "南京東路號誌故障位置待修正",
+            category: "traffic",
+            city: "台北",
+            lat: 25.0513,
+            lng: 121.5521,
+            source: "RSS",
+            content: "南京東路口號誌異常，民眾回報定位可能偏移，需要補充實際路口資訊。",
+            impact: "車流通過速度降低",
+            advice: "可回報座標或補充現場位置",
+            locationPrecision: "district",
+            locationSource: "demo",
+            locationConfidence: 0.74,
+            locationQuality: "medium",
+            locationDisplayMode: "estimated",
+            updatedAt: "2026-07-12T10:50:00+08:00",
+            publishedAt: "2026-07-12T10:30:00+08:00",
+            url: "https://demo.island-pulse.local/report"
+        }
+    ];
 
     const ALERT_COLOR_MAP = {
         traffic:  { color: "#2471A3", glow: "rgba(36, 113, 163, 0.45)" },
@@ -900,14 +989,14 @@ import {
     let currentMapMode = VIDEO_DEMO_ROUTE ? "normal" : (localStorage.getItem("map_mode") || "normal");
     let isNearbyMode = false;
     let userLocation = null;
-    let nearbyRadiusMeters = Number(localStorage.getItem("nearby_radius") || 3000);
+    let nearbyRadiusMeters = VIDEO_DEMO_ROUTE ? 3000 : Number(localStorage.getItem("nearby_radius") || 3000);
     let userLocationMarker = null;
     let alertZones = loadAlertZones();
     let alertZoneFilterEnabled = false;
 
     function applyMapMode(mode) {
         currentMapMode = mode;
-        localStorage.setItem("map_mode", mode);
+        if (!VIDEO_DEMO_ROUTE) localStorage.setItem("map_mode", mode);
         document.body.classList.toggle("tw-online-mode", mode === "online");
         document.getElementById("map-mode-select").value = mode;
 
@@ -1427,7 +1516,7 @@ import {
         const nextRadius = Number(value);
         if (!Number.isFinite(nextRadius) || nextRadius <= 0) return;
         nearbyRadiusMeters = nextRadius;
-        localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
+        if (!VIDEO_DEMO_ROUTE) localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
         updateNearbyControls();
         if (isNearbyMode) renderEvents();
     }
@@ -1854,6 +1943,7 @@ import {
                 
                 const markerEl = marker.getElement();
                 markerEl.style.cursor = "pointer";
+                markerEl.dataset.eventId = String(ev.id || "");
                 if (getLocationDisplayMode(ev) === "estimated") markerEl.classList.add("marker-location-estimated");
 
                 if (!isMobile) {
@@ -1943,6 +2033,15 @@ import {
 
     // ── FETCH ────────────────────────────────────────────────
     async function syncNewsAndRender(){
+        if (VIDEO_DEMO_ROUTE) {
+            parsedEvents = deduplicateEvents(VIDEO_DEMO_EVENTS.map(normalizeDisplayEvent));
+            reportSummaryByEvent = {};
+            renderCategoryButtons();
+            renderEvents();
+            dataTrust.updateFromResponse(parsedEvents, { ok: true, status: 200, headers: new Headers() }, document.querySelectorAll(".event-card-v2").length);
+            setStatus("作品展示模式：固定事件資料");
+            return parsedEvents;
+        }
         setStatus("正在抓取事件資料...");
         renderLoadingState();
         try{
@@ -2293,6 +2392,21 @@ import {
         const title = document.getElementById("report-title").value.trim();
         const errorType = document.getElementById("report-type").value || REPORT_TYPE_OPTIONS[0];
         const message = document.getElementById("report-message").value.trim();
+        if (VIDEO_DEMO_ROUTE) {
+            if (!message) {
+                setReportStatus("error", "請補充說明，方便人工覆核。");
+                return;
+            }
+            const btn = document.getElementById("report-submit-btn");
+            if (btn) {
+                btn.textContent = "已送出";
+                btn.disabled = true;
+            }
+            setReportStatus("success", "已送出，等待覆核。\n示範模式不會呼叫後端 API。");
+            const cancelBtn = document.getElementById("report-cancel-btn");
+            if (cancelBtn) cancelBtn.textContent = "關閉";
+            return;
+        }
         if (!ev || !ev.id) {
             setReportStatus("error", "找不到事件 ID，請重新開啟事件卡再回報。");
             return;
@@ -2343,7 +2457,6 @@ import {
 
     function checkBetaModal(){
         if (VIDEO_DEMO_ROUTE) {
-            localStorage.setItem("beta_accepted", "true");
             betaModal.classList.remove("visible");
             return;
         }
@@ -2421,7 +2534,7 @@ import {
         };
     }
 
-    function setVideoDemoCaption(title, copy, step = "", placement = "left") {
+    function setVideoDemoCaption(title, copy, step = "", placement = "top-left") {
         const shell = ensureVideoDemoShell();
         shell.caption.dataset.placement = placement;
         shell.step.textContent = step;
@@ -2432,6 +2545,29 @@ import {
     function setVideoDemoSummary(visible) {
         const shell = ensureVideoDemoShell();
         shell.summary.classList.toggle("visible", Boolean(visible));
+    }
+
+    function setVideoDemoFinalSummary() {
+        const shell = ensureVideoDemoShell();
+        shell.summary.innerHTML = [
+            '<article class="video-demo-brand-card"><span>Island Pulse</span><strong>島嶼脈搏</strong><small>台灣事件地圖</small></article>',
+            '<article><span>核心價值</span><strong>看見、理解、行動、共同修正。</strong><small>從分散資訊，到可以採取行動的在地判斷。</small></article>',
+            '<article><span>TISDC</span><strong>作品展示影片</strong><small>台灣國際學生創意設計大賽</small></article>',
+            '<article><span>Team</span><strong>作者／團隊資訊</strong><small>請於正式送件前填入名稱</small></article>'
+        ].join("");
+    }
+
+    function placeVideoDemoCaptionAwayFrom(rect = null) {
+        const shell = ensureVideoDemoShell();
+        if (!rect) {
+            shell.caption.dataset.placement = "top-left";
+            return;
+        }
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const horizontal = centerX > window.innerWidth / 2 ? "left" : "right";
+        const vertical = centerY > window.innerHeight / 2 ? "top" : "bottom";
+        shell.caption.dataset.placement = `${vertical}-${horizontal}`;
     }
 
     function getVideoDemoElement(target) {
@@ -2456,6 +2592,7 @@ import {
         shell.frame.style.width = Math.max(42, width) + "px";
         shell.frame.style.height = Math.max(42, height) + "px";
         shell.frame.classList.add("visible");
+        placeVideoDemoCaptionAwayFrom({ left, top, width, height });
         return rect;
     }
 
@@ -2497,7 +2634,7 @@ import {
         setTimeout(() => shell.click.classList.remove("visible"), 520);
     }
 
-    function setVideoDemoRange(visible, target = null) {
+    function setVideoDemoRange(visible, target = null, radiusMeters = nearbyRadiusMeters) {
         const shell = ensureVideoDemoShell();
         if (!shell.range) return;
         if (!visible) {
@@ -2508,10 +2645,14 @@ import {
         const mapRect = mapEl?.getBoundingClientRect();
         const x = mapRect ? mapRect.left + mapRect.width * 0.52 : window.innerWidth * 0.64;
         const y = mapRect ? mapRect.top + mapRect.height * 0.48 : window.innerHeight * 0.48;
-        const size = Math.min(window.innerWidth, window.innerHeight) * 0.31;
+        const base = Math.min(window.innerWidth, window.innerHeight);
+        const size = Math.min(base * 0.48, Math.max(base * 0.29, base * (0.22 + Number(radiusMeters || 3000) / 22000)));
+        const label = Number(radiusMeters || 3000) >= 5000 ? "5 km" : "3 km";
         shell.range.style.width = Math.round(size) + "px";
         shell.range.style.height = Math.round(size) + "px";
         shell.range.style.transform = "translate3d(" + Math.round(x - size / 2) + "px, " + Math.round(y - size / 2) + "px, 0)";
+        const labelEl = shell.range.querySelector("strong");
+        if (labelEl) labelEl.textContent = label;
         shell.range.classList.add("visible");
     }
 
@@ -2519,13 +2660,28 @@ import {
         const events = parsedEvents
             .filter(ev => shouldShowRealtimeEvent(ev) && shouldRenderLocationMarker(ev))
             .filter(ev => Number.isFinite(Number(ev.lat)) && Number.isFinite(Number(ev.lng)));
+        if (VIDEO_DEMO_ROUTE) {
+            const fixed = events.find(ev => ev.id === VIDEO_DEMO_PRIMARY_EVENT_ID);
+            if (fixed && (!preferredCategory || inferEventGroupCategory(fixed) === preferredCategory)) return fixed;
+        }
         if (preferredCategory) {
             return events.find(ev => inferEventGroupCategory(ev) === preferredCategory) || events[0] || null;
         }
         return events[0] || null;
     }
 
+    function getVideoDemoPin(eventId = VIDEO_DEMO_PRIMARY_EVENT_ID) {
+        return document.querySelector(`.map-pin.event-marker[data-event-id="${eventId}"]`) || document.querySelector(".map-pin.event-marker");
+    }
+
+    function getVideoDemoCard(eventId = "") {
+        if (!eventId) return eventList.querySelector(".event-card-v2");
+        const reportButton = eventList.querySelector(`[data-event-id="${eventId}"], [data-report="${encodeURIComponent(eventId)}"]`);
+        return reportButton?.closest(".event-card-v2") || eventList.querySelector(".event-card-v2");
+    }
+
     function getVideoDemoLocation() {
+        if (VIDEO_DEMO_ROUTE) return { ...VIDEO_DEMO_USER_LOCATION };
         const seed = pickVideoDemoEvent("traffic") || pickVideoDemoEvent();
         if (!seed) return { ...VIDEO_DEMO_FALLBACK_LOCATION };
         return { lat: Number(seed.lat) + 0.003, lng: Number(seed.lng) + 0.003, accuracy: 20 };
@@ -2535,7 +2691,6 @@ import {
         document.documentElement.classList.add("video-demo-mode");
         document.body.classList.add("video-demo-mode");
         document.body.classList.remove("tw-online-mode", "stats-mode");
-        localStorage.setItem("beta_accepted", "true");
         betaModal.classList.remove("visible");
         settingsModal.classList.remove("visible");
         reportModal.classList.remove("visible");
@@ -2595,88 +2750,112 @@ import {
     async function runVideoDemoSequence() {
         const shell = ensureVideoDemoShell();
         shell.overlay.classList.add("ready");
-        while (VIDEO_DEMO_ROUTE) {
-            setVideoDemoSummary(false);
-            setVideoDemoRange(false);
-            try {
+        try {
+            do {
+                window.VIDEO_DEMO_DONE = false;
+                setVideoDemoSummary(false);
+                setVideoDemoRange(false);
                 prepareVideoDemoBaseline();
-            } catch (error) {
-                console.warn("[video-demo] baseline setup skipped", error);
-            }
-            setVideoDemoCaption("先看整張事件地圖", "我先把台灣拉到全島視角。每一個圖釘都是一個正在發生、可能影響交通或生活的公共事件。", "00-06 秒", "left");
-            flyToLatLng([23.7, 120.95], 7.1, 700);
-            frameVideoDemoElement("#map-stage", 14);
-            await moveVideoDemoCursorTo("#map-stage", "center", 900);
-            await videoDemoWait(3300);
-            const firstPin = document.querySelector(".map-pin.event-marker");
-            setVideoDemoCaption("點圖釘看事件摘要", "接著點一個圖釘。使用者可以直接看類型、地點、更新時間和資料來源，不用先讀完整清單。", "06-13 秒", "right");
-            if (firstPin) {
-                frameVideoDemoElement(firstPin, 18);
-                await moveVideoDemoCursorTo(firstPin, "center", 650);
-                pulseVideoDemoClick(firstPin);
-                firstPin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-            }
-            await videoDemoWait(4200);
-            closeActivePopup();
-            setVideoDemoCaption("左側清單保留判斷細節", "地圖告訴你在哪裡，左側卡片補上標題、可信度、影響狀態和回報入口，讓使用者能做下一步判斷。", "13-21 秒", "right");
-            eventList.scrollTop = 0;
-            const firstCard = eventList.querySelector(".event-card-v2");
-            frameVideoDemoElement(firstCard || "#event-list", 14);
-            await moveVideoDemoCursorTo(firstCard || "#event-list", "right", 700);
-            await videoDemoWait(4200);
-            setVideoDemoCaption("用分類篩掉雜訊", "現在點交通分類。畫面會只留下交通相關事件，讓使用者先看最相關的訊號。", "21-29 秒", "right");
-            const trafficChip = catFilters.querySelector('[data-category="traffic"]') || catFilters.querySelector("[data-category]");
-            frameVideoDemoElement("#category-filters", 12);
-            await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 650);
-            pulseVideoDemoClick(trafficChip || "#category-filters");
-            if (trafficChip) trafficChip.click();
-            await videoDemoWait(4500);
-            setVideoDemoCaption("切到附近模式", "接著切換目前位置半徑。地圖上的藍色圈圈就是使用者選擇的 3 公里範圍，清單也會同步變成附近事件。", "29-39 秒", "left");
-            try {
+
+                setVideoDemoCaption("資訊很多，卻不知道哪一件會影響自己", "公共事件散落在新聞、交通資訊與社群裡。", "01｜問題意識");
+                flyToLatLng([23.7, 120.95], 7.1, 700);
+                frameVideoDemoElement("#map-stage", 14);
+                await moveVideoDemoCursorTo("#map-stage", "center", 850);
+                await videoDemoWait(3150);
+
+                setVideoDemoCaption("把事件轉成位置", "島嶼脈搏將分散資訊整理成可以直接判斷的地圖訊號。", "02｜地圖訊號");
+                renderEvents();
+                frameVideoDemoElement("#map-stage", 14);
+                await moveVideoDemoCursorTo(getVideoDemoPin() || "#map-stage", "center", 650);
+                await videoDemoWait(4350);
+
+                const primaryPin = getVideoDemoPin();
+                setVideoDemoCaption("看見事件", "點擊固定事件 PIN，位置、時間、來源與摘要會一起出現。", "03｜看見事件");
+                if (primaryPin) {
+                    frameVideoDemoElement(primaryPin, 18);
+                    await moveVideoDemoCursorTo(primaryPin, "center", 650);
+                    pulseVideoDemoClick(primaryPin);
+                    primaryPin.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                } else {
+                    frameVideoDemoElement("#map-stage", 14);
+                }
+                await videoDemoWait(7350);
+                closeActivePopup();
+
+                setVideoDemoCaption("降低資訊噪音", "用分類只留下此刻關心的事件，先看最可能影響行動的訊號。", "04｜分類聚焦");
+                const trafficChip = catFilters.querySelector('[data-category="traffic"]') || catFilters.querySelector("[data-category]");
+                frameVideoDemoElement(trafficChip || "#category-filters", 12);
+                await moveVideoDemoCursorTo(trafficChip || "#category-filters", "center", 650);
+                pulseVideoDemoClick(trafficChip || "#category-filters");
+                if (trafficChip) trafficChip.click();
+                await videoDemoWait(7350);
+
+                setVideoDemoCaption("切到附近模式", "先選擇目前位置，再看 3 km 內真正靠近自己的事件。", "05｜附近 3 km");
+                const nearbyToggle = document.getElementById("nearby-toggle-desktop") || document.getElementById("nearby-toggle-mobile");
+                frameVideoDemoElement(nearbyToggle || "#map-stage", 14);
+                await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 650);
+                pulseVideoDemoClick(nearbyToggle || "#map-stage");
+                await videoDemoWait(450);
                 activateVideoDemoNearbyMode();
-            } catch (error) {
-                console.warn("[video-demo] nearby setup skipped", error);
-            }
-            await videoDemoWait(500);
-            const nearbyToggle = document.getElementById("nearby-toggle-desktop") || document.getElementById("nearby-toggle-mobile");
-            frameVideoDemoElement(nearbyToggle || "#map-stage", 14);
-            await moveVideoDemoCursorTo(nearbyToggle || "#map-stage", "center", 650);
-            pulseVideoDemoClick(nearbyToggle || "#map-stage");
-            setVideoDemoRange(true, "#map-stage");
-            await videoDemoWait(5600);
-            setVideoDemoCaption("調整半徑就是調整關注範圍", "右上角的 3 km 控制目前範圍；圈圈留在地圖上，使用者一眼就知道自己正在看哪個區域。", "39-47 秒", "left");
-            const radiusBtn = document.getElementById("nearby-radius-desktop") || document.getElementById("nearby-radius-mobile");
-            frameVideoDemoElement(radiusBtn || nearbyToggle || "#map-stage", 14);
-            await moveVideoDemoCursorTo(radiusBtn || nearbyToggle || "#map-stage", "center", 650);
-            pulseVideoDemoClick(radiusBtn || nearbyToggle || "#map-stage");
-            setVideoDemoRange(true, "#map-stage");
-            await videoDemoWait(4300);
-            setVideoDemoCaption("最後用回報修正公共訊號", "如果位置、分類或內容有問題，使用者可以從事件卡片回報，讓後續資料更準。", "47-58 秒", "right");
-            setVideoDemoRange(false);
-            isNearbyMode = false;
-            userLocation = null;
-            clearUserLocationMarker();
-            activeCategory = "all";
-            renderCategoryButtons();
-            renderEvents();
-            eventList.scrollTop = 0;
-            await videoDemoWait(500);
-            const reportButton = eventList.querySelector('[data-action="open-report"]') || eventList.querySelector(".event-card-v2");
-            frameVideoDemoElement(reportButton, 12);
-            await moveVideoDemoCursorTo(reportButton, "center", 650);
-            pulseVideoDemoClick(reportButton);
-            openVideoDemoReportModal();
-            await videoDemoWait(700);
-            frameVideoDemoElement("#report-modal .modal-box", 16);
-            await videoDemoWait(5600);
-            closeReportModal();
+                setVideoDemoRange(true, "#map-stage", 3000);
+                frameVideoDemoElement("#map-stage", 14);
+                await videoDemoWait(9900);
+
+                setVideoDemoCaption("調整關注範圍", "把 3 km 切成 5 km，地圖圓圈放大，事件清單同步納入更遠的影響。", "06｜半徑 5 km");
+                const radiusSelect = document.getElementById("nearby-radius-desktop") || document.getElementById("nearby-radius-mobile");
+                frameVideoDemoElement(radiusSelect || "#map-stage", 14);
+                await moveVideoDemoCursorTo(radiusSelect || "#map-stage", "center", 650);
+                pulseVideoDemoClick(radiusSelect || "#map-stage");
+                await videoDemoWait(450);
+                if (radiusSelect) {
+                    radiusSelect.value = "5000";
+                    radiusSelect.dispatchEvent(new Event("change", { bubbles: true }));
+                } else {
+                    setNearbyRadius(5000);
+                }
+                setVideoDemoRange(true, "#map-stage", 5000);
+                await videoDemoWait(5900);
+
+                setVideoDemoCaption("共同修正資料", "開啟回報視窗，補充錯誤位置或分類，送出後等待覆核。", "07｜回報修正");
+                setVideoDemoRange(false);
+                isNearbyMode = false;
+                userLocation = null;
+                clearUserLocationMarker();
+                activeCategory = "all";
+                renderCategoryButtons();
+                renderEvents();
+                eventList.scrollTop = 0;
+                await videoDemoWait(450);
+                const reportCard = getVideoDemoCard(VIDEO_DEMO_REPORT_EVENT_ID);
+                const reportButton = reportCard?.querySelector('[data-action="open-report"]') || eventList.querySelector('[data-action="open-report"]');
+                frameVideoDemoElement(reportButton || reportCard || "#event-list", 12);
+                await moveVideoDemoCursorTo(reportButton || reportCard || "#event-list", "center", 650);
+                pulseVideoDemoClick(reportButton || reportCard || "#event-list");
+                openVideoDemoReportModal();
+                await videoDemoWait(650);
+                frameVideoDemoElement("#report-modal .modal-box", 16);
+                const submitButton = document.getElementById("report-submit-btn");
+                await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 500);
+                pulseVideoDemoClick(submitButton || "#report-modal .modal-box");
+                if (submitButton) submitButton.click();
+                await videoDemoWait(5000);
+                closeReportModal();
+
+                shell.frame.classList.remove("visible");
+                shell.cursor.classList.remove("visible");
+                setVideoDemoCaption("從分散資訊，到可以採取行動的在地判斷。", "看見、理解、行動、共同修正。", "08｜Island Pulse");
+                setVideoDemoFinalSummary();
+                setVideoDemoSummary(true);
+                await videoDemoWait(6900);
+                setVideoDemoSummary(false);
+            } while (VIDEO_DEMO_LOOP);
+        } catch (error) {
+            console.error("[video-demo] sequence failed", error);
+        } finally {
             shell.frame.classList.remove("visible");
             shell.cursor.classList.remove("visible");
-            setVideoDemoCaption("完整流程：看見、理解、行動、修正", "這個網頁不是新聞列表，而是把公共事件變成可操作的地圖，幫使用者判斷身邊正在發生什麼。", "58-66 秒", "left");
-            setVideoDemoSummary(true);
-            await videoDemoWait(7200);
-            setVideoDemoSummary(false);
-            await videoDemoWait(1000);
+            setVideoDemoRange(false);
+            window.VIDEO_DEMO_DONE = true;
         }
     }
 
@@ -2685,14 +2864,20 @@ import {
         videoDemoStarted = true;
         document.documentElement.classList.add("video-demo-mode");
         document.body.classList.add("video-demo-mode");
-        localStorage.setItem("beta_accepted", "true");
         try {
             await dataPromise;
         } catch {
             // syncNewsAndRender already falls back to mock data.
         }
-        await videoDemoWaitFor(() => parsedEvents.length && document.querySelector(".event-card-v2"), 10000);
-        await videoDemoWaitFor(() => window._fallbackMap || !map || !map.isStyleLoaded || map.isStyleLoaded(), 10000);
+        const hasCards = await videoDemoWaitFor(() => parsedEvents.length && document.querySelector(".event-card-v2"), 10000);
+        if (!hasCards) {
+            console.warn("[video-demo] cards not ready; forcing fixed demo events");
+            parsedEvents = deduplicateEvents(VIDEO_DEMO_EVENTS.map(normalizeDisplayEvent));
+            renderCategoryButtons();
+            renderEvents();
+        }
+        const hasMap = await videoDemoWaitFor(() => window._fallbackMap || !map || !map.isStyleLoaded || map.isStyleLoaded(), 10000);
+        if (!hasMap) console.warn("[video-demo] map style not ready; continuing with overlay demo");
         await videoDemoWait(700);
         runVideoDemoSequence();
     }
@@ -2800,7 +2985,6 @@ import {
         if (VIDEO_DEMO_ROUTE) {
             document.documentElement.classList.add("video-demo-mode");
             document.body.classList.add("video-demo-mode");
-            localStorage.setItem("beta_accepted", "true");
             currentMapMode = "normal";
         }
         populateCityFilters();

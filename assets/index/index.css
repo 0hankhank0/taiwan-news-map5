@@ -3251,14 +3251,34 @@ body.video-demo-mode .modal-box {
     will-change: transform, opacity;
 }
 
+.video-demo-caption[data-placement="top-right"],
 .video-demo-caption[data-placement="right"] {
+    top: clamp(84px, 10vh, 124px);
+    bottom: auto;
     left: auto;
     right: clamp(24px, 5vw, 96px);
 }
 
+.video-demo-caption[data-placement="top-left"],
 .video-demo-caption[data-placement="left"] {
+    top: clamp(84px, 10vh, 124px);
+    bottom: auto;
     left: clamp(24px, 4vw, 72px);
     right: auto;
+}
+
+.video-demo-caption[data-placement="bottom-left"] {
+    top: auto;
+    bottom: clamp(40px, 7vh, 92px);
+    left: clamp(24px, 4vw, 72px);
+    right: auto;
+}
+
+.video-demo-caption[data-placement="bottom-right"] {
+    top: auto;
+    bottom: clamp(40px, 7vh, 92px);
+    left: auto;
+    right: clamp(24px, 5vw, 96px);
 }
 
 .video-demo-caption::before {
@@ -3462,6 +3482,13 @@ body.video-demo-mode .modal-box {
     border-radius: 20px;
     background: linear-gradient(160deg, rgba(10, 22, 39, 0.95), rgba(18, 35, 60, 0.88));
     box-shadow: 0 16px 42px rgba(0, 0, 0, 0.3);
+}
+
+.video-demo-summary .video-demo-brand-card {
+    background:
+        linear-gradient(160deg, rgba(15, 35, 65, 0.97), rgba(10, 22, 39, 0.92)),
+        radial-gradient(circle at top left, rgba(79, 140, 255, 0.28), transparent 58%);
+    border-color: rgba(94, 234, 212, 0.36);
 }
 
 .video-demo-summary span {

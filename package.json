@@ -16,7 +16,8 @@
     "test:location": "node tests/location-resolver.test.js",
     "test:event-refresh": "node tests/event-refresh.test.js",
     "test:admin": "node tests/admin-api.test.js",
-    "test:reaction": "node tests/reaction-api.test.js"
+    "test:reaction": "node tests/reaction-api.test.js",
+    "test:video-demo": "node tests/video-demo.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
