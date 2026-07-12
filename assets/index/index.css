@@ -3538,3 +3538,7 @@ body.video-demo-mode .modal-box {
         min-height: 96px;
     }
 }
+
+body.video-demo-mode .video-demo-range > span {
+    display: none !important;
+}
