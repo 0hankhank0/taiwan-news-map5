@@ -235,6 +235,74 @@ function isLikelyFallbackCenterCoord(city, lat, lng) {
   return getFallbackCenterCandidates(city).some((coord) => distanceDegrees(lat, lng, coord) <= 0.03);
 }
 
+function isVerifiedGeocodedExactLocation(event, existing) {
+  if (!Array.isArray(event.locationCandidates)) return false;
+  return event.locationCandidates.some((candidate) => {
+    const candidateLat = Number(candidate.lat);
+    const candidateLng = Number(candidate.lng);
+    const precision = normalizePrecision(candidate.precision || candidate.locationPrecision);
+    const confidence = Number(candidate.confidence ?? candidate.locationConfidence);
+    const matchedTokens = Array.isArray(candidate.matchedTokens) ? candidate.matchedTokens : [];
+    return candidate.accepted === true
+      && precision === "exact"
+      && confidence >= 0.8
+      && matchedTokens.length > 0
+      && distanceDegrees(existing.lat, existing.lng, { lat: candidateLat, lng: candidateLng }) <= 0.001;
+  });
+}
+
+function cityFallbackLocation(city, district, existing, locationQuery, reason) {
+  const fallback = getCityFallback(city) || existing;
+  return {
+    ...fallback,
+    city,
+    district,
+    locationPrecision: "city",
+    locationSource: "city-fallback",
+    locationConfidence: 0.34,
+    locationQuality: "low",
+    locationDisplayMode: "list_only",
+    locationQuery,
+    locationReason: reason,
+  };
+}
+
+function downgradeDuplicateFallbackLocations(events = []) {
+  const groups = new Map();
+  const protectedSources = new Set(["official", "manual", "known-location"]);
+
+  events.forEach((event, index) => {
+    const source = normalizeText(event.locationSource).toLowerCase();
+    const lat = Number(event.lat);
+    const lng = Number(event.lng);
+    if (protectedSources.has(source) || !isValidTaiwanCoord(lat, lng)
+      || !isLikelyFallbackCenterCoord(event.city, lat, lng)) return;
+    const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    const group = groups.get(key) || [];
+    group.push({ event, index });
+    groups.set(key, group);
+  });
+
+  const downgradeIndexes = new Set();
+  groups.forEach((group) => {
+    const eventKeys = new Set(group.map(({ event, index }) => normalizeText(
+      event.eventFingerprint || event.id || `${event.title || ""}:${index}`
+    )));
+    if (eventKeys.size > 1) group.forEach(({ index }) => downgradeIndexes.add(index));
+  });
+
+  return events.map((event, index) => {
+    if (!downgradeIndexes.has(index)) return event;
+    return withLocationQuality(cityFallbackLocation(
+      normalizeCity(event.city),
+      normalizeText(event.district),
+      { lat: Number(event.lat), lng: Number(event.lng) },
+      normalizeText(event.locationQuery),
+      "duplicate-fallback-center"
+    ), event);
+  });
+}
+
 function getCityFallback(city) {
   const fallback = TAIWAN_CITY_COORDS[normalizeCity(city)];
   if (!fallback) return null;
@@ -482,7 +550,9 @@ function resolveLocationSync(event, options = {}) {
   const existing = getExistingCoord(event);
   const locationQuery = normalizeText(event.locationQuery || buildLocationQuery(event, city, title, content));
 
-  if (existing && isOfficialCoordinate(event) && isValidTaiwanCoord(existing.lat, existing.lng)) {
+  if (existing
+    && (isOfficialCoordinate(event) || normalizeText(event.locationSource).toLowerCase() === "official")
+    && isValidTaiwanCoord(existing.lat, existing.lng)) {
     return withLocationQuality({ ...existing, city, district, locationPrecision: "exact", locationSource: event.locationSource || "official", locationQuery }, event);
   }
 
@@ -493,7 +563,7 @@ function resolveLocationSync(event, options = {}) {
     const outsideCity = !isCoordInCity(city, existing.lat, existing.lng);
     const manualCoordinate = normalizeText(event.locationSource).toLowerCase() === "manual";
     const likelyFallbackCenter = isLikelyFallbackCenterCoord(city, existing.lat, existing.lng);
-    const pointEvidence = hasPointLocationEvidence(event, title, content);
+    const verifiedGeocodedExactLocation = isVerifiedGeocodedExactLocation(event, existing);
     if (!outsideCity && manualCoordinate) {
       return withLocationQuality({
         ...existing,
@@ -504,7 +574,7 @@ function resolveLocationSync(event, options = {}) {
         locationQuery,
       }, event);
     }
-    if (!outsideCity && (!likelyFallbackCenter || pointEvidence)) {
+    if (!outsideCity && (!likelyFallbackCenter || verifiedGeocodedExactLocation)) {
       return withLocationQuality({
         ...existing,
         city,
@@ -515,19 +585,13 @@ function resolveLocationSync(event, options = {}) {
       }, event);
     }
     if (!outsideCity && likelyFallbackCenter) {
-      const fallback = getCityFallback(city) || existing;
-      return withLocationQuality({
-        ...fallback,
+      return withLocationQuality(cityFallbackLocation(
         city,
         district,
-        locationPrecision: "city",
-        locationSource: "city-fallback",
-        locationConfidence: 0.34,
-        locationQuality: "low",
-        locationDisplayMode: "list_only",
+        existing,
         locationQuery,
-        locationReason: "legacy-city-center-fallback",
-      }, event);
+        "legacy-city-center-fallback"
+      ), event);
     }
   }
 
@@ -553,6 +617,7 @@ module.exports = {
   TAIWAN_CITY_BOUNDS,
   KNOWN_LOCATION_COORDS,
   buildLocationQuery,
+  downgradeDuplicateFallbackLocations,
   extractDistrict,
   getCityBounds,
   getCityFallback,

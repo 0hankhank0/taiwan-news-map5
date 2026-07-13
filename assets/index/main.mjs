@@ -1070,7 +1070,7 @@ import {
         window._fallbackMap = fallbackMap;
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
-            parsedEvents.filter(shouldShowRealtimeEvent).forEach(ev => {
+            parsedEvents.filter(shouldShowRealtimeEvent).filter(ev => shouldRenderLocationMarker(ev)).forEach(ev => {
                 const latlng = [Number(ev.lat), Number(ev.lng)];
                 if (Number.isFinite(latlng[0]) && Number.isFinite(latlng[1])) {
                     L.marker([latlng[0], latlng[1]]).addTo(fallbackMap)

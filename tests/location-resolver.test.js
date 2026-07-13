@@ -3,6 +3,7 @@ const {
   isCoordInCity,
   rankGeocodingCandidates,
   resolveLocationSync,
+  downgradeDuplicateFallbackLocations,
 } = require("../location-resolver");
 const { normalizeEvent } = require("../event-normalizer");
 
@@ -108,6 +109,14 @@ function approx(actual, expected, tolerance = 0.0005) {
     locationSource: "nominatim",
     locationConfidence: 0.82,
     locationDisplayMode: "point",
+    locationCandidates: [{
+      lat: 25.0347,
+      lng: 121.5668,
+      accepted: true,
+      precision: "exact",
+      confidence: 0.82,
+      matchedTokens: ["松仁路"],
+    }],
   };
   const location = resolveLocationSync(event);
   approx(location.lat, 25.0347);
@@ -175,4 +184,80 @@ function approx(actual, expected, tolerance = 0.0005) {
   assert.equal(ranked.some((candidate) => candidate.rejectedReason === "outside-city"), true);
 }
 
-console.log("location-resolver tests passed");
+{
+  const fallbackEvents = [
+    { title: "台南道路事故", city: "台南市", lat: 22.9997, lng: 120.227 },
+    { title: "台南公園活動", city: "台南市", lat: 22.9997, lng: 120.227 },
+    { title: "台南醫院公告", city: "台南市", lat: 22.9997, lng: 120.227 },
+  ];
+  fallbackEvents.forEach((event) => {
+    const location = resolveLocationSync(event);
+    assert.equal(location.locationPrecision, "city");
+    assert.equal(location.locationSource, "city-fallback");
+    assert.equal(location.locationConfidence, 0.34);
+    assert.equal(location.locationQuality, "low");
+    assert.equal(location.locationDisplayMode, "list_only");
+  });
+}
+
+{
+  const legacyFallback = resolveLocationSync({
+    title: "台南道路施工",
+    city: "台南市",
+    lat: 23.1728,
+    lng: 120.2793,
+  });
+  assert.equal(legacyFallback.locationPrecision, "city");
+  assert.equal(legacyFallback.locationSource, "city-fallback");
+  assert.equal(legacyFallback.locationDisplayMode, "list_only");
+}
+
+{
+  const geocoded = resolveLocationSync({
+    title: "台南市中西區民生路火警",
+    city: "台南市",
+    lat: 22.9999,
+    lng: 120.2272,
+    locationPrecision: "exact",
+    locationSource: "mapbox-geocoding",
+    locationConfidence: 0.91,
+    locationCandidates: [{
+      lat: 22.9999,
+      lng: 120.2272,
+      accepted: true,
+      precision: "exact",
+      confidence: 0.91,
+      matchedTokens: ["民生路"],
+    }],
+  });
+  assert.equal(geocoded.locationPrecision, "exact");
+  assert.equal(geocoded.locationSource, "mapbox-geocoding");
+  assert.equal(geocoded.locationDisplayMode, "point");
+}
+
+{
+  const downgraded = downgradeDuplicateFallbackLocations([
+    { id: "road", title: "道路事故", city: "台南市", lat: 22.99971, lng: 120.22701, locationSource: "provided", locationPrecision: "exact" },
+    { id: "park", title: "公園活動", city: "台南市", lat: 22.99972, lng: 120.22702, locationSource: "provided", locationPrecision: "exact" },
+    { id: "official", title: "官方道路事件", city: "台南市", lat: 22.99971, lng: 120.22701, locationSource: "official", locationPrecision: "exact" },
+  ]);
+  assert.equal(downgraded[0].locationDisplayMode, "list_only");
+  assert.equal(downgraded[1].locationDisplayMode, "list_only");
+  assert.equal(downgraded[2].locationDisplayMode, undefined);
+}
+
+import("../assets/index/modules/map.mjs")
+  .then(({ shouldRenderLocationMarker }) => {
+    assert.equal(shouldRenderLocationMarker({
+      lat: 22.9997,
+      lng: 120.227,
+      locationPrecision: "city",
+      locationQuality: "low",
+      locationDisplayMode: "list_only",
+    }), false);
+    console.log("location-resolver tests passed");
+  })
+  .catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });

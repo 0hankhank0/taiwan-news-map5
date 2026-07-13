@@ -349,7 +349,8 @@ function isGenericCmsNoticeEvent(event) {
 
 function normalizeEventsForFrontend(value) {
   const seen = new Set();
-  return parseStoredEvents(value)
+  const normalizedEvents = locationResolver.downgradeDuplicateFallbackLocations(
+    parseStoredEvents(value)
     .map(normalizeEvent)
     .filter(Boolean)
     .map((event) => ({
@@ -359,6 +360,9 @@ function normalizeEventsForFrontend(value) {
     .filter((event) => !event.mergedIntoEventId)
     .filter((event) => !isInstitutionalNewsEvent(event))
     .filter((event) => !isGenericCmsNoticeEvent(event))
+  );
+
+  return normalizedEvents
     .filter((event) => {
       const key = normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();
       if (seen.has(key)) return false;
