@@ -143,6 +143,7 @@ async function launchChromium() {
 (async () => {
   const port = await getFreePort();
   const root = path.resolve(__dirname, "..");
+  const mainModuleSource = fs.readFileSync(path.join(root, "assets", "index", "main.mjs"), "utf8");
   const server = await startStaticServer(root, port);
 
   try {
@@ -169,7 +170,7 @@ async function launchChromium() {
     });
 
     const startedAt = Date.now();
-    await page.goto(`http://127.0.0.1:${port}/video`, { waitUntil: "domcontentloaded" });
+    await page.goto(`http://127.0.0.1:${port}/video?test=1`, { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => Array.isArray(window.VIDEO_DEMO_EVENTS) && window.VIDEO_DEMO_EVENTS.length >= 70 && window.VIDEO_DEMO_EVENTS.length <= 80);
     let initialState;
     try {
@@ -195,6 +196,19 @@ async function launchChromium() {
       return state.markerCount < initialMarkers ? state : false;
     }, initialState.markerCount, { timeout: 25000 }).then((handle) => handle.jsonValue());
 
+    const rangeAlignmentPromise = page.waitForFunction(() => {
+      const range = document.querySelector(".video-demo-range.visible");
+      const marker = document.querySelector(".user-location-dot");
+      if (!range || !marker) return false;
+      const rangeRect = range.getBoundingClientRect();
+      const markerRect = marker.getBoundingClientRect();
+      if (!rangeRect.width || !markerRect.width) return false;
+      const dx = (rangeRect.left + rangeRect.width / 2) - (markerRect.left + markerRect.width / 2);
+      const dy = (rangeRect.top + rangeRect.height / 2) - (markerRect.top + markerRect.height / 2);
+      const distance = Math.hypot(dx, dy);
+      return distance < 5 ? { dx, dy, distance } : false;
+    }, null, { timeout: 45000 }).then((handle) => handle.jsonValue());
+
     const nearby3State = await page.waitForFunction(() => {
       const state = window.VIDEO_DEMO_STATE;
       if (!state || !state.isNearbyMode || state.nearbyRadiusMeters !== 3000) return false;
@@ -208,24 +222,23 @@ async function launchChromium() {
       return state.visibleCount >= 9 && state.visibleCount <= 12 ? state : false;
     }, nearby3State.visibleCount, { timeout: 45000 }).then((handle) => handle.jsonValue());
 
-    const rangeAlignment = await page.waitForFunction(() => {
-      const range = document.querySelector(".video-demo-range.visible");
-      const marker = document.querySelector(".user-location-dot");
-      if (!range || !marker) return false;
-      const rangeRect = range.getBoundingClientRect();
-      const markerRect = marker.getBoundingClientRect();
-      if (!rangeRect.width || !markerRect.width) return false;
-      const dx = (rangeRect.left + rangeRect.width / 2) - (markerRect.left + markerRect.width / 2);
-      const dy = (rangeRect.top + rangeRect.height / 2) - (markerRect.top + markerRect.height / 2);
-      const distance = Math.hypot(dx, dy);
-      return distance < 5 ? { dx, dy, distance } : false;
-    }, null, { timeout: 45000 }).then((handle) => handle.jsonValue());
+    const reportStep = await page.waitForFunction(() => {
+      const title = document.querySelector(".video-demo-caption h1")?.textContent || "";
+      const copy = document.querySelector(".video-demo-caption p")?.textContent || "";
+      return title.includes("共同修正資料") && copy.includes("使用者可補充錯誤位置或分類") ? { title, copy } : false;
+    }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
+
+    const rangeAlignment = await rangeAlignmentPromise;
 
     const successStartedAt = await page.waitForFunction(() => {
       const success = document.getElementById("report-success");
       if (!success || success.style.display !== "block") return false;
       if (!/已送出，等待覆核/.test(success.textContent || "")) return false;
       return Date.now();
+    }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
+    const demoSuccessNote = await page.waitForFunction(() => {
+      const note = document.querySelector("#report-success .video-demo-report-note");
+      return note?.textContent?.trim() === "影片示範模式不寫入正式資料庫。" ? note.textContent.trim() : false;
     }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
     const reportSubmitAlignment = await page.waitForFunction(() => {
       const submitButton = document.getElementById("report-submit-btn");
@@ -240,7 +253,8 @@ async function launchChromium() {
       };
       return Math.abs(alignment.dx) < 5 && Math.abs(alignment.dy) < 5 ? alignment : false;
     }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
-    await page.waitForTimeout(3100);
+    const successVisibilityWaitMs = 800;
+    await page.waitForTimeout(successVisibilityWaitMs);
     const successStillVisible = await page.evaluate(() => {
       const success = document.getElementById("report-success");
       return Boolean(success && success.style.display === "block" && /已送出，等待覆核/.test(success.textContent || ""));
@@ -276,11 +290,19 @@ async function launchChromium() {
     assert.ok(nearby3State.visibleCount < nearby5State.visibleCount, `3 km ${nearby3State.visibleCount} should be below 5 km ${nearby5State.visibleCount}`);
     assert.ok(nearby5State.visibleCount >= 9 && nearby5State.visibleCount <= 12, `5 km count ${nearby5State.visibleCount}`);
     assert.ok(rangeAlignment.distance < 5, `range center is ${rangeAlignment.distance}px from user marker`);
+    assert.match(reportStep.title, /共同修正資料/);
+    assert.match(reportStep.copy, /使用者可補充錯誤位置或分類/);
+    assert.equal(demoSuccessNote, "影片示範模式不寫入正式資料庫。");
+    assert.match(mainModuleSource, /type === "success" && VIDEO_DEMO_ROUTE/, "the video-demo database notice must be gated to VIDEO_DEMO_ROUTE");
     assert.ok(Math.abs(reportSubmitAlignment.dx) < 5, `report frame horizontal offset is ${reportSubmitAlignment.dx}px`);
     assert.ok(Math.abs(reportSubmitAlignment.dy) < 5, `report frame vertical offset is ${reportSubmitAlignment.dy}px`);
     assert.equal(successStillVisible, true, `report success disappeared after ${successDurationMs}ms`);
-    assert.ok(successDurationMs >= 3000, `report success lasted ${successDurationMs}ms`);
+    assert.ok(successDurationMs >= successVisibilityWaitMs, `report success lasted ${successDurationMs}ms`);
     assert.ok(elapsedMs < 50000, `video demo took ${elapsedMs}ms`);
+    assert.match(mainModuleSource, /<article><span>System<\/span><strong>持續完善中<\/strong><small>資料來源、覆核機制與使用體驗持續優化<\/small><\/article>/);
+    for (const forbiddenText of ["\u6797\u5efa\u5b8f", "\u4f5c\u8005\uff0f\u5718\u968a\u8cc7\u8a0a", "\u8acb\u65bc\u6b63\u5f0f\u9001\u4ef6\u524d\u586b\u5165\u540d\u7a31", "\u56de\u5831\u8207\u8986\u6838\u6d41\u7a0b\u539f\u578b", "\u6a21\u64ec\u9001\u51fa\u5b8c\u6210", "\u4e0d\u6703\u9032\u5165\u771f\u5be6\u8986\u6838\u6d41\u7a0b", "\u90e8\u5206\u8cc7\u6599\u56de\u5831\u8207\u5f8c\u7aef\u8986\u6838\u6d41\u7a0b\u70ba\u6982\u5ff5\u6a21\u64ec"]) {
+      assert.equal(mainModuleSource.includes(forbiddenText), false, `video demo source contains forbidden text: ${forbiddenText}`);
+    }
     assert.match(result.caption, /分散資訊|在地判斷/);
     assert.equal(result.finalVisible, false);
     await browser.close();

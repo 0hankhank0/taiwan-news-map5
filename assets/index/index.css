@@ -3222,6 +3222,14 @@ body.video-demo-mode .modal-box {
     -webkit-backdrop-filter: none !important;
 }
 
+body.video-demo-mode #report-success .video-demo-report-note {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.45;
+}
+
 .video-demo-overlay {
     position: fixed;
     inset: 0;

@@ -28,7 +28,9 @@ import {
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
     const VIDEO_DEMO_ROUTE = window.location.pathname.replace(/\/+$/, "") === "/video";
-    const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && new URLSearchParams(window.location.search).get("loop") === "1";
+    const VIDEO_DEMO_PARAMS = new URLSearchParams(window.location.search);
+    const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("loop") === "1";
+    const VIDEO_DEMO_TEST_MODE = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("test") === "1";
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
@@ -2486,6 +2488,12 @@ import {
         }
         if (success) {
             success.textContent = type === "success" ? message : "";
+            if (type === "success" && VIDEO_DEMO_ROUTE) {
+                const note = document.createElement("div");
+                note.className = "video-demo-report-note";
+                note.textContent = "影片示範模式不寫入正式資料庫。";
+                success.append(note);
+            }
             success.style.display = type === "success" ? "block" : "none";
             success.style.whiteSpace = "pre-line";
         }
@@ -2546,7 +2554,7 @@ import {
                 btn.textContent = "已送出";
                 btn.disabled = true;
             }
-            setReportStatus("success", "已送出，等待覆核。\n示範模式不會呼叫後端 API。");
+            setReportStatus("success", "已送出，等待覆核。");
             const cancelBtn = document.getElementById("report-cancel-btn");
             if (cancelBtn) cancelBtn.textContent = "關閉";
             return;
@@ -2615,7 +2623,8 @@ import {
     let videoDemoStarted = false;
 
     function videoDemoWait(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        const delay = VIDEO_DEMO_TEST_MODE ? Math.max(60, Math.round(ms * 0.2)) : ms;
+        return new Promise(resolve => setTimeout(resolve, delay));
     }
 
     async function videoDemoWaitFor(predicate, timeout = 8000, interval = 120) {
@@ -2697,7 +2706,7 @@ import {
             '<article class="video-demo-brand-card"><span>Island Pulse</span><strong>島嶼脈搏</strong><small>台灣事件地圖</small></article>',
             '<article><span>核心價值</span><strong>看見、理解、行動、共同修正。</strong><small>從分散資訊，到可以採取行動的在地判斷。</small></article>',
             '<article><span>TISDC</span><strong>作品展示影片</strong><small>台灣國際學生創意設計大賽</small></article>',
-            '<article><span>Author</span><strong>林建宏</strong><small>作品設計與開發</small></article>'
+            '<article><span>System</span><strong>持續完善中</strong><small>資料來源、覆核機制與使用體驗持續優化</small></article>'
         ].join("");
     }
 
@@ -3018,7 +3027,7 @@ import {
                 requestAnimationFrame(() => setVideoDemoRange(true, "#map-stage", 5000));
                 await videoDemoWait(3300);
 
-                setVideoDemoCaption("共同修正資料", "開啟回報視窗，補充錯誤位置或分類，送出後等待覆核。", "08｜回報修正");
+                setVideoDemoCaption("共同修正資料", "使用者可補充錯誤位置或分類，送出回報後進入資料覆核流程。", "08｜回報修正");
                 setVideoDemoRange(false);
                 isNearbyMode = false;
                 userLocation = null;
