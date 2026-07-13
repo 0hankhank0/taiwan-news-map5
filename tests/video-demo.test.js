@@ -227,6 +227,19 @@ async function launchChromium() {
       if (!/已送出，等待覆核/.test(success.textContent || "")) return false;
       return Date.now();
     }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
+    const reportSubmitAlignment = await page.waitForFunction(() => {
+      const submitButton = document.getElementById("report-submit-btn");
+      const frame = document.querySelector(".video-demo-frame.visible");
+      if (!submitButton || !frame) return false;
+      const submitRect = submitButton.getBoundingClientRect();
+      const frameRect = frame.getBoundingClientRect();
+      if (!submitRect.width || !submitRect.height || !frameRect.width || !frameRect.height) return false;
+      const alignment = {
+        dx: (frameRect.left + frameRect.width / 2) - (submitRect.left + submitRect.width / 2),
+        dy: (frameRect.top + frameRect.height / 2) - (submitRect.top + submitRect.height / 2),
+      };
+      return Math.abs(alignment.dx) < 5 && Math.abs(alignment.dy) < 5 ? alignment : false;
+    }, null, { timeout: 55000 }).then((handle) => handle.jsonValue());
     await page.waitForTimeout(3100);
     const successStillVisible = await page.evaluate(() => {
       const success = document.getElementById("report-success");
@@ -263,6 +276,8 @@ async function launchChromium() {
     assert.ok(nearby3State.visibleCount < nearby5State.visibleCount, `3 km ${nearby3State.visibleCount} should be below 5 km ${nearby5State.visibleCount}`);
     assert.ok(nearby5State.visibleCount >= 9 && nearby5State.visibleCount <= 12, `5 km count ${nearby5State.visibleCount}`);
     assert.ok(rangeAlignment.distance < 5, `range center is ${rangeAlignment.distance}px from user marker`);
+    assert.ok(Math.abs(reportSubmitAlignment.dx) < 5, `report frame horizontal offset is ${reportSubmitAlignment.dx}px`);
+    assert.ok(Math.abs(reportSubmitAlignment.dy) < 5, `report frame vertical offset is ${reportSubmitAlignment.dy}px`);
     assert.equal(successStillVisible, true, `report success disappeared after ${successDurationMs}ms`);
     assert.ok(successDurationMs >= 3000, `report success lasted ${successDurationMs}ms`);
     assert.ok(elapsedMs < 50000, `video demo took ${elapsedMs}ms`);

@@ -2778,6 +2778,37 @@ import {
         setTimeout(() => shell.click.classList.remove("visible"), 520);
     }
 
+    function waitForVideoDemoFrames(count = 2) {
+        return new Promise((resolve) => {
+            const nextFrame = () => {
+                if (--count <= 0) resolve();
+                else requestAnimationFrame(nextFrame);
+            };
+            requestAnimationFrame(nextFrame);
+        });
+    }
+
+    async function waitForVideoDemoReportSubmitLayout(submitButton, maxFrames = 45) {
+        let previousRect = null;
+        for (let frame = 0; frame < maxFrames; frame += 1) {
+            await waitForVideoDemoFrames(frame === 0 ? 2 : 1);
+            const success = document.getElementById("report-success");
+            const rect = submitButton?.getBoundingClientRect();
+            const successVisible = success?.style.display === "block";
+            if (!successVisible || !rect?.width || !rect?.height) continue;
+
+            if (previousRect
+                && Math.abs(rect.left - previousRect.left) < 0.5
+                && Math.abs(rect.top - previousRect.top) < 0.5
+                && Math.abs(rect.width - previousRect.width) < 0.5
+                && Math.abs(rect.height - previousRect.height) < 0.5) {
+                return rect;
+            }
+            previousRect = rect;
+        }
+        return previousRect;
+    }
+
     function getVideoDemoLocationMarkerCenter() {
         const markerEl = userLocationMarker?.getElement?.() || document.querySelector(".user-location-dot");
         if (!markerEl) return null;
@@ -3009,6 +3040,9 @@ import {
                 await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 350);
                 pulseVideoDemoClick(submitButton || "#report-modal .modal-box");
                 if (submitButton) submitButton.click();
+                await waitForVideoDemoReportSubmitLayout(submitButton);
+                frameVideoDemoElement(submitButton || "#report-modal .modal-box", 10);
+                await moveVideoDemoCursorTo(submitButton || "#report-modal .modal-box", "center", 0);
                 await videoDemoWait(3800);
                 closeReportModal();
                 await videoDemoWait(300);
