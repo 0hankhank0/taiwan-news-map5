@@ -9,7 +9,6 @@ import {
 import { readReportPayload } from "./modules/reports.mjs";
 import { readReactionPayload } from "./modules/reactions.mjs";
 import { getMapboxToken, shouldRenderLocationMarker as shouldRenderMapLocationMarker } from "./modules/map.mjs";
-import { buildNearbyRadiusGeoJson } from "./modules/nearby-radius.mjs";
 import {
     ALERT_ZONE_MAX_ITEMS,
     ALERT_ZONE_RADII,
@@ -1024,7 +1023,6 @@ import {
 
     map.on('style.load', () => {
         setMapLanguageToChinese();
-        updateNearbyRadiusLayer();
     });
 
     map.on('error', (e) => {
@@ -1207,7 +1205,6 @@ import {
 
         renderCategoryButtons();
         renderEvents();
-        updateNearbyRadiusLayer();
         scheduleMapResize();
     }
     function setStatus(t){
@@ -1656,76 +1653,7 @@ import {
         nearbyRadiusMeters = nextRadius;
         if (!VIDEO_DEMO_ROUTE) localStorage.setItem("nearby_radius", String(nearbyRadiusMeters));
         updateNearbyControls();
-        updateNearbyRadiusLayer();
         if (isNearbyMode) renderEvents();
-    }
-
-    const NEARBY_RADIUS_SOURCE_ID = "nearby-radius";
-    const NEARBY_RADIUS_FILL_LAYER_ID = "nearby-radius-fill";
-    const NEARBY_RADIUS_LINE_LAYER_ID = "nearby-radius-line";
-
-    function canShowNearbyRadiusLayer() {
-        return !VIDEO_DEMO_ROUTE
-            && currentMapMode === "normal"
-            && isNearbyMode
-            && Number.isFinite(Number(userLocation?.lat))
-            && Number.isFinite(Number(userLocation?.lng))
-            && map
-            && typeof map.isStyleLoaded === "function"
-            && map.isStyleLoaded();
-    }
-
-    function ensureNearbyRadiusLayer() {
-        if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) return false;
-        if (!map.getSource(NEARBY_RADIUS_SOURCE_ID)) {
-            map.addSource(NEARBY_RADIUS_SOURCE_ID, { type: "geojson", data: EMPTY_GEOJSON });
-        }
-        if (!map.getLayer(NEARBY_RADIUS_FILL_LAYER_ID)) {
-            map.addLayer({
-                id: NEARBY_RADIUS_FILL_LAYER_ID,
-                type: "fill",
-                source: NEARBY_RADIUS_SOURCE_ID,
-                paint: { "fill-color": "#38bdf8", "fill-opacity": 0.1 }
-            });
-        }
-        if (!map.getLayer(NEARBY_RADIUS_LINE_LAYER_ID)) {
-            map.addLayer({
-                id: NEARBY_RADIUS_LINE_LAYER_ID,
-                type: "line",
-                source: NEARBY_RADIUS_SOURCE_ID,
-                paint: {
-                    "line-color": "#60a5fa",
-                    "line-opacity": 0.82,
-                    "line-width": 2,
-                    "line-dasharray": [2, 2]
-                }
-            });
-        }
-        return true;
-    }
-
-    function hideNearbyRadiusLayer() {
-        if (!map || typeof map.isStyleLoaded !== "function" || !map.isStyleLoaded()) return;
-        const source = map.getSource(NEARBY_RADIUS_SOURCE_ID);
-        if (source && typeof source.setData === "function") source.setData(EMPTY_GEOJSON);
-        [NEARBY_RADIUS_FILL_LAYER_ID, NEARBY_RADIUS_LINE_LAYER_ID].forEach(id => {
-            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
-        });
-    }
-
-    function updateNearbyRadiusLayer() {
-        if (!canShowNearbyRadiusLayer()) {
-            hideNearbyRadiusLayer();
-            return;
-        }
-        if (!ensureNearbyRadiusLayer()) return;
-        const source = map.getSource(NEARBY_RADIUS_SOURCE_ID);
-        if (source && typeof source.setData === "function") {
-            source.setData(buildNearbyRadiusGeoJson(userLocation, nearbyRadiusMeters));
-        }
-        [NEARBY_RADIUS_FILL_LAYER_ID, NEARBY_RADIUS_LINE_LAYER_ID].forEach(id => {
-            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "visible");
-        });
     }
 
     function updateUserLocationMarker() {
@@ -1737,7 +1665,6 @@ import {
             enableSubpixelPositioning(userLocationMarker);
         }
         userLocationMarker.setLngLat([userLocation.lng, userLocation.lat]).addTo(map);
-        updateNearbyRadiusLayer();
     }
 
     function clearUserLocationMarker() {
@@ -1745,7 +1672,6 @@ import {
             userLocationMarker.remove();
             userLocationMarker = null;
         }
-        hideNearbyRadiusLayer();
     }
 
     function filterEventsByNearby(events) {
@@ -1764,7 +1690,6 @@ import {
         if (isNearbyMode) {
             isNearbyMode = false;
             clearUserLocationMarker();
-            hideNearbyRadiusLayer();
             renderEvents();
             setStatus("已切回全台事件");
             updateNearbyControls();
@@ -1787,7 +1712,6 @@ import {
             };
             isNearbyMode = true;
             updateUserLocationMarker();
-            updateNearbyRadiusLayer();
             flyToLatLng([userLocation.lat, userLocation.lng], 13, 800);
             renderEvents();
         }, (error) => {
@@ -1796,8 +1720,6 @@ import {
                 : "定位失敗，請確認瀏覽器權限或稍後再試。";
             setStatus(msg);
             if (status) status.textContent = msg;
-            userLocation = null;
-            hideNearbyRadiusLayer();
             updateNearbyControls();
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }

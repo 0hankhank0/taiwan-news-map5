@@ -100,10 +100,7 @@ const MAPBOX_STUB = `
   class Map {
     constructor(options = {}) {
       this.handlers = {};
-      this.sources = {};
-      this.layers = {};
       this.container = typeof options.container === "string" ? document.getElementById(options.container) : options.container;
-      window.__mapboxTestMap = this;
       setTimeout(() => { this.emit("style.load"); this.emit("load"); }, 60);
     }
     on(name, handler) { (this.handlers[name] ||= []).push(handler); return this; }
@@ -111,13 +108,11 @@ const MAPBOX_STUB = `
     isStyleLoaded() { return true; }
     flyTo() {}
     addControl() {}
-    getLayer(id) { return this.layers[id] || null; }
-    getSource(id) { return this.sources[id] || null; }
-    setLayoutProperty(id, property, value) { if (this.layers[id]) (this.layers[id].layout ||= {})[property] = value; }
-    addSource(id, definition) {
-      this.sources[id] = { ...definition, data: definition.data, setData: (data) => { this.sources[id].data = data; } };
-    }
-    addLayer(definition) { this.layers[definition.id] = { ...definition }; }
+    getLayer() { return false; }
+    getSource() { return false; }
+    setLayoutProperty() {}
+    addSource() {}
+    addLayer() {}
     resize() {}
     remove() {}
   }
@@ -286,7 +281,6 @@ async function launchChromium() {
       eventCount: window.VIDEO_DEMO_EVENTS?.length || 0,
       caption: document.querySelector(".video-demo-caption h1")?.textContent || "",
       finalVisible: document.querySelector(".video-demo-summary.visible") !== null,
-      nearbySourceExists: Boolean(window.__mapboxTestMap?.getSource("nearby-radius")),
     }));
     const elapsedMs = Date.now() - startedAt;
     assert.equal(result.done, true);
@@ -311,7 +305,6 @@ async function launchChromium() {
     }
     assert.match(result.caption, /分散資訊|在地判斷/);
     assert.equal(result.finalVisible, false);
-    assert.equal(result.nearbySourceExists, false, "video route must not add the normal nearby radius layer");
     await browser.close();
     console.log("video demo tests passed");
   } finally {
