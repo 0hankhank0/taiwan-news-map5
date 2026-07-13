@@ -2697,7 +2697,7 @@ import {
             '<article class="video-demo-brand-card"><span>Island Pulse</span><strong>島嶼脈搏</strong><small>台灣事件地圖</small></article>',
             '<article><span>核心價值</span><strong>看見、理解、行動、共同修正。</strong><small>從分散資訊，到可以採取行動的在地判斷。</small></article>',
             '<article><span>TISDC</span><strong>作品展示影片</strong><small>台灣國際學生創意設計大賽</small></article>',
-            '<article><span>Team</span><strong>作者／團隊資訊</strong><small>請於正式送件前填入名稱</small></article>'
+            '<article><span>Author</span><strong>林建宏</strong><small>作品設計與開發</small></article>'
         ].join("");
     }
 
