@@ -3225,7 +3225,7 @@ body.video-demo-mode .modal-box {
 .video-demo-overlay {
     position: fixed;
     inset: 0;
-    z-index: 10000;
+    z-index: 10002;
     pointer-events: none;
     opacity: 0;
     transition: opacity 0.45s ease;
