@@ -11,6 +11,13 @@ import { readReactionPayload } from "./modules/reactions.mjs";
 import { getMapboxToken, shouldRenderLocationMarker as shouldRenderMapLocationMarker } from "./modules/map.mjs";
 import { buildNearbyRadiusGeoJson } from "./modules/nearby-radius.mjs";
 import {
+    forEachEventSafely,
+    getSearchableEventText,
+    isMourningEvent as isMourningEventSafely,
+    normalizeEventTextFields,
+    safeText
+} from "./modules/event-text.mjs";
+import {
     ALERT_ZONE_MAX_ITEMS,
     ALERT_ZONE_RADII,
     attachAlertZoneMatches,
@@ -297,7 +304,7 @@ import {
     };
 
     function getEventAlertType(ev) {
-        const text = (ev.title + " " + (ev.content || ""));
+        const text = [ev?.title, ev?.content].map(value => safeText(value)).join(" ");
         if (/縱火|放火|蓄意放火/.test(text)) return "arson";
         if (/火災|火警|爆炸|氣爆|失火|燃燒|起火/.test(text)) return "fire";
         if (ev.category === "traffic") return "traffic";
@@ -347,7 +354,10 @@ import {
 
     function getEventCategoryText(ev) {
         if (!ev || typeof ev !== "object") return "";
-        return normalizeText([ev.title, ev.summary, ev.content, ev.text, ev.location, ev.city, ev.source].filter(Boolean).join(" ")).toLowerCase();
+        return [ev.title, ev.summary, ev.content, ev.text, ev.location, ev.city, ev.source]
+            .map(value => safeText(value))
+            .join(" ")
+            .toLowerCase();
     }
 
     function shouldShowRealtimeEvent(ev) {
@@ -378,10 +388,11 @@ import {
     }
 
     function normalizeDisplayEvent(ev) {
-        const originalCategory = normalizeText(ev.category || ev.type || "other").toLowerCase();
-        const groupCategory = inferEventGroupCategory({ ...ev, category: originalCategory });
+        const normalizedTextEvent = normalizeEventTextFields(ev);
+        const originalCategory = normalizeText(normalizedTextEvent.category || normalizedTextEvent.type || "other").toLowerCase();
+        const groupCategory = inferEventGroupCategory({ ...normalizedTextEvent, category: originalCategory });
         return {
-            ...ev,
+            ...normalizedTextEvent,
             originalCategory,
             category: groupCategory,
             groupCategory,
@@ -480,7 +491,9 @@ import {
     }
 
     function getEventText(ev) {
-        return normalizeText([ev.title, ev.content, ev.summary, ev.location, ev.address, ev.impact, ev.advice].filter(Boolean).join(" "));
+        return [ev.title, ev.content, ev.summary, ev.location, ev.address, ev.impact, ev.advice]
+            .map(value => safeText(value))
+            .join(" ");
     }
 
     function getEventStatusLabel(ev) {
@@ -622,7 +635,7 @@ import {
         const isActivity = inferEventGroupCategory(ev) === "activity" || ev.category === "activity";
         const timeRange = formatEventDateRange(ev);
         const place = normalizeText([ev.venue, ev.address || ev.location].filter(Boolean).join("｜"));
-        const area = normalizeText([ev.city, ev.district].filter(Boolean).join(" "));
+        const area = [ev.city, ev.district].map(value => safeText(value)).join(" ");
 
         if (isActivity && timeRange) rows.push(["時間", timeRange]);
         if (place) rows.push([isActivity ? "場地" : "地點", place]);
@@ -1217,7 +1230,7 @@ import {
             heroStatus.textContent = t;
         }
     }
-    function normalizeText(v){ return String(v||"").trim(); }
+    function normalizeText(v){ return safeText(v).trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function flyToLatLng(latlng, zoom, duration=800){
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
@@ -1344,7 +1357,7 @@ import {
 
     function normalizeSource(source) {
         if (!source) return "news";
-        const s = source.toLowerCase();
+        const s = safeText(source).toLowerCase();
         if (s.includes("tdx") || s.includes("traffic")) return "TDX CMS";
         if (s.includes("rss") || s.includes("feed")) return "RSS";
         if (s.includes("news") || s.includes("ai") || s.includes("scraper")) return "news";
@@ -1887,7 +1900,7 @@ import {
                 if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
             }
             if(searchKeyword){
-                const hay=[ev.title,ev.content,ev.city,ev.source].join(" ").toLowerCase();
+                const hay=getSearchableEventText(ev);
                 if(!hay.includes(searchKeyword)) return false;
             }
             return true;
@@ -1917,11 +1930,8 @@ import {
         } catch (e) { return null; }
     }
 
-    function isMourningEvent(ev) {
-        if (ev.hasCasualty !== undefined) return ev.hasCasualty;
-        const keywords = ["死亡", "罹難", "身亡", "喪生", "不治", "往生", "遇難"];
-        const text = (ev.title + ev.content);
-        return keywords.some(k => text.includes(k));
+    function isMourningEvent(ev = {}) {
+        return isMourningEventSafely(ev);
     }
 
     async function updateReactionUI(eventId, container) {
@@ -2098,7 +2108,7 @@ import {
             document.getElementById("reset-filters-btn")?.addEventListener("click", resetVisibleFilters);
         }
 
-        events.forEach((ev, index)=>{
+        forEachEventSafely(events, (ev, index) => {
             const shouldRenderMarker = index < markerLimit;
             const canRenderMarker = shouldRenderMarker && shouldRenderLocationMarker(ev);
             const shouldRenderCard = index < cardLimit;
@@ -2216,6 +2226,13 @@ import {
             if (isMourningEvent(ev)) {
                 updateReactionUI(ev.id, card.querySelector('.reaction-container'));
             }
+        }, (error, ev, index) => {
+            console.error("[island-pulse] event render failed", {
+                index,
+                eventId: ev?.id,
+                title: ev?.title,
+                error
+            });
         });
 
         if (isMobile && events.length > cardLimit) {
@@ -2268,24 +2285,44 @@ import {
         }
         setStatus("正在抓取事件資料...");
         renderLoadingState();
-        try{
-            const res = await fetch("/api/events");
+        let res;
+        let list;
+        try {
+            res = await fetch("/api/events");
             const raw = await res.text();
-            if(!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = tryParseJson(raw,[]);
-            const list = Array.isArray(data)?data:[];
-            parsedEvents = deduplicateEvents(list.map(normalizeDisplayEvent));
-            await syncReportSummary();
-            renderCategoryButtons(); renderEvents();
-            dataTrust.updateFromResponse(parsedEvents, res, document.querySelectorAll(".event-card-v2").length);
-        }catch(e){
-            console.warn("API無法連線，使用展示資料",e);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = JSON.parse(raw);
+            list = Array.isArray(data) ? data : [];
+        } catch (error) {
+            console.warn("資料服務暫時無法連線，目前顯示展示資料", error);
             parsedEvents=deduplicateEvents(MOCK_EVENTS.map(normalizeDisplayEvent));
             reportSummaryByEvent = {};
             renderCategoryButtons(); renderEvents();
             dataTrust.updateError("資料服務暫時無法連線，目前顯示展示資料");
             setStatus("展示模式：顯示範例資料");
+            return parsedEvents;
         }
+
+        const normalizedEvents = [];
+        list.forEach((event, index) => {
+            try {
+                normalizedEvents.push(normalizeDisplayEvent(event));
+            } catch (error) {
+                console.error("[island-pulse] event normalization failed", { index, event, error });
+            }
+        });
+        parsedEvents = deduplicateEvents(normalizedEvents);
+
+        try {
+            await syncReportSummary();
+            renderCategoryButtons();
+            renderEvents();
+            dataTrust.updateFromResponse(parsedEvents, res, document.querySelectorAll(".event-card-v2").length);
+        } catch (error) {
+            console.error("[island-pulse] 事件渲染失敗", error);
+            setStatus("事件資料已取得，但部分事件無法顯示");
+        }
+        return parsedEvents;
     }
 
     // ── CITY SYNC ────────────────────────────────────────────

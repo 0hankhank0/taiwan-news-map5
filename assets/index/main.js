@@ -1,5 +1,5 @@
 (function loadIslandPulseApp() {
-    import("/assets/index/main.mjs?v=video-demo-17").catch((error) => {
+    import("/assets/index/main.mjs?v=video-demo-18").catch((error) => {
         console.error("[island-pulse] failed to load main module", error);
         const status = document.getElementById("status-text");
         if (status) status.textContent = "地圖載入失敗，請重新整理頁面。";
