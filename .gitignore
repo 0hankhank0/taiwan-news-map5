@@ -15,12 +15,3 @@ yarn-error.log*
 .idea/
 
 .vercel
-
-# Local export clutter
-codex-sync-source.zip
-test-artifacts/
-exports/goldenpin/
-exports/tisdc-2026/
-exports/tisdc-2026-v2/*
-!exports/tisdc-2026-v2/assets/
-!exports/tisdc-2026-v2/assets/**
