@@ -7,7 +7,7 @@ process.env.REPORT_ADMIN_TOKEN = "test-token";
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-admin-test-${Date.now()}.sqlite`);
 process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
 
-const { setCachedEvents, getCachedEvents, appendRefreshLog, getRefreshLog } = require("../event-store");
+const { setCachedEvents, getCachedEvents, appendRefreshLog, getRefreshLog, saveRefreshRunDetail } = require("../event-store");
 const admin = require("../api/admin");
 
 function createRes() {
@@ -72,6 +72,13 @@ async function call(handler, req) {
   assert.equal(runIdFilter.payload.total, 1);
   const dateFilter = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { dateFrom: "2026-07-16T12:03:20.000Z" } });
   assert.ok(dateFilter.payload.logs.every((entry) => Date.parse(entry.startedAt) >= Date.parse("2026-07-16T12:03:20.000Z")));
+  await saveRefreshRunDetail({ runId: "run-204", startedAt: "2026-07-16T12:03:24.000Z", completedAt: "2026-07-16T12:03:25.000Z", status: "success", mode: "news", sources: { rss: { count: 1, items: [{ title: "safe item", processingResult: "accepted", eventId: "event-1" }] } }, pipeline: { rawCount: 1, finalCount: 1 }, finalEvents: [] });
+  const detailDenied = await call(admin, { method: "GET", url: "/api/refresh-log", query: { runId: "run-204", detail: "1" } });
+  assert.equal(detailDenied.statusCode, 401);
+  const detailOk = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { runId: "run-204", detail: "1" } });
+  assert.equal(detailOk.statusCode, 200);
+  assert.equal(detailOk.payload.run.runId, "run-204");
+  assert.equal(detailOk.payload.details.sources.rss.items[0].processingResult, "accepted");
 
   await setCachedEvents([{
     id: "event_admin_test",

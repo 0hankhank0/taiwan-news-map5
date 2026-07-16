@@ -16,6 +16,7 @@ const {
   EVENT_BUCKET_KEY_MAP,
   EVENT_REFRESH_STATUS_KEY,
   EVENT_REFRESH_LOG_KEY,
+  EVENT_REFRESH_RUN_INDEX_KEY,
   acquireCronLock,
   clearEventCaches,
   deleteCachedValue,
@@ -23,7 +24,9 @@ const {
   getCachedValue,
   getRefreshStatus,
   getRefreshLog,
+  getRefreshRunDetail,
   releaseCronLock,
+  saveRefreshRunDetail,
 } = require("../event-store");
 const { applyEventQueryFilters } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
@@ -57,6 +60,7 @@ async function call(handler, req) {
   await clearEventCaches();
   await deleteCachedValue(EVENT_REFRESH_STATUS_KEY);
   await deleteCachedValue(EVENT_REFRESH_LOG_KEY);
+  await deleteCachedValue(EVENT_REFRESH_RUN_INDEX_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
 
   assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
@@ -181,6 +185,21 @@ async function call(handler, req) {
   assert.equal(initialRefreshLog.length, 1);
   assert.equal(initialRefreshLog[0].status, "success");
   assert.equal(initialRefreshLog[0].runId, "test-refresh");
+  const firstRunDetail = await getRefreshRunDetail("test-refresh");
+  assert.equal(firstRunDetail.runId, "test-refresh");
+  assert.equal(firstRunDetail.sources.tdxTraffic.items.length, 2);
+  assert.ok(firstRunDetail.finalEvents.some((item) => item.processingResult === "accepted"));
+
+  const partialResult = await eventRefresh.runEventRefresh({
+    runId: "partial-refresh", startedAt: now + 1, now: now + 1,
+    sourceData: { tdxEvents: [officialTraffic], activityEvents: [activity] }, existingEvents: [], skipExternalGeocoding: true,
+    sourceFailures: { tdxTraffic: "Authorization: Bearer hidden-value HTTP 500" },
+  });
+  assert.equal(partialResult.status, "partial_success");
+  assert.equal((await getRefreshLog())[0].runId, "partial-refresh");
+  const partialDetail = await getRefreshRunDetail("partial-refresh");
+  assert.equal(partialDetail.sources.tdxTraffic.status, "error");
+  assert.equal(JSON.stringify(partialDetail).includes("hidden-value"), false);
 
   await assert.rejects(() => eventRefresh.runEventRefresh({
     runId: "error-refresh",
@@ -191,6 +210,9 @@ async function call(handler, req) {
   assert.equal(errorRefreshLog[0].status, "error");
   assert.equal(JSON.stringify(errorRefreshLog[0]).includes("secret-value"), false);
   assert.equal(JSON.stringify(errorRefreshLog[0]).includes("token=bad"), false);
+  const errorDetail = await getRefreshRunDetail("error-refresh");
+  assert.equal(errorDetail.status, "error");
+  assert.equal(JSON.stringify(errorDetail).includes("secret-value"), false);
 
   const sampleEvents = [
     { title: "Road closure", content: "A road closure", category: "traffic", status: "active", city: "Taipei", sourceName: "TDX" },
@@ -239,7 +261,7 @@ async function call(handler, req) {
   const denied = await call(cron, { method: "POST" });
   assert.equal(denied.statusCode, 401);
   const logCountBeforeAuthorizedCron = (await getRefreshLog()).length;
-  assert.equal(logCountBeforeAuthorizedCron, 2);
+  assert.equal(logCountBeforeAuthorizedCron, 3);
 
   await deleteCachedValue(CRON_LOCK_KEY);
   const ok = await call(cron, {
@@ -263,7 +285,14 @@ async function call(handler, req) {
   const skippedLog = (await getRefreshLog())[0];
   assert.equal(skippedLog.status, "skipped");
   assert.equal(skippedLog.skippedReason, "cron_lock");
+  assert.equal((await getRefreshRunDetail(skippedLog.runId)).status, "skipped");
   await releaseCronLock("other-run");
+
+  for (let index = 0; index < 51; index += 1) {
+    await saveRefreshRunDetail({ runId: `retention-${index}`, startedAt: new Date(now + index * 1000).toISOString(), completedAt: new Date(now + index * 1000).toISOString(), status: "success", mode: "all", sources: {}, pipeline: {}, finalEvents: [] });
+  }
+  assert.equal(await getRefreshRunDetail("retention-0"), null);
+  assert.equal((await getRefreshRunDetail("retention-50")).runId, "retention-50");
   eventRefresh.runEventRefresh = originalRunEventRefresh;
 
   console.log("event refresh tests passed");

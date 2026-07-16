@@ -1,5 +1,5 @@
 const { isAuthorized } = require("../admin-auth");
-const { getRefreshLog } = require("../event-store");
+const { getRefreshLog, getRefreshRunDetail } = require("../event-store");
 
 function sendJson(res, status, payload) { return res.status(status).json(payload); }
 function getQuery(req, key) { return String(req.query?.[key] || "").trim(); }
@@ -23,6 +23,11 @@ module.exports = async (req, res) => {
   const status = getQuery(req, "status");
   const mode = getQuery(req, "mode");
   const runId = getQuery(req, "runId");
+  if (getQuery(req, "detail") === "1") {
+    const run = (await getRefreshLog()).find((entry) => entry.runId === runId);
+    if (!run) return sendJson(res, 404, { error: "Refresh run not found" });
+    return sendJson(res, 200, { run, details: await getRefreshRunDetail(runId) });
+  }
   const dateFrom = validDate(getQuery(req, "dateFrom"));
   const dateTo = validDate(getQuery(req, "dateTo"));
   const filtered = (await getRefreshLog()).filter((entry) => {

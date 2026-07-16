@@ -17,6 +17,10 @@ const EVENT_REVIEW_LOG_KEY = "events:review-log";
 const EVENT_REFRESH_STATUS_KEY = "events:refresh-status";
 const EVENT_REFRESH_LOG_KEY = "events:refresh-log";
 const MAX_REFRESH_LOG_ENTRIES = 200;
+const EVENT_REFRESH_RUN_PREFIX = "events:refresh-run:";
+const EVENT_REFRESH_RUN_INDEX_KEY = "events:refresh-run-index";
+const MAX_REFRESH_RUN_DETAILS = 50;
+const REFRESH_RUN_DETAIL_TTL_SECONDS = 60 * 60 * 24 * 14;
 const CRON_LOCK_KEY = "cron:lock";
 const DEFAULT_CRON_LOCK_TTL_SECONDS = 120;
 const CLEARABLE_EVENT_CACHE_KEYS = [
@@ -375,7 +379,7 @@ function normalizeRefreshLogEntry(entry = {}) {
     runId: String(entry.runId || ""),
     trigger: ["scheduled", "manual", "unknown"].includes(entry.trigger) ? entry.trigger : "unknown",
     mode: ["all", "news", "traffic"].includes(entry.mode) ? entry.mode : "all",
-    status: ["success", "error", "skipped", "running"].includes(entry.status) ? entry.status : "error",
+    status: ["success", "partial_success", "error", "skipped", "running"].includes(entry.status) ? entry.status : "error",
     startedAt,
     completedAt,
     durationMs: Math.max(0, number(entry.durationMs)),
@@ -390,9 +394,78 @@ function normalizeRefreshLogEntry(entry = {}) {
     geocodingAttempts: Math.max(0, number(entry.geocodingAttempts)),
     geocodingHits: Math.max(0, number(entry.geocodingHits)),
     cacheTtlSeconds: Math.max(0, number(entry.cacheTtlSeconds)),
+    rawCount: Math.max(0, number(entry.rawCount)),
+    errorSourceCount: Math.max(0, number(entry.errorSourceCount)),
+    cacheWritten: Boolean(entry.cacheWritten),
     error: cleanRefreshLogError(entry.error),
     ...(entry.skippedReason === "cron_lock" ? { skippedReason: "cron_lock" } : {}),
   };
+}
+
+function refreshRunKey(runId) {
+  return `${EVENT_REFRESH_RUN_PREFIX}${String(runId || "").trim()}`;
+}
+
+function sanitizeRefreshRunItem(item = {}) {
+  return {
+    title: String(item.title || "").slice(0, 240),
+    source: String(item.source || item.sourceName || "unknown").slice(0, 120),
+    url: String(item.url || item.sourceUrl || "").split("?")[0].slice(0, 500),
+    fetchedAt: String(item.fetchedAt || item.publishedAt || item.createdAt || ""),
+    category: String(item.category || ""),
+    location: String(item.location || [item.city, item.district, item.address, item.venue].filter(Boolean).join(" ")).slice(0, 240),
+    processingResult: ["fetched", "normalized", "accepted", "filtered", "duplicate", "merged", "location_failed", "expired", "source_error"].includes(item.processingResult) ? item.processingResult : "fetched",
+    processingReason: cleanRefreshLogError(item.processingReason) || "",
+    eventId: String(item.eventId || item.id || "").slice(0, 180),
+  };
+}
+
+function sanitizeRefreshRunDetails(details = {}) {
+  const source = (value = {}) => ({
+    status: ["success", "error", "skipped"].includes(value.status) ? value.status : "success",
+    count: Math.max(0, Number(value.count) || 0),
+    durationMs: Math.max(0, Number(value.durationMs) || 0),
+    error: cleanRefreshLogError(value.error),
+    items: (Array.isArray(value.items) ? value.items : []).slice(0, 100).map(sanitizeRefreshRunItem),
+  });
+  const pipeline = details.pipeline || {};
+  return {
+    runId: String(details.runId || ""), startedAt: String(details.startedAt || ""), completedAt: String(details.completedAt || ""),
+    status: ["success", "partial_success", "error", "skipped"].includes(details.status) ? details.status : "error",
+    mode: ["all", "news", "traffic"].includes(details.mode) ? details.mode : "all",
+    trigger: ["scheduled", "manual", "unknown"].includes(details.trigger) ? details.trigger : "unknown",
+    cacheWritten: Boolean(details.cacheWritten),
+    error: cleanRefreshLogError(details.error),
+    sources: {
+      rss: source(details.sources?.rss), tdxTraffic: source(details.sources?.tdxTraffic),
+      tdxConstruction: source(details.sources?.tdxConstruction), kktix: source(details.sources?.kktix),
+      ai: source(details.sources?.ai), ruleBased: source(details.sources?.ruleBased), location: source(details.sources?.location),
+    },
+    pipeline: {
+      rawCount: Math.max(0, Number(pipeline.rawCount) || 0), normalizedCount: Math.max(0, Number(pipeline.normalizedCount) || 0),
+      filteredCount: Math.max(0, Number(pipeline.filteredCount) || 0), duplicateCount: Math.max(0, Number(pipeline.duplicateCount) || 0),
+      finalCount: Math.max(0, Number(pipeline.finalCount) || 0),
+    },
+    finalEvents: (Array.isArray(details.finalEvents) ? details.finalEvents : []).slice(0, 200).map(sanitizeRefreshRunItem),
+  };
+}
+
+async function getRefreshRunDetail(runId) {
+  const value = await getCachedValue(refreshRunKey(runId));
+  return value && typeof value === "object" && !Array.isArray(value) ? sanitizeRefreshRunDetails(value) : null;
+}
+
+async function saveRefreshRunDetail(details = {}) {
+  const safe = sanitizeRefreshRunDetails(details);
+  if (!safe.runId) return null;
+  await setCachedValue(refreshRunKey(safe.runId), safe, { ex: REFRESH_RUN_DETAIL_TTL_SECONDS });
+  const current = await getCachedValue(EVENT_REFRESH_RUN_INDEX_KEY);
+  const next = [{ runId: safe.runId, startedAt: safe.startedAt }, ...(Array.isArray(current) ? current : []).filter((item) => item?.runId !== safe.runId)]
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+  const expired = next.slice(MAX_REFRESH_RUN_DETAILS);
+  await Promise.all(expired.map((item) => deleteCachedValue(refreshRunKey(item.runId))));
+  await setCachedValue(EVENT_REFRESH_RUN_INDEX_KEY, next.slice(0, MAX_REFRESH_RUN_DETAILS), { ex: REFRESH_RUN_DETAIL_TTL_SECONDS });
+  return safe;
 }
 
 async function getRefreshLog() {
@@ -596,7 +669,11 @@ module.exports = {
   EVENT_REVIEW_LOG_KEY,
   EVENT_REFRESH_STATUS_KEY,
   EVENT_REFRESH_LOG_KEY,
+  EVENT_REFRESH_RUN_PREFIX,
+  EVENT_REFRESH_RUN_INDEX_KEY,
   MAX_REFRESH_LOG_ENTRIES,
+  MAX_REFRESH_RUN_DETAILS,
+  REFRESH_RUN_DETAIL_TTL_SECONDS,
   CRON_LOCK_KEY,
   DEFAULT_CRON_LOCK_TTL_SECONDS,
   CLEARABLE_EVENT_CACHE_KEYS,
@@ -611,10 +688,12 @@ module.exports = {
   getEventBucketGroups,
   getRefreshStatus,
   getRefreshLog,
+  getRefreshRunDetail,
   releaseCronLock,
   setCachedEvents,
   setCachedValue,
   setRefreshStatus,
+  saveRefreshRunDetail,
   cleanRefreshLogError,
   updateCachedEvent,
   writeEventBuckets,

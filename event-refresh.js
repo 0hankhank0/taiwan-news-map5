@@ -7,6 +7,7 @@ const {
   setRefreshStatus,
   appendRefreshLog,
   cleanRefreshLogError,
+  saveRefreshRunDetail,
   writeEventBuckets: writeEventBucketsToStore,
 } = require("./event-store");
 const {
@@ -1372,16 +1373,22 @@ function emptySources() {
 }
 
 function normalizeSourceData(sourceData = {}) {
-  return {
+  const normalized = {
     ...emptySources(),
-    ...Object.fromEntries(Object.entries(sourceData).map(([key, value]) => [key, Array.isArray(value) ? value : []])),
+    ...Object.fromEntries(Object.entries(sourceData).filter(([key]) => key !== "__sourceFailures").map(([key, value]) => [key, Array.isArray(value) ? value : []])),
   };
+  normalized.__sourceFailures = sourceData.__sourceFailures && typeof sourceData.__sourceFailures === "object" ? sourceData.__sourceFailures : {};
+  return normalized;
 }
 
 async function fetchDefaultSources(mode, startedAt, options = {}) {
   const includeTraffic = mode !== "news";
   const includeNews = mode !== "traffic";
   const sources = emptySources();
+  sources.__sourceFailures = {};
+  const sourceFailure = (name, error) => {
+    sources.__sourceFailures[name] = cleanRefreshLogError(error?.message || error) || "來源抓取失敗";
+  };
 
   let sharedAccessToken = await getCachedValue("tdx_access_token");
   if (includeTraffic && !sharedAccessToken && process.env.TDX_CLIENT_ID && process.env.TDX_CLIENT_SECRET) {
@@ -1396,17 +1403,16 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   }
 
   if (includeTraffic) {
-    sources.tdxEvents = await fetchTDXTrafficEvents(startedAt, sharedAccessToken);
+    try { sources.tdxEvents = await fetchTDXTrafficEvents(startedAt, sharedAccessToken); } catch (error) { sourceFailure("tdxTraffic", error); }
     await delay(Number(options.tdxDelayMs ?? 1000));
-    sources.constructionEvents = await fetchTDXConstructionEvents(sharedAccessToken, startedAt);
+    try { sources.constructionEvents = await fetchTDXConstructionEvents(sharedAccessToken, startedAt); } catch (error) { sourceFailure("tdxConstruction", error); }
   }
 
   if (includeNews) {
-    const rssResults = await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)));
-    sources.rssItems = rssResults.flat();
+    try { const rssResults = await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt))); sources.rssItems = rssResults.flat(); } catch (error) { sourceFailure("rss", error); }
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
-    sources.aiEvents = options.skipAi ? [] : await extractAiEventsWithContext(sources.rssItems, startedAt);
-    sources.activityEvents = await fetchKktixActivityEvents(startedAt);
+    try { sources.aiEvents = options.skipAi ? [] : await extractAiEventsWithContext(sources.rssItems, startedAt); } catch (error) { sourceFailure("ai", error); }
+    try { sources.activityEvents = await fetchKktixActivityEvents(startedAt); } catch (error) { sourceFailure("kktix", error); }
   }
 
   return sources;
@@ -1430,6 +1436,69 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     ruleBased: sources.ruleBasedEvents.length,
     normalized: finalEvents.length,
     active: activeEvents.length,
+  };
+}
+
+const REFRESH_SOURCE_FIELDS = Object.freeze([
+  ["rss", "rssItems", "RSS 新聞"], ["tdxTraffic", "tdxEvents", "TDX 即時交通"],
+  ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["kktix", "activityEvents", "KKTIX 活動"],
+  ["ai", "aiEvents", "AI 提取事件"], ["ruleBased", "ruleBasedEvents", "規則式提取事件"],
+]);
+
+function refreshItemKey(item = {}) {
+  return String(item.eventFingerprint || item.id || item.url || item.sourceUrl || `${item.title || ""}:${item.city || ""}`).trim().toLowerCase();
+}
+
+function toRefreshItem(item, source, finalByKey, outcome = {}) {
+  const key = refreshItemKey(item);
+  const final = finalByKey.get(key);
+  const isRss = source === "RSS 新聞";
+  const result = outcome.result || (final ? "accepted" : (isRss ? "fetched" : "filtered"));
+  const reason = outcome.reason || (final ? "已進入最終地圖事件" : (isRss ? "原始新聞已抓取，等待事件提取" : "未保留於標準化或內容篩選流程"));
+  return {
+    title: item.title || item.name || "(無標題)", source, url: item.url || item.sourceUrl || "",
+    fetchedAt: item.fetchedAt || item.publishedAt || item.createdAt || "", category: item.category || "",
+    location: [item.city, item.district, item.address, item.venue].filter(Boolean).join(" "), processingResult: result,
+    processingReason: reason,
+    eventId: final?.id || "",
+  };
+}
+
+function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten, sourceFailures }) {
+  const finalByKey = new Map(finalEvents.map((item) => [refreshItemKey(item), item]));
+  const existingByKey = new Set(activeEvents.map(refreshItemKey));
+  const seenCandidates = new Set();
+  const sourceFailureMap = sourceFailures || {};
+  const sourceDetails = Object.fromEntries(REFRESH_SOURCE_FIELDS.map(([detailKey, field, label]) => {
+    const failure = cleanRefreshLogError(sourceFailureMap[detailKey]);
+    const items = failure ? [] : sources[field].map((item) => {
+      const key = refreshItemKey(item);
+      if (detailKey !== "rss" && key && seenCandidates.has(key)) return toRefreshItem(item, label, finalByKey, { result: "duplicate", reason: "與本次抓取的事件重複" });
+      if (detailKey !== "rss" && key) seenCandidates.add(key);
+      if (detailKey !== "rss" && !finalByKey.has(key) && existingByKey.has(key)) return toRefreshItem(item, label, finalByKey, { result: "merged", reason: "合併至既有事件" });
+      return toRefreshItem(item, label, finalByKey);
+    });
+    return [detailKey, { status: failure ? "error" : "success", count: sources[field].length, durationMs: 0, error: failure, items }];
+  }));
+  const candidates = [
+    ...sources.tdxEvents, ...sources.constructionEvents, ...sources.activityEvents, ...sources.aiEvents, ...sources.ruleBasedEvents,
+  ];
+  const candidateKeys = new Set();
+  let duplicateCount = 0;
+  candidates.forEach((item) => { const key = refreshItemKey(item); if (key && candidateKeys.has(key)) duplicateCount += 1; else candidateKeys.add(key); });
+  const rawCount = sources.rssItems.length + sources.tdxEvents.length + sources.constructionEvents.length + sources.activityEvents.length;
+  sourceDetails.location = {
+    status: "success", count: geocodingStats.geocodingAttempts, durationMs: 0, error: null,
+    items: finalEvents.filter((item) => item.locationQuality === "low" || item.locationPrecision === "unknown").slice(0, 100).map((item) => ({
+      ...toRefreshItem(item, "外部定位", finalByKey), processingResult: "location_failed", processingReason: "定位信心不足或無法確認地點",
+    })),
+  };
+  return {
+    runId, startedAt: new Date(startedAt).toISOString(), completedAt, status, mode, trigger, cacheWritten,
+    sources: sourceDetails,
+    pipeline: { rawCount, normalizedCount: candidates.length, filteredCount: Math.max(0, candidates.length - finalEvents.length - duplicateCount), duplicateCount, finalCount: finalEvents.length },
+    finalEvents: finalEvents.map((item) => ({ ...toRefreshItem(item, item.sourceName || item.source || "最終事件", finalByKey, { result: "accepted", reason: "已寫入地圖事件快取" }), processingResult: "accepted", processingReason: "已寫入地圖事件快取", eventId: item.id || "" })),
+    activeEventCount: activeEvents.length,
   };
 }
 
@@ -1469,8 +1538,14 @@ async function runEventRefresh(options = {}) {
 
     const durationMs = Date.now() - startedAt;
     const sourceCounts = getSourceCounts(sources, finalEvents, activeEvents);
+    const sourceFailures = Object.fromEntries(Object.entries({ ...(sources.__sourceFailures || {}), ...(options.sourceFailures || {}) }).map(([key, value]) => [key, cleanRefreshLogError(value)]).filter(([, value]) => value));
+    const errorSourceCount = Object.keys(sourceFailures).length;
+    const status = errorSourceCount ? "partial_success" : "success";
+    const completedAt = new Date().toISOString();
+    const details = buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten: options.write !== false, sourceFailures });
     const result = {
-      success: true,
+      success: status === "success",
+      status,
       runId,
       mode,
       durationMs,
@@ -1480,13 +1555,14 @@ async function runEventRefresh(options = {}) {
       sourceCounts,
       geocodingAttempts: geocodingStats.geocodingAttempts,
       geocodingHits: geocodingStats.geocodingHits,
+      rawCount: details.pipeline.rawCount,
+      errorSourceCount,
       events: activeEvents,
     };
 
     if (options.write !== false) {
-      const completedAt = new Date().toISOString();
       await setRefreshStatus({
-        status: "success",
+        status,
         runId,
         mode,
         count: activeEvents.length,
@@ -1497,7 +1573,8 @@ async function runEventRefresh(options = {}) {
         geocodingHits: geocodingStats.geocodingHits,
         completedAt,
       });
-      await appendRefreshLog({ ...result, trigger, status: "success", startedAt: new Date(startedAt).toISOString(), completedAt });
+      await appendRefreshLog({ ...result, trigger, status, startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: true });
+      await saveRefreshRunDetail(details);
     }
 
     console.log(`[event-refresh] complete runId=${runId} count=${activeEvents.length}`);
@@ -1516,6 +1593,7 @@ async function runEventRefresh(options = {}) {
         completedAt,
       });
       await appendRefreshLog({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs, error: safeError });
+      await saveRefreshRunDetail({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: safeError, sources: {}, pipeline: {}, finalEvents: [] });
     }
     console.error("[event-refresh] failed:", error.message);
     throw error;
