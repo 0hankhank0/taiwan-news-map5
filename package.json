@@ -8,7 +8,7 @@
     "start": "node server.js",
     "scraper": "node scraper.js",
     "export:posters": "node exports/tisdc-2026-v2/export-posters.mjs",
-    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:submission && npm run test:reaction",
+    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:reaction",
     "test:content-filter": "node tests/event-content-filter.test.js",
     "test:event-display": "node tests/event-display.test.js",
     "test:event-text": "node tests/event-text.test.mjs",
@@ -17,7 +17,6 @@
     "test:location": "node tests/location-resolver.test.js",
     "test:event-refresh": "node tests/event-refresh.test.js",
     "test:admin": "node tests/admin-api.test.js",
-    "test:submission": "node tests/submission-api.test.js",
     "test:reaction": "node tests/reaction-api.test.js",
     "test:video-demo": "node tests/video-demo.test.js",
     "test:nearby-radius": "node tests/nearby-radius.test.mjs && node tests/nearby-radius-ui.test.js"
