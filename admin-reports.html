@@ -109,13 +109,10 @@
       align-items: start;
     }
     a { color: var(--accent); }
-    .nav {
-      display: flex;
-      gap: 10px;
-      margin-top: 14px;
-      flex-wrap: wrap;
-      font-size: 13px;
-    }
+    .nav { display:none; }
+    .admin-nav { display:flex; gap:8px; margin:14px 0; flex-wrap:wrap; font-size:13px; }
+    .admin-nav a { color:var(--accent); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+    .admin-nav a.active { color:var(--text); background:#075985; border-color:#0284c7; font-weight:700; }
     .empty {
       border: 1px dashed var(--line);
       color: var(--muted);
@@ -138,6 +135,9 @@
         <a href="/admin-health.html">監控頁</a>
         <a href="/">回地圖</a>
       </div>
+      <nav class="admin-nav" aria-label="管理後台導覽">
+        <a href="/admin-events.html">事件管理</a><a href="/admin-submissions.html">投稿審核</a><a href="/admin-action-log.html">操作紀錄</a><a class="active" href="/admin-reports.html" aria-current="page">資料回報</a><a href="/admin-health.html">系統監控</a><a href="/">回到地圖</a>
+      </nav>
       <div class="toolbar">
         <input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" />
         <select id="status">
