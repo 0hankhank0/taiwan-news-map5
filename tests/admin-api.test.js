@@ -7,7 +7,7 @@ process.env.REPORT_ADMIN_TOKEN = "test-token";
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-admin-test-${Date.now()}.sqlite`);
 process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
 
-const { setCachedEvents, getCachedEvents } = require("../event-store");
+const { setCachedEvents, getCachedEvents, appendRefreshLog, getRefreshLog } = require("../event-store");
 const admin = require("../api/admin");
 
 function createRes() {
@@ -39,9 +39,39 @@ async function call(handler, req) {
   const rewrites = Object.fromEntries(vercel.rewrites.map((entry) => [entry.source, entry.destination]));
   assert.equal(rewrites["/api/admin-events"], "/api/admin.js?adminRoute=events");
   assert.equal(rewrites["/api/health"], "/api/admin.js?adminRoute=health");
+  assert.equal(rewrites["/api/refresh-log"], "/api/admin.js?adminRoute=refresh-log");
   assert.equal(rewrites["/api/reports"], "/api/admin.js?adminRoute=reports");
   assert.equal(rewrites["/api/submission-audit-log"], "/api/submission.js?auditLog=1");
   assert.equal(Object.values(rewrites).some((destination) => /admin-events\.js|health\.js|reports\.js|submission-audit-log\.js/.test(destination)), false);
+
+  const refreshBase = Date.parse("2026-07-16T12:00:00.000Z");
+  for (let index = 0; index < 205; index += 1) {
+    await appendRefreshLog({
+      runId: `run-${index}`, trigger: "scheduled", mode: index % 2 ? "traffic" : "news", status: index % 3 ? "success" : "error",
+      startedAt: new Date(refreshBase + index * 1000).toISOString(), completedAt: new Date(refreshBase + index * 1000 + 50).toISOString(),
+      error: index === 204 ? "Authorization: Bearer never-expose" : null,
+    });
+  }
+  const refreshLog = await getRefreshLog();
+  assert.equal(refreshLog.length, 200);
+  assert.ok(Date.parse(refreshLog[0].startedAt) >= Date.parse(refreshLog[1].startedAt));
+  const refreshDenied = await call(admin, { method: "GET", url: "/api/refresh-log" });
+  assert.equal(refreshDenied.statusCode, 401);
+  const refreshForbidden = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer wrong" } });
+  assert.equal(refreshForbidden.statusCode, 403);
+  const refreshOk = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { limit: "999" } });
+  assert.equal(refreshOk.statusCode, 200);
+  assert.equal(refreshOk.payload.limit, 200);
+  assert.equal(refreshOk.payload.total, 200);
+  assert.equal(JSON.stringify(refreshOk.payload).includes("never-expose"), false);
+  const statusFilter = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { status: "error" } });
+  assert.ok(statusFilter.payload.logs.every((entry) => entry.status === "error"));
+  const modeFilter = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { mode: "traffic" } });
+  assert.ok(modeFilter.payload.logs.every((entry) => entry.mode === "traffic"));
+  const runIdFilter = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { runId: "run-204" } });
+  assert.equal(runIdFilter.payload.total, 1);
+  const dateFilter = await call(admin, { method: "GET", url: "/api/refresh-log", headers: { authorization: "Bearer test-token" }, query: { dateFrom: "2026-07-16T12:03:20.000Z" } });
+  assert.ok(dateFilter.payload.logs.every((entry) => Date.parse(entry.startedAt) >= Date.parse("2026-07-16T12:03:20.000Z")));
 
   await setCachedEvents([{
     id: "event_admin_test",

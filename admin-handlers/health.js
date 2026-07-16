@@ -1,6 +1,6 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { isAuthorized } = require("../admin-auth");
-const { getCachedEvents, getEventCacheStatus } = require("../event-store");
+const { getCachedEvents, getEventCacheStatus, getRefreshLog } = require("../event-store");
 const { getReports } = require("../report-store");
 
 function sendJson(res, status, payload) {
@@ -61,8 +61,9 @@ module.exports = async (req, res) => {
   const markerableCount = events.filter(isMarkerableEvent).length;
   const listOnlyCount = events.filter((event) => event.locationDisplayMode === "list_only").length;
   const refresh = cache.refreshStatus || {};
-  const geocodingAttempts = Number(refresh.geocodingAttempts || 0);
-  const geocodingHits = Number(refresh.geocodingHits || 0);
+  const latestRefresh = (await getRefreshLog())[0] || refresh;
+  const geocodingAttempts = Number(latestRefresh.geocodingAttempts || refresh.geocodingAttempts || 0);
+  const geocodingHits = Number(latestRefresh.geocodingHits || refresh.geocodingHits || 0);
 
   return sendJson(res, 200, {
     beta: true,
@@ -90,15 +91,15 @@ module.exports = async (req, res) => {
       localEntries: cache.localEntries,
     },
     refresh: {
-      status: refresh.status || "unknown",
-      lastRunId: refresh.runId || "",
-      lastMode: refresh.mode || "",
-      lastCompletedAt: refresh.completedAt || "",
+      status: latestRefresh.status || "unknown",
+      lastRunId: latestRefresh.runId || "",
+      lastMode: latestRefresh.mode || "",
+      lastCompletedAt: latestRefresh.completedAt || "",
       lastSuccessAt: refresh.lastSuccessAt || "",
       lastError: refresh.lastError || null,
-      durationMs: refresh.durationMs || 0,
-      cacheTtlSeconds: refresh.cacheTtlSeconds || 0,
-      sourceCounts: refresh.sourceCounts || {},
+      durationMs: latestRefresh.durationMs || 0,
+      cacheTtlSeconds: latestRefresh.cacheTtlSeconds || 0,
+      sourceCounts: latestRefresh.sourceCounts || {},
       geocodingAttempts,
       geocodingHits,
       geocodingHitRate: roundRatio(geocodingHits, geocodingAttempts),

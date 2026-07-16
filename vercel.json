@@ -13,6 +13,10 @@
       "destination": "/api/admin.js?adminRoute=health"
     },
     {
+      "source": "/api/refresh-log",
+      "destination": "/api/admin.js?adminRoute=refresh-log"
+    },
+    {
       "source": "/api/cron",
       "destination": "/api/cron.js"
     },

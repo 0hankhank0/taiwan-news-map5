@@ -15,6 +15,8 @@ const EVENT_BUCKET_KEY_MAP = Object.freeze({
 const EVENT_BUCKET_KEYS = Object.values(EVENT_BUCKET_KEY_MAP);
 const EVENT_REVIEW_LOG_KEY = "events:review-log";
 const EVENT_REFRESH_STATUS_KEY = "events:refresh-status";
+const EVENT_REFRESH_LOG_KEY = "events:refresh-log";
+const MAX_REFRESH_LOG_ENTRIES = 200;
 const CRON_LOCK_KEY = "cron:lock";
 const DEFAULT_CRON_LOCK_TTL_SECONDS = 120;
 const CLEARABLE_EVENT_CACHE_KEYS = [
@@ -352,6 +354,64 @@ async function getRefreshStatus() {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
 }
 
+function cleanRefreshLogError(value) {
+  if (!value) return null;
+  return String(value)
+    .replace(/\b(?:authorization|bearer|token|api[_ -]?key|cron_secret)\b\s*[:=]?\s*(?:bearer\s+)?[^\s,;]+/gi, "[redacted]")
+    .replace(/https?:\/\/[^\s?#]+\?[^\s]+/gi, (url) => url.split("?")[0])
+    .replace(/\s+at\s+[^\n]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 500) || null;
+}
+
+function normalizeRefreshLogEntry(entry = {}) {
+  const startedAt = new Date(entry.startedAt || Date.now()).toISOString();
+  const completedAt = entry.completedAt ? new Date(entry.completedAt).toISOString() : startedAt;
+  const number = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const counts = entry.sourceCounts || {};
+  const buckets = entry.buckets || {};
+  return {
+    runId: String(entry.runId || ""),
+    trigger: ["scheduled", "manual", "unknown"].includes(entry.trigger) ? entry.trigger : "unknown",
+    mode: ["all", "news", "traffic"].includes(entry.mode) ? entry.mode : "all",
+    status: ["success", "error", "skipped", "running"].includes(entry.status) ? entry.status : "error",
+    startedAt,
+    completedAt,
+    durationMs: Math.max(0, number(entry.durationMs)),
+    count: Math.max(0, number(entry.count)),
+    sourceCounts: {
+      rssItems: Math.max(0, number(counts.rssItems)), tdx: Math.max(0, number(counts.tdx)),
+      construction: Math.max(0, number(counts.construction)), activities: Math.max(0, number(counts.activities)),
+      ai: Math.max(0, number(counts.ai)), ruleBased: Math.max(0, number(counts.ruleBased)),
+      normalized: Math.max(0, number(counts.normalized)), active: Math.max(0, number(counts.active)),
+    },
+    buckets: { traffic: Math.max(0, number(buckets.traffic)), news: Math.max(0, number(buckets.news)), activities: Math.max(0, number(buckets.activities)) },
+    geocodingAttempts: Math.max(0, number(entry.geocodingAttempts)),
+    geocodingHits: Math.max(0, number(entry.geocodingHits)),
+    cacheTtlSeconds: Math.max(0, number(entry.cacheTtlSeconds)),
+    error: cleanRefreshLogError(entry.error),
+    ...(entry.skippedReason === "cron_lock" ? { skippedReason: "cron_lock" } : {}),
+  };
+}
+
+async function getRefreshLog() {
+  const value = await getCachedValue(EVENT_REFRESH_LOG_KEY);
+  return (Array.isArray(value) ? value : [])
+    .map(normalizeRefreshLogEntry)
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+}
+
+async function appendRefreshLog(entry = {}) {
+  const next = normalizeRefreshLogEntry(entry);
+  const existing = await getRefreshLog();
+  const log = [next, ...existing]
+    .sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+    .slice(0, MAX_REFRESH_LOG_ENTRIES);
+  await setCachedValue(EVENT_REFRESH_LOG_KEY, log);
+  return next;
+}
+
 function createLockPayload(owner, ttlSeconds) {
   const now = Date.now();
   return {
@@ -535,10 +595,13 @@ module.exports = {
   EVENT_BUCKET_KEYS,
   EVENT_REVIEW_LOG_KEY,
   EVENT_REFRESH_STATUS_KEY,
+  EVENT_REFRESH_LOG_KEY,
+  MAX_REFRESH_LOG_ENTRIES,
   CRON_LOCK_KEY,
   DEFAULT_CRON_LOCK_TTL_SECONDS,
   CLEARABLE_EVENT_CACHE_KEYS,
   acquireCronLock,
+  appendRefreshLog,
   clearEventCaches,
   deleteCachedValue,
   getCronLockStatus,
@@ -547,10 +610,12 @@ module.exports = {
   getCachedValue,
   getEventBucketGroups,
   getRefreshStatus,
+  getRefreshLog,
   releaseCronLock,
   setCachedEvents,
   setCachedValue,
   setRefreshStatus,
+  cleanRefreshLogError,
   updateCachedEvent,
   writeEventBuckets,
 };

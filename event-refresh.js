@@ -5,6 +5,8 @@ const {
   setCachedEvents,
   setCachedValue,
   setRefreshStatus,
+  appendRefreshLog,
+  cleanRefreshLogError,
   writeEventBuckets: writeEventBucketsToStore,
 } = require("./event-store");
 const {
@@ -1436,6 +1438,7 @@ async function runEventRefresh(options = {}) {
   const now = Number(options.now) || Date.now();
   const mode = ["news", "traffic", "all"].includes(options.mode) ? options.mode : "all";
   const runId = String(options.runId || `refresh-${startedAt}-${Math.random().toString(36).slice(2, 8)}`);
+  const trigger = ["scheduled", "manual", "unknown"].includes(options.trigger) ? options.trigger : "unknown";
 
   try {
     console.log(`[event-refresh] start runId=${runId} mode=${mode}`);
@@ -1481,6 +1484,7 @@ async function runEventRefresh(options = {}) {
     };
 
     if (options.write !== false) {
+      const completedAt = new Date().toISOString();
       await setRefreshStatus({
         status: "success",
         runId,
@@ -1491,8 +1495,9 @@ async function runEventRefresh(options = {}) {
         sourceCounts,
         geocodingAttempts: geocodingStats.geocodingAttempts,
         geocodingHits: geocodingStats.geocodingHits,
-        completedAt: new Date().toISOString(),
+        completedAt,
       });
+      await appendRefreshLog({ ...result, trigger, status: "success", startedAt: new Date(startedAt).toISOString(), completedAt });
     }
 
     console.log(`[event-refresh] complete runId=${runId} count=${activeEvents.length}`);
@@ -1500,14 +1505,17 @@ async function runEventRefresh(options = {}) {
   } catch (error) {
     const durationMs = Date.now() - startedAt;
     if (options.write !== false) {
+      const completedAt = new Date().toISOString();
+      const safeError = cleanRefreshLogError(error?.message);
       await setRefreshStatus({
         status: "error",
         runId,
         mode,
         durationMs,
-        error: error.message,
-        completedAt: new Date().toISOString(),
+        error: safeError,
+        completedAt,
       });
+      await appendRefreshLog({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs, error: safeError });
     }
     console.error("[event-refresh] failed:", error.message);
     throw error;

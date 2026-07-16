@@ -15,12 +15,14 @@ const {
   DEFAULT_CRON_LOCK_TTL_SECONDS,
   EVENT_BUCKET_KEY_MAP,
   EVENT_REFRESH_STATUS_KEY,
+  EVENT_REFRESH_LOG_KEY,
   acquireCronLock,
   clearEventCaches,
   deleteCachedValue,
   getCachedEvents,
   getCachedValue,
   getRefreshStatus,
+  getRefreshLog,
   releaseCronLock,
 } = require("../event-store");
 const { applyEventQueryFilters } = require("../event-query");
@@ -54,6 +56,7 @@ async function call(handler, req) {
 (async () => {
   await clearEventCaches();
   await deleteCachedValue(EVENT_REFRESH_STATUS_KEY);
+  await deleteCachedValue(EVENT_REFRESH_LOG_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
 
   assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
@@ -174,6 +177,20 @@ async function call(handler, req) {
   assert.equal(status.status, "success");
   assert.equal(status.lastSuccessRunId, "test-refresh");
   assert.ok(status.lastSuccessAt);
+  const initialRefreshLog = await getRefreshLog();
+  assert.equal(initialRefreshLog.length, 1);
+  assert.equal(initialRefreshLog[0].status, "success");
+  assert.equal(initialRefreshLog[0].runId, "test-refresh");
+
+  await assert.rejects(() => eventRefresh.runEventRefresh({
+    runId: "error-refresh",
+    startedAt: Date.now() - 5,
+    fetchSources: async () => { throw new Error("Authorization: Bearer secret-value https://example.test/path?token=bad"); },
+  }));
+  const errorRefreshLog = await getRefreshLog();
+  assert.equal(errorRefreshLog[0].status, "error");
+  assert.equal(JSON.stringify(errorRefreshLog[0]).includes("secret-value"), false);
+  assert.equal(JSON.stringify(errorRefreshLog[0]).includes("token=bad"), false);
 
   const sampleEvents = [
     { title: "Road closure", content: "A road closure", category: "traffic", status: "active", city: "Taipei", sourceName: "TDX" },
@@ -221,6 +238,8 @@ async function call(handler, req) {
 
   const denied = await call(cron, { method: "POST" });
   assert.equal(denied.statusCode, 401);
+  const logCountBeforeAuthorizedCron = (await getRefreshLog()).length;
+  assert.equal(logCountBeforeAuthorizedCron, 2);
 
   await deleteCachedValue(CRON_LOCK_KEY);
   const ok = await call(cron, {
@@ -241,6 +260,9 @@ async function call(handler, req) {
   });
   assert.equal(skipped.statusCode, 200);
   assert.equal(skipped.payload.skippedByLock, true);
+  const skippedLog = (await getRefreshLog())[0];
+  assert.equal(skippedLog.status, "skipped");
+  assert.equal(skippedLog.skippedReason, "cron_lock");
   await releaseCronLock("other-run");
   eventRefresh.runEventRefresh = originalRunEventRefresh;
 

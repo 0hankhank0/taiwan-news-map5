@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const { runEventRefresh } = require("../event-refresh");
-const { acquireCronLock, releaseCronLock } = require("../event-store");
+const { acquireCronLock, releaseCronLock, appendRefreshLog } = require("../event-store");
 
 function sendJson(res, status, payload) {
   return res.status(status).json(payload);
@@ -43,11 +43,14 @@ module.exports = async (req, res) => {
   const lockResult = await acquireCronLock({ owner: runId });
 
   if (!lockResult.acquired) {
+    const completedAt = new Date().toISOString();
+    const durationMs = Date.now() - startedAt;
+    await appendRefreshLog({ runId, trigger: "scheduled", mode, status: "skipped", skippedReason: "cron_lock", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs });
     return sendJson(res, 200, {
       success: true,
       skippedByLock: true,
       runId,
-      durationMs: Date.now() - startedAt,
+      durationMs,
       sourceCounts: {},
       geocodingHits: 0,
       lock: lockResult.lock,
@@ -55,7 +58,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const result = await runEventRefresh({ runId, mode, startedAt });
+    const result = await runEventRefresh({ runId, mode, startedAt, trigger: "scheduled" });
     const { events, ...summary } = result;
     return sendJson(res, 200, {
       ...summary,
