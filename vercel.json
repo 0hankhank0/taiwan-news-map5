@@ -25,6 +25,10 @@
       "destination": "/api/submission.js?submissionReports=1"
     },
     {
+      "source": "/api/submission-audit-log",
+      "destination": "/api/submission-audit-log.js"
+    },
+    {
       "source": "/api/integrations/events/status",
       "destination": "/api/events.js"
     },

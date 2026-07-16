@@ -28,6 +28,7 @@ mountHandler("/api/reactions/total", "./api/reactions-total");
 mountHandler("/api/report", "./api/report");
 mountHandler("/api/submissions", "./api/submission");
 mountHandler("/api/submission-reports", "./api/submission");
+mountHandler("/api/submission-audit-log", "./api/submission-audit-log");
 mountHandler("/api/integrations/events/status", "./api/events");
 mountHandler("/api/reports", "./api/reports");
 mountHandler("/api/reports/:reportId", "./api/reports");
