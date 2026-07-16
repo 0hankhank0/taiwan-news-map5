@@ -190,6 +190,36 @@
             gap: 12px;
         }
 
+        .submit-event-btn,
+        .sidebar-submit-event-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            border: 1px solid rgba(255, 184, 77, 0.52);
+            border-radius: var(--radius-md);
+            background: rgba(125, 72, 10, 0.9);
+            color: #fff3da;
+            font: 700 12px var(--font-body);
+            text-decoration: none;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.26);
+            transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+
+        .submit-event-btn {
+            min-height: 36px;
+            padding: 0 12px;
+            flex-shrink: 0;
+        }
+
+        .submit-event-btn:hover,
+        .sidebar-submit-event-btn:hover {
+            background: rgba(157, 92, 12, 0.98);
+            border-color: rgba(255, 205, 117, 0.82);
+            color: #fff;
+            transform: translateY(-1px);
+        }
+
         /* ── SELECT ─────────────────────────────────────────── */
         .styled-select {
             appearance: none;
@@ -371,6 +401,11 @@
             flex-shrink: 0;
             background:
                 linear-gradient(180deg, rgba(22, 32, 53, 0.88), rgba(12, 17, 32, 0.96));
+        }
+        .sidebar-submit-event-btn {
+            width: 100%;
+            min-height: 34px;
+            margin: 12px 0 4px;
         }
         .sidebar-kpis {
             display: grid;
@@ -2770,6 +2805,22 @@ body::after {
 
     #mobile-topbar .theme-toggle {
         display: none;
+    }
+
+    .mobile-submit-event-btn {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        min-height: 36px;
+        padding: 0 9px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 184, 77, 0.58);
+        border-radius: var(--radius-md);
+        color: #ffe1a8;
+        background: rgba(125, 72, 10, 0.92);
+        font: 700 11px var(--font-body);
+        text-decoration: none;
     }
 
     .mobile-city-select,

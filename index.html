@@ -54,7 +54,7 @@
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
-    <link rel="stylesheet" href="/assets/index/index.css?v=video-demo-18">
+    <link rel="stylesheet" href="/assets/index/index.css?v=submit-entry-1">
 </head>
 <body>
 
@@ -163,6 +163,10 @@
     <div class="mobile-row1">
         <input id="event-search-mobile" type="text" placeholder="搜尋標題、城市..." class="mobile-search" />
         <button data-action="donate" data-donate-amount="100" class="donate-btn" style="flex-shrink:0; font-size:11px; padding:8px 12px;">⛽ 加油</button>
+        <a class="mobile-submit-event-btn" href="/submit-event.html" aria-label="新增事件">
+            <i class="fa-solid fa-plus"></i>
+            <span>投稿</span>
+        </a>
     </div>
     <div class="mobile-row2">
         <select id="city-filter-mobile" class="mobile-city-select"></select>
@@ -218,6 +222,10 @@
 
     <div class="header-right">
         <div id="status-text">準備載入...</div>
+        <a class="submit-event-btn submit-event-btn--desktop" href="/submit-event.html">
+            <i class="fa-solid fa-plus"></i>
+            <span>新增事件</span>
+        </a>
         <button id="nearby-toggle-desktop" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
@@ -245,6 +253,10 @@
                 <div class="sidebar-title">事件清單</div>
                 <div class="count-pill" id="mobile-count">0 筆</div>
             </div>
+            <a class="sidebar-submit-event-btn" href="/submit-event.html">
+                <i class="fa-solid fa-plus"></i>
+                <span>回報／新增事件</span>
+            </a>
             <div class="sidebar-kpis">
                 <div class="sidebar-kpi">
                     <div class="sidebar-kpi-label">目前事件</div>
