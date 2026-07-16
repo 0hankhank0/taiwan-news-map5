@@ -5,7 +5,6 @@ const path = require("path");
 process.env.REPORT_ADMIN_TOKEN = "audit-test-token";
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-audit-test-${Date.now()}.sqlite`);
 
-const auditLog = require("../api/submission-audit-log");
 const submission = require("../api/submission");
 const { setCachedValue } = require("../event-store");
 
@@ -20,35 +19,36 @@ async function call(handler, req = {}) { const res = response(); await handler({
   ];
   await setCachedValue("submissions:audit-log", logs);
 
-  const missing = await call(auditLog);
+  const auditRequest = { url: "/api/submission-audit-log" };
+  const missing = await call(submission, auditRequest);
   assert.equal(missing.statusCode, 401);
-  const forbidden = await call(auditLog, { headers: { authorization: "Bearer wrong" } });
+  const forbidden = await call(submission, { ...auditRequest, headers: { authorization: "Bearer wrong" } });
   assert.equal(forbidden.statusCode, 403);
 
   const auth = { authorization: "Bearer audit-test-token" };
-  const all = await call(auditLog, { headers: auth });
+  const all = await call(submission, { ...auditRequest, headers: auth });
   assert.equal(all.statusCode, 200);
   assert.equal(all.payload.total, 3);
   assert.deepEqual(all.payload.logs.map((entry) => entry.auditId), ["audit-new", "audit-middle", "audit-old"]);
   assert.equal(JSON.stringify(all.payload).includes("must-not-leak"), false);
   assert.equal(JSON.stringify(all.payload).includes("actorId"), false);
 
-  const capped = await call(auditLog, { headers: auth, query: { limit: "999" } });
+  const capped = await call(submission, { ...auditRequest, headers: auth, query: { limit: "999" } });
   assert.equal(capped.payload.limit, 200);
-  const paged = await call(auditLog, { headers: auth, query: { limit: "1", offset: "1" } });
+  const paged = await call(submission, { ...auditRequest, headers: auth, query: { limit: "1", offset: "1" } });
   assert.equal(paged.payload.logs.length, 1);
   assert.equal(paged.payload.logs[0].auditId, "audit-middle");
-  const byAction = await call(auditLog, { headers: auth, query: { action: "admin_approve" } });
+  const byAction = await call(submission, { ...auditRequest, headers: auth, query: { action: "admin_approve" } });
   assert.deepEqual(byAction.payload.logs.map((entry) => entry.auditId), ["audit-new"]);
-  const bySubmission = await call(auditLog, { headers: auth, query: { submissionId: "sub-alpha" } });
+  const bySubmission = await call(submission, { ...auditRequest, headers: auth, query: { submissionId: "sub-alpha" } });
   assert.deepEqual(bySubmission.payload.logs.map((entry) => entry.auditId), ["audit-new", "audit-old"]);
-  const byRole = await call(auditLog, { headers: auth, query: { actorRole: "system" } });
+  const byRole = await call(submission, { ...auditRequest, headers: auth, query: { actorRole: "system" } });
   assert.deepEqual(byRole.payload.logs.map((entry) => entry.auditId), ["audit-middle"]);
-  const byDate = await call(auditLog, { headers: auth, query: { dateFrom: "2026-07-15", dateTo: "2026-07-15" } });
+  const byDate = await call(submission, { ...auditRequest, headers: auth, query: { dateFrom: "2026-07-15", dateTo: "2026-07-15" } });
   assert.deepEqual(byDate.payload.logs.map((entry) => entry.auditId), ["audit-middle"]);
 
   await setCachedValue("submissions:audit-log", []);
-  const empty = await call(auditLog, { headers: auth });
+  const empty = await call(submission, { ...auditRequest, headers: auth });
   assert.equal(empty.payload.total, 0);
   assert.deepEqual(empty.payload.logs, []);
 

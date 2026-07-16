@@ -6,11 +6,11 @@
     },
     {
       "source": "/api/admin-events",
-      "destination": "/api/admin-events.js"
+      "destination": "/api/admin.js?adminRoute=events"
     },
     {
       "source": "/api/health",
-      "destination": "/api/health.js"
+      "destination": "/api/admin.js?adminRoute=health"
     },
     {
       "source": "/api/cron",
@@ -25,8 +25,16 @@
       "destination": "/api/submission.js?submissionReports=1"
     },
     {
+      "source": "/api/reports/:reportId",
+      "destination": "/api/admin.js?adminRoute=reports&reportId=:reportId"
+    },
+    {
+      "source": "/api/reports",
+      "destination": "/api/admin.js?adminRoute=reports"
+    },
+    {
       "source": "/api/submission-audit-log",
-      "destination": "/api/submission-audit-log.js"
+      "destination": "/api/submission.js?auditLog=1"
     },
     {
       "source": "/api/integrations/events/status",

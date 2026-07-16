@@ -20,18 +20,18 @@ function mountHandler(route, handlerPath) {
 
 mountHandler("/api/config.js", "./api/config");
 mountHandler("/api/events", "./api/events");
-mountHandler("/api/admin-events", "./api/admin-events");
-mountHandler("/api/health", "./api/health");
+mountHandler("/api/admin-events", "./api/admin");
+mountHandler("/api/health", "./api/admin");
 mountHandler("/api/cron", "./api/cron");
 mountHandler("/api/reaction", "./api/reaction");
 mountHandler("/api/reactions/total", "./api/reactions-total");
 mountHandler("/api/report", "./api/report");
 mountHandler("/api/submissions", "./api/submission");
 mountHandler("/api/submission-reports", "./api/submission");
-mountHandler("/api/submission-audit-log", "./api/submission-audit-log");
+mountHandler("/api/submission-audit-log", "./api/submission");
 mountHandler("/api/integrations/events/status", "./api/events");
-mountHandler("/api/reports", "./api/reports");
-mountHandler("/api/reports/:reportId", "./api/reports");
+mountHandler("/api/reports", "./api/admin");
+mountHandler("/api/reports/:reportId", "./api/admin");
 mountHandler("/api/create-payment", "./api/create-payment");
 
 app.use(express.static(rootDir));
