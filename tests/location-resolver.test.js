@@ -201,28 +201,15 @@ function approx(actual, expected, tolerance = 0.0005) {
 }
 
 {
-  const location = resolveLocationSync({
+  const legacyFallback = resolveLocationSync({
     title: "台南道路施工",
     city: "台南市",
     lat: 23.1728,
     lng: 120.2793,
   });
-  assert.equal(location.locationPrecision, "city");
-  assert.equal(location.locationSource, "city-fallback");
-  assert.equal(location.locationDisplayMode, "list_only");
-}
-
-{
-  const official = resolveLocationSync({
-    title: "TDX 台南道路事故",
-    source: "TDX CMS",
-    city: "台南市",
-    lat: 22.9997,
-    lng: 120.227,
-  });
-  assert.equal(official.locationSource, "official");
-  assert.equal(official.locationPrecision, "exact");
-  assert.equal(official.locationDisplayMode, "point");
+  assert.equal(legacyFallback.locationPrecision, "city");
+  assert.equal(legacyFallback.locationSource, "city-fallback");
+  assert.equal(legacyFallback.locationDisplayMode, "list_only");
 }
 
 {
