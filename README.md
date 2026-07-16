@@ -114,6 +114,14 @@ npm run test:admin
 
 ## Deployment Notes
 
+### Event integrations and submissions
+
+- `GET /api/integrations/events/status` exposes per-service sync health without exposing credentials.
+- KKTIX uses its public Atom feed by default. `KKTIX_EVENTS_FEED_URL` can override that feed.
+- KKTV intentionally remains `never_run` until an authorised public endpoint is supplied through configuration; the app does not probe or invent undocumented APIs.
+- `POST /api/submissions` accepts a rate-limited public event submission. `GET/PATCH /api/submissions` is public only for approved records and requires `REPORT_ADMIN_TOKEN` for review operations.
+- Set `SUBMISSION_AI_MODEL` to override the OpenAI moderation model. Without `OPENAI_API_KEY`, submissions safely remain in `pending_admin`.
+
 - Keep `api/` under 12 `.js` files for Vercel Hobby deployment.
 - Keep shared helper modules outside `api/`.
 - Keep `node_modules`, `.git`, `.vercel`, `data`, `exports`, and tests out of deployment uploads where possible.

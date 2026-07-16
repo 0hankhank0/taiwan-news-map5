@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/events",
-      "destination": "/api/events.js"
+      "destination": "/api/events.js?integrationStatus=1"
     },
     {
       "source": "/api/admin-events",
@@ -15,6 +15,18 @@
     {
       "source": "/api/cron",
       "destination": "/api/cron.js"
+    },
+    {
+      "source": "/api/submissions",
+      "destination": "/api/submission.js"
+    },
+    {
+      "source": "/api/submission-reports",
+      "destination": "/api/submission.js?submissionReports=1"
+    },
+    {
+      "source": "/api/integrations/events/status",
+      "destination": "/api/events.js"
     },
     {
       "source": "/api/reactions/total",

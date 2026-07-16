@@ -24,6 +24,8 @@ const {
   releaseCronLock,
 } = require("../event-store");
 const { applyEventQueryFilters } = require("../event-query");
+const { getEventIntegrationStatuses } = require("../integration-store");
+const eventsApi = require("../api/events");
 
 function createRes() {
   return {
@@ -183,6 +185,23 @@ async function call(handler, req) {
   assert.equal(applyEventQueryFilters(sampleEvents, { source: "kktix" })[0].title, "Concert");
   assert.equal(applyEventQueryFilters(sampleEvents, { q: "music" })[0].title, "Concert");
   assert.equal(applyEventQueryFilters(sampleEvents, { limit: "1" }).length, 1);
+
+  // KKTIX success records a bounded integration status; failures retry three times and never clear cached events.
+  const originalFetch = global.fetch;
+  global.fetch = async () => ({ ok: true, text: async () => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>KKTIX test activity</title><link href="https://kktix.com/events/test"/><content type="html"><![CDATA[Time: 2099/07/20 19:00 ~ 2099/07/20 21:00\nLocation: Test venue / Taipei]]></content></entry></feed>` });
+  await eventRefresh.fetchKktixActivityEvents(Date.now());
+  assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "kktix").status, "success");
+  const cachedCountBeforeFailure = (await getCachedEvents()).length;
+  let attempts = 0;
+  global.fetch = async () => { attempts += 1; return { ok: false, status: 500, text: async () => "upstream failure" }; };
+  assert.deepEqual(await eventRefresh.fetchKktixActivityEvents(Date.now()), []);
+  assert.equal(attempts, 3);
+  assert.equal((await getCachedEvents()).length, cachedCountBeforeFailure);
+  const integrationStatus = await call(eventsApi, { method: "GET", query: { integrationStatus: "1" }, url: "/api/integrations/events/status" });
+  assert.equal(integrationStatus.statusCode, 200);
+  assert.equal(JSON.stringify(integrationStatus.payload).includes("upstream failure"), false);
+  assert.equal(JSON.stringify(integrationStatus.payload).includes("token"), false);
+  global.fetch = originalFetch;
 
   const originalRunEventRefresh = eventRefresh.runEventRefresh;
   eventRefresh.runEventRefresh = async (options) => ({

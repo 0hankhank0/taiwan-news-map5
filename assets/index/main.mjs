@@ -361,6 +361,7 @@ import {
     }
 
     function shouldShowRealtimeEvent(ev) {
+        if (ev?.source === "user_submission") return true;
         const filter = window.TNM_EVENT_CONTENT_FILTER;
         if (!filter || typeof filter.shouldShowEvent !== "function") return true;
         return filter.shouldShowEvent(ev);
@@ -632,6 +633,15 @@ import {
 
     function makeEventDetailRows(ev, context = "card") {
         const rows = [];
+        if (ev?.source === "user_submission") {
+            const eventTime = formatEventDateRange(ev) || formatEventDateTime(ev.startsAt || ev.createdAt);
+            const submissionRows = [
+                ["\u6d3b\u52d5\u6642\u9593", eventTime || "\u672a\u63d0\u4f9b"],
+                ["\u5730\u5740", normalizeText(ev.address) || "\u672a\u63d0\u4f9b"],
+                ["\u6700\u5f8c\u66f4\u65b0", formatEventDateTime(ev.updatedAt) || "\u672a\u63d0\u4f9b"],
+            ];
+            return `<div class="event-detail-list event-detail-list--${escapeAttribute(context)}">${submissionRows.map(([label, value]) => `<div class="event-detail-item"><span class="event-detail-label">${escapeHtml(label)}</span><span class="event-detail-value">${escapeHtml(value)}</span></div>`).join("")}</div>`;
+        }
         const isActivity = inferEventGroupCategory(ev) === "activity" || ev.category === "activity";
         const timeRange = formatEventDateRange(ev);
         const place = normalizeText([ev.venue, ev.address || ev.location].filter(Boolean).join("｜"));
@@ -770,6 +780,8 @@ import {
         const impactHtml = makeEventImpactRow(ev);
         const detailsHtml = makeEventDetailRows(ev, "popup");
         const trustHtml = dataTrust.buildTrustRow(ev, { reportCount, compact: true });
+        const submissionNotice = ev.source === "user_submission"
+            ? `<div class="submission-notice">${escapeHtml(ev.publicationNotice || "\u4f7f\u7528\u8005\u6295\u7a3f\uff5c\u5c1a\u672a\u7d93\u5b98\u65b9\u8b49\u5be6")}</div>` : "";
 
         return `
             <div class="popup-demo-inner" style="--popup-color:${markerStyle.color}">
@@ -787,6 +799,7 @@ import {
                     </div>
                 </div>
                 <div class="popup-summary">${escapeHtml(displayContent)}</div>
+                ${submissionNotice}
                 ${impactHtml}
                 ${detailsHtml}
                 ${trustHtml}
@@ -796,7 +809,7 @@ import {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         查看原文
                     </a>` : ""}
-                    <button type="button" class="popup-btn-v2 ghost" data-action="open-report" data-report="${reportArg}" data-report-title="${reportTitleArg}">
+                    <button type="button" class="popup-btn-v2 ghost" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         回報錯誤
                     </button>
@@ -838,6 +851,8 @@ import {
         const impactHtml = isMobile ? "" : makeEventImpactRow(ev);
         const detailsHtml = makeEventDetailRows(ev, isMobile ? "mobile-card" : "card");
         const trustHtml = dataTrust.buildTrustRow(ev, { reportCount, compact: isMobile });
+        const submissionNotice = ev.source === "user_submission"
+            ? `<div class="submission-notice">${escapeHtml(ev.publicationNotice || "\u4f7f\u7528\u8005\u6295\u7a3f\uff5c\u5c1a\u672a\u7d93\u5b98\u65b9\u8b49\u5be6")}</div>` : "";
 
         return `
             <div class="card-bar" style="background:${catVisual.color};"></div>
@@ -853,6 +868,7 @@ import {
                 </div>
                 <div class="card-v2-title">${escapeHtml(displayTitle)}</div>
                 <div class="card-v2-content">${escapeHtml(displayContent)}</div>
+                ${submissionNotice}
                 ${trustHtml}
                 ${impactHtml}
                 ${detailsHtml}
@@ -863,7 +879,7 @@ import {
                 ${sourcesHtml}
                 <div class="card-actions">
                     <div class="card-action-group">
-                        <button type="button" class="card-action-btn report" data-action="open-report" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${eventIdAttr}">
+                        <button type="button" class="card-action-btn report" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${eventIdAttr}">
                             <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
                         </button>
                         ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
@@ -941,6 +957,7 @@ import {
     const SOURCE_CONFIG = {
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
         RSS:        { text:"RSS 新聞事件", shortText:"RSS",  bg:"rgba(29,78,216,0.2)",  color:"#93c5fd" },
+        user_submission: { text:"使用者投稿", shortText:"投稿", bg:"rgba(168,85,247,0.18)", color:"#d8b4fe" },
         news:       { text:"AI 擷取事件", shortText:"AI",   bg:"rgba(124,58,237,0.2)", color:"#c4b5fd" },
         default:    { text:"其他來源", shortText:"其他", bg:"rgba(71,85,105,0.25)", color:"#94a3b8" }
     };
@@ -2167,6 +2184,7 @@ import {
                 const markerEl = marker.getElement();
                 markerEl.style.cursor = "pointer";
                 markerEl.dataset.eventId = String(ev.id || "");
+                if (ev.source === "user_submission") markerEl.classList.add("submission-marker");
                 if (getLocationDisplayMode(ev) === "estimated") markerEl.classList.add("marker-location-estimated");
 
                 if (!isMobile) {
@@ -2197,6 +2215,7 @@ import {
 
             const card = document.createElement("article");
             card.className = "event-card-v2";
+            if (ev.source === "user_submission") card.classList.add("submission-card");
             card.style.setProperty("--card-color", catVisual.color);
             card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
 
@@ -2301,6 +2320,40 @@ import {
             dataTrust.updateError("資料服務暫時無法連線，目前顯示展示資料");
             setStatus("展示模式：顯示範例資料");
             return parsedEvents;
+        }
+
+        try {
+            const submissionRes = await fetch("/api/submissions?limit=500", { cache: "no-store" });
+            if (!submissionRes.ok) throw new Error(`HTTP ${submissionRes.status}`);
+            const submissionData = await submissionRes.json();
+            const now = Date.now();
+            const submissions = Array.isArray(submissionData?.submissions) ? submissionData.submissions : [];
+            const publicMapSubmissions = submissions
+                .filter(item => item?.status === "approved" && !item.hiddenByReports)
+                .filter(item => !item.expirationTime || Date.parse(item.expirationTime) > now)
+                .filter(item => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)))
+                .filter(item => isValidTaiwanCoord(Number(item.latitude), Number(item.longitude)))
+                .map(item => ({
+                    id: `submission:${item.submissionId}`,
+                    submissionId: item.submissionId,
+                    title: item.title,
+                    content: item.description,
+                    summary: item.description,
+                    category: item.category,
+                    address: item.address,
+                    lat: Number(item.latitude), lng: Number(item.longitude),
+                    source: "user_submission", sourceName: "User submission",
+                    url: item.sourceUrl || "", sourceUrl: item.sourceUrl || "",
+                    startsAt: item.eventStartTime || null, endsAt: item.eventEndTime || null,
+                    expiresAt: item.expirationTime || null, status: "approved",
+                    approvalMethod: item.approvalMethod, riskLevel: item.riskLevel,
+                    publicationNotice: item.publicationNotice || "使用者投稿｜尚未經官方證實",
+                    publishedAt: item.publishedAt || item.createdAt, updatedAt: item.updatedAt, createdAt: item.createdAt,
+                    locationPrecision: "exact", locationQuality: "high", locationDisplayMode: "point", locationConfidence: 1
+                }));
+            list.push(...publicMapSubmissions);
+        } catch (error) {
+            console.warn("[island-pulse] public submission feed unavailable", error.name || "error");
         }
 
         const normalizedEvents = [];
@@ -2573,6 +2626,7 @@ import {
     }
     const REPORT_TYPE_OPTIONS = ["資料錯誤", "座標錯誤", "事件已解除", "不是同一事件", "分類錯誤", "來源失效", "其他"];
     let currentReportEvent = null;
+    let currentSubmissionReportId = "";
 
     function ensureReportStatusElements(){
         const actions = document.querySelector("#report-modal .modal-actions");
@@ -2615,6 +2669,7 @@ import {
     }
 
     function openReportModal(identifier, visibleTitle = ""){
+        currentSubmissionReportId = "";
         ensureReportStatusElements();
         currentReportEvent = findReportEvent(identifier);
         const title = currentReportEvent?.title || normalizeText(visibleTitle) || String(identifier || "");
@@ -2636,6 +2691,18 @@ import {
         reportModal.classList.add("visible");
     }
     function closeReportModal(){ reportModal.classList.remove("visible"); }
+    function openSubmissionReportModal(submissionId) {
+        if (!submissionId) return;
+        currentSubmissionReportId = submissionId;
+        currentReportEvent = null;
+        ensureReportStatusElements();
+        document.getElementById("report-title").value = "檢舉使用者投稿";
+        const typeEl = document.getElementById("report-type");
+        if (typeEl) typeEl.innerHTML = ["information_incorrect", "expired", "duplicate", "spam", "inappropriate", "wrong_location", "other"].map(value => `<option value="${value}">${value}</option>`).join("");
+        document.getElementById("report-message").value = "";
+        setReportStatus("", "");
+        reportModal.classList.add("visible");
+    }
 
     async function submitReport(){
         const title=document.getElementById("report-title").value.trim();
@@ -2672,6 +2739,24 @@ import {
             setReportStatus("success", "已送出，等待覆核。");
             const cancelBtn = document.getElementById("report-cancel-btn");
             if (cancelBtn) cancelBtn.textContent = "關閉";
+            return;
+        }
+        if (currentSubmissionReportId) {
+            const btn = document.getElementById("report-submit-btn");
+            btn.disabled = true;
+            try {
+                const res = await fetch("/api/submission-reports", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ submissionId: currentSubmissionReportId, reason: errorType, note: message })
+                });
+                const result = await res.json().catch(() => ({}));
+                if (!res.ok || !result.success) throw new Error(result.error || "report failed");
+                setReportStatus("success", "已收到檢舉，感謝你協助維護資訊品質。");
+                btn.textContent = "已送出";
+            } catch {
+                setReportStatus("error", "檢舉送出失敗，請稍後再試。");
+                btn.disabled = false;
+            }
             return;
         }
         if (!ev || !ev.id) {
@@ -3239,6 +3324,11 @@ import {
             event.stopPropagation();
             const payload = readReportPayload(target);
             openReportModal(payload.identifier, payload.title);
+        },
+        "report-submission"(event, target) {
+            event.preventDefault();
+            event.stopPropagation();
+            openSubmissionReportModal(target.dataset.submissionId || "");
         },
         "toggle-sources"(event, target) {
             event.preventDefault();
