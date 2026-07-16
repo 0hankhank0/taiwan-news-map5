@@ -67,6 +67,7 @@ const MAX_GEOCODING_PER_CRON = Number(process.env.MAX_GEOCODING_PER_CRON || 20);
 const MIN_EVENT_CACHE_TTL_SECONDS = 60 * 60;
 const DEFAULT_EVENT_CACHE_TTL_SECONDS = 60 * 60 * 6;
 const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
+const { recordEventIntegrationStatus } = require("./integration-store");
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 
@@ -734,16 +735,27 @@ function parseKktixMeta(item) {
   };
 }
 async function fetchKktixActivityEvents(startedAt) {
+  const attemptedAt = new Date().toISOString();
   try {
-    if (getRemainingTime(startedAt) < 1200) return [];
-    const response = await fetch(KKTIX_ACTIVITY_FEED, {
-      signal: AbortSignal.timeout(Math.max(800, Math.min(RSS_TIMEOUT_MS, getRemainingTime(startedAt) - 200))),
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
-      },
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (getRemainingTime(startedAt) < 1200) throw new Error("refresh deadline exceeded");
+    // KKTIX publishes this Atom feed. Other providers must be explicitly configured;
+    // no private or undocumented endpoint is inferred here.
+    const endpoint = String(process.env.KKTIX_EVENTS_FEED_URL || KKTIX_ACTIVITY_FEED).trim();
+    let response;
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        response = await fetch(endpoint, {
+          signal: AbortSignal.timeout(Math.max(800, Math.min(RSS_TIMEOUT_MS, getRemainingTime(startedAt) - 200))),
+          headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8" },
+        });
+        if (response.ok) break;
+        if (response.status < 500 && response.status !== 429) throw new Error(`HTTP ${response.status}`);
+        lastError = new Error(`HTTP ${response.status}`);
+      } catch (error) { lastError = error; }
+      if (attempt < 2) await delay(250 * (2 ** attempt));
+    }
+    if (!response?.ok) throw lastError || new Error("KKTIX fetch failed");
     const feed = await parser.parseString(await response.text());
     const now = Date.now();
     const windowEnd = now + 30 * 24 * 60 * 60 * 1000;
@@ -789,9 +801,12 @@ async function fetchKktixActivityEvents(startedAt) {
       }));
     }
 
-    return events.slice(0, 30);
+    const result = events.slice(0, 30);
+    await recordEventIntegrationStatus("kktix", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: (feed.items || []).length, insertedCount: result.length, duplicateCount: Math.max(0, (feed.items || []).length - result.length), failedCount: 0, lastErrorType: null });
+    return result;
   } catch (error) {
     console.warn("[cron] KKTIX activity fetch failed:", error.message);
+    await recordEventIntegrationStatus("kktix", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", failedCount: 1 });
     return [];
   }
 }
@@ -1504,6 +1519,7 @@ module.exports = {
   DEFAULT_EVENT_CACHE_TTL_SECONDS,
   enrichCronEvent,
   enrichEventLocations,
+  fetchKktixActivityEvents,
   fetchDefaultSources,
   isGenericCmsNotice,
   isDuplicateEvent,
