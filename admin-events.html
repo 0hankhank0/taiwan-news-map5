@@ -192,7 +192,10 @@
       statusEl.textContent = "載入中...";
       eventsEl.innerHTML = "";
       try {
-        const response = await fetch(`/api/admin-events?${params.toString()}`, { cache: "no-store" });
+        const response = await fetch(`/api/admin-events?${params.toString()}`, {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         const events = Array.isArray(data.events) ? data.events : [];
@@ -215,7 +218,7 @@
       const patch = { ...collectPatch(card), ...extra };
       const response = await fetch(`/api/admin-events?eventId=${encodeURIComponent(eventId)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(patch)
       });
       const data = await response.json().catch(() => ({}));

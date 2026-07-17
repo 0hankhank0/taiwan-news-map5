@@ -1151,6 +1151,9 @@ import { trackEvent } from "./modules/analytics.mjs";
     const settingsModal = document.getElementById("settings-modal");
     [reportModal, betaModal, settingsModal].filter(Boolean).forEach((modal) => {
         modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true"); modal.setAttribute("aria-hidden", "true");
+        new MutationObserver(() => {
+            modal.setAttribute("aria-hidden", modal.classList.contains("visible") ? "false" : "true");
+        }).observe(modal, { attributes: true, attributeFilter: ["class"] });
     });
     const newsSidebar  = document.getElementById("news-sidebar");
     const mapStage     = document.getElementById("map-stage");
@@ -1823,6 +1826,7 @@ import { trackEvent } from "./modules/analytics.mjs";
                 accuracy: pos.coords.accuracy
             };
             isNearbyMode = true;
+            trackEvent("nearby_mode_enable", {});
             updateUserLocationMarker();
             updateNearbyRadiusLayer();
             flyToLatLng([userLocation.lat, userLocation.lng], 13, 800);
@@ -2273,6 +2277,12 @@ import { trackEvent } from "./modules/analytics.mjs";
 
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
+                trackEvent("event_card_open", {
+                    category: String(ev.category || "other"),
+                    city: String(ev.city || "unknown"),
+                    sourceType: String(ev.source || "unknown"),
+                    deviceLayout: window.innerWidth < 768 ? "mobile" : "desktop"
+                });
                 closeActivePopup();
                 if (popup) {
                     flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
@@ -2353,6 +2363,15 @@ import { trackEvent } from "./modules/analytics.mjs";
             return data;
         },
         onState: async (state) => {
+            const mobileRefreshState = document.getElementById("event-refresh-state-mobile");
+            if (mobileRefreshState) {
+                mobileRefreshState.textContent = state.phase === "loading" ? "正在更新…"
+                    : state.phase === "success" ? `最後更新：${new Date(state.updatedAt).toLocaleTimeString("zh-TW")}`
+                    : state.cached ? "目前顯示先前資料" : "事件資料暫時無法載入";
+            }
+            document.querySelectorAll("#manual-refresh-btn, #manual-refresh-btn-mobile").forEach((button) => {
+                button.disabled = state.phase === "loading";
+            });
             const refreshState = document.getElementById("event-refresh-state");
             if (refreshState) {
                 if (state.phase === "loading") refreshState.textContent = "正在更新事件資料…";
@@ -2743,6 +2762,7 @@ import { trackEvent } from "./modules/analytics.mjs";
         if (cancelBtn) cancelBtn.textContent = "取消";
         setReportStatus("", "");
         reportModal.classList.add("visible");
+        reportModal.setAttribute("aria-hidden", "false");
     }
     function closeReportModal(){ reportModal.classList.remove("visible"); reportModal.setAttribute("aria-hidden", "true"); document.getElementById("report-cancel-btn")?.focus(); }
     function openSubmissionReportModal(submissionId) {
@@ -3409,7 +3429,12 @@ import { trackEvent } from "./modules/analytics.mjs";
     document.getElementById("event-search-mobile")?.addEventListener("input", debouncedHandleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
-    document.getElementById("manual-refresh-btn")?.addEventListener("click", () => { trackEvent("manual_refresh", {}); eventDataManager.refresh({ manual: true }); });
+    ["manual-refresh-btn", "manual-refresh-btn-mobile"].forEach((id) => {
+        document.getElementById(id)?.addEventListener("click", () => {
+            trackEvent("manual_refresh", {});
+            eventDataManager.refresh({ manual: true });
+        });
+    });
     document.addEventListener("visibilitychange", () => eventDataManager.onVisibilityChange());
     window.addEventListener("pagehide", () => eventDataManager.stop(), { once: true });
     document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
@@ -3490,8 +3515,7 @@ import { trackEvent } from "./modules/analytics.mjs";
         renderAlertZoneSettings();
         renderAlertZoneSummary();
         updateNearbyControls();
-        const dataPromise = syncNewsAndRender();
-        if (!VIDEO_DEMO_ROUTE) eventDataManager.start();
+        const dataPromise = VIDEO_DEMO_ROUTE ? syncNewsAndRender() : eventDataManager.start();
         loadTwGeoJSON();
         if (VIDEO_DEMO_ROUTE) startVideoDemoWhenReady(dataPromise);
     }

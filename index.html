@@ -4,6 +4,7 @@
     <script src="/api/config.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script defer src="/_vercel/insights/script.js"></script>
     <title>島嶼脈搏 | 台灣事件地圖</title>
     <meta name="description" content="用地圖看見台灣正在發生的交通、災害與公共事件。出門前快速確認塞車、事故、施工、災情與活動管制，並標示更新時間、資料來源與建議行動。">
     <meta name="keywords" content="台灣地圖, 交通事故, 即時路況, TDX, 災情即時, 塞車地圖, AI 地圖, 道路施工, 警廣路況, 台灣車禍, 即時新聞地圖, 塞車, 車禍, 道路封閉, 國道路況, 省道路況, 高速公路, 交通資訊, 台北塞車, 台中塞車, 高雄塞車, 出門前, 路況查詢">
@@ -190,6 +191,12 @@
         <button id="settings-btn-mobile" class="mobile-icon-btn" aria-label="設定">
             <i class="fa-solid fa-gear"></i>
         </button>
+        <div class="mobile-refresh-controls">
+            <span id="event-refresh-state-mobile" role="status" aria-live="polite"></span>
+            <button id="manual-refresh-btn-mobile" type="button" class="mobile-icon-btn" aria-label="Refresh events">
+                <i class="fa-solid fa-rotate"></i>
+            </button>
+        </div>
     </div>
 </div>
 

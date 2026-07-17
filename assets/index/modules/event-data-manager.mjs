@@ -35,7 +35,12 @@ export function createEventDataManager({ fetchEvents, onState, intervalMs = 3000
     }).finally(() => { inFlight = null; });
     return inFlight;
   }
-  function start() { if (timer || stopped) return; refresh(); timer = setInterval(() => { if (!document.hidden) refresh(); }, intervalMs); }
+  function start() {
+    if (timer || stopped) return inFlight || Promise.resolve(null);
+    const firstRefresh = refresh();
+    timer = setInterval(() => { if (!document.hidden) refresh(); }, intervalMs);
+    return firstRefresh;
+  }
   function stop() { stopped = true; if (timer) clearInterval(timer); timer = null; }
   function onVisibilityChange() { if (!document.hidden && Date.now() - lastSuccessAt > focusAfterMs) refresh(); }
   return { refresh, start, stop, onVisibilityChange, get lastSuccessAt() { return lastSuccessAt; } };
