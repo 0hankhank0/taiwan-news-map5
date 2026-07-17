@@ -2,6 +2,7 @@ const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { getCachedEvents, getEventCacheStatus } = require("../event-store");
 const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
+const { getPublicMapSubmissionEvents } = require("../submission-store");
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -21,18 +22,25 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const storedEvents = await getCachedEvents();
+    const [storedEvents, publicSubmissions] = await Promise.all([getCachedEvents(), getPublicMapSubmissionEvents()]);
     const normalizedEvents = normalizeEventsForFrontend(storedEvents);
-    const events = applyEventQueryFilters(normalizedEvents, req.query);
+    const seenSubmissionIds = new Set();
+    const combinedEvents = [...normalizedEvents, ...publicSubmissions].filter((event) => {
+      if (event?.source !== "user_submission") return true;
+      if (!event.submissionId || seenSubmissionIds.has(event.submissionId)) return false;
+      seenSubmissionIds.add(event.submissionId);
+      return true;
+    });
+    const events = applyEventQueryFilters(combinedEvents, req.query);
     const cacheStatus = await getEventCacheStatus();
-    const summary = getEventStatusSummary(normalizedEvents, cacheStatus);
+    const summary = getEventStatusSummary(combinedEvents, cacheStatus);
     res.setHeader("X-Event-Count", String(events.length));
     res.setHeader("X-Event-Total", String(summary.total));
     res.setHeader("X-Data-Sources", encodeURIComponent(summary.sources.join(",")));
     res.setHeader("X-Last-Event-Time", summary.newestEventAt);
     res.setHeader("X-Cache-Updated-Time", summary.cacheUpdatedAt);
     res.setHeader("X-Data-Store", summary.hasKv ? "kv+local" : "local");
-    res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate=300");
+    res.setHeader("Cache-Control", "s-maxage=15, stale-while-revalidate=30");
     return res.status(200).json(events);
   } catch (error) {
     console.error("[events] cache fetch failed:", error.message);

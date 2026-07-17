@@ -32,6 +32,9 @@ import {
     sortAlertZoneEvents,
     updateAlertZone
 } from "./modules/alert-zones.mjs";
+import { findPublishedSubmission, getRequestedSubmissionId, removeSubmissionQuery } from "./modules/submission-focus.mjs";
+import { createEventDataManager } from "./modules/event-data-manager.mjs";
+import { trackEvent } from "./modules/analytics.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -39,6 +42,7 @@ import {
     const VIDEO_DEMO_PARAMS = new URLSearchParams(window.location.search);
     const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("loop") === "1";
     const VIDEO_DEMO_TEST_MODE = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("test") === "1";
+    const requestedSubmissionId = VIDEO_DEMO_ROUTE ? "" : getRequestedSubmissionId();
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
@@ -1145,6 +1149,9 @@ import {
     const reportModal  = document.getElementById("report-modal");
     const betaModal    = document.getElementById("beta-modal");
     const settingsModal = document.getElementById("settings-modal");
+    [reportModal, betaModal, settingsModal].filter(Boolean).forEach((modal) => {
+        modal.setAttribute("role", "dialog"); modal.setAttribute("aria-modal", "true"); modal.setAttribute("aria-hidden", "true");
+    });
     const newsSidebar  = document.getElementById("news-sidebar");
     const mapStage     = document.getElementById("map-stage");
     const dataTrust = createDataTrustController({
@@ -1260,7 +1267,7 @@ import {
     }
     function clearRenderedMarkers(){
         closeActivePopup();
-        while(renderedMarkers.length) renderedMarkers.pop().remove();
+        while(renderedMarkers.length) renderedMarkers.pop().marker.remove();
     }
     function updateCurationMeta(events){
         const cityValue = document.getElementById("city-filter")?.value || "all";
@@ -1864,6 +1871,7 @@ import {
         catFilters.querySelectorAll("[data-category]").forEach(btn=>{
             btn.addEventListener("click",()=>{
                 activeCategory=btn.dataset.category||"all";
+                trackEvent("category_filter_change", { category: activeCategory });
                 renderCategoryButtons(); renderEvents();
             });
         });
@@ -2013,6 +2021,50 @@ import {
         flyToLatLng([23.698, 120.961], 7, 900);
     }
 
+    function showSubmissionFocusNotice(message) {
+        const notice = document.createElement("div");
+        notice.className = "submission-focus-notice";
+        notice.textContent = message;
+        document.body.appendChild(notice);
+        window.setTimeout(() => notice.remove(), 5000);
+    }
+
+    function focusRequestedSubmission() {
+        if (!requestedSubmissionId) return;
+        const submission = findPublishedSubmission(parsedEvents, requestedSubmissionId);
+        if (!submission) {
+            showSubmissionFocusNotice("投稿尚未公開或目前無法顯示");
+            removeSubmissionQuery();
+            return;
+        }
+        activeCategory = "all";
+        searchKeyword = "";
+        isNearbyMode = false;
+        alertZoneFilterEnabled = false;
+        clearUserLocationMarker();
+        ["event-search", "event-search-mobile"].forEach((id) => {
+            const input = document.getElementById(id);
+            if (input) input.value = "";
+        });
+        ["city-filter", "city-filter-mobile"].forEach((id) => {
+            const select = document.getElementById(id);
+            if (select) select.value = "all";
+        });
+        drawCityBoundary("all");
+        renderCategoryButtons();
+        renderEvents();
+        const rendered = renderedMarkers.find((item) => item.event?.source === "user_submission" && item.event?.submissionId === requestedSubmissionId);
+        const lat = Number(submission.lat), lng = Number(submission.lng);
+        if (rendered && Number.isFinite(lat) && Number.isFinite(lng)) {
+            flyToLatLng([lat, lng], 15, 800);
+            rendered.popup.setLngLat([lng, lat]).addTo(map);
+            showSubmissionFocusNotice("你的投稿已發布並顯示在地圖上");
+        } else {
+            showSubmissionFocusNotice("投稿尚未公開或目前無法顯示");
+        }
+        removeSubmissionQuery();
+    }
+
     function buildEmptyStateHtml() {
         const hasSourceEvents = Array.isArray(parsedEvents) && parsedEvents.length > 0;
         const filtered = activeCategory !== "all" || searchKeyword || currentCityFilter() !== "all" || isNearbyMode || alertZoneFilterEnabled;
@@ -2126,7 +2178,7 @@ import {
         }
 
         forEachEventSafely(events, (ev, index) => {
-            const shouldRenderMarker = index < markerLimit;
+            const shouldRenderMarker = index < markerLimit || ev.submissionId === requestedSubmissionId;
             const canRenderMarker = shouldRenderMarker && shouldRenderLocationMarker(ev);
             const shouldRenderCard = index < cardLimit;
             if (!canRenderMarker && !shouldRenderCard) return;
@@ -2208,7 +2260,7 @@ import {
                     });
                 }
 
-                renderedMarkers.push(marker);
+                renderedMarkers.push({ marker, event: ev, popup });
             }
 
             if (!shouldRenderCard) return;
@@ -2292,6 +2344,39 @@ import {
     ];
 
     // ── FETCH ────────────────────────────────────────────────
+    const eventDataManager = createEventDataManager({
+        fetchEvents: async () => {
+            const response = await fetch("/api/events", { cache: "no-store" });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            if (!Array.isArray(data)) throw new Error("Invalid event response");
+            return data;
+        },
+        onState: async (state) => {
+            const refreshState = document.getElementById("event-refresh-state");
+            if (refreshState) {
+                if (state.phase === "loading") refreshState.textContent = "正在更新事件資料…";
+                else if (state.phase === "success") refreshState.textContent = `最後成功更新：${new Date(state.updatedAt).toLocaleString("zh-TW")}`;
+                else if (state.cached) refreshState.textContent = `資料暫時無法更新，顯示先前資料（${new Date(state.cached.updatedAt).toLocaleString("zh-TW")}）`;
+                else refreshState.textContent = "事件資料暫時無法載入";
+            }
+            if (state.phase === "success") {
+                const next = deduplicateEvents(state.events.map(normalizeDisplayEvent));
+                const unchanged = JSON.stringify(next.map((event) => [event.id, event.updatedAt])) === JSON.stringify(parsedEvents.map((event) => [event.id, event.updatedAt]));
+                parsedEvents = next;
+                if (!unchanged) { reportSummaryByEvent = {}; renderCategoryButtons(); renderEvents(); }
+                try { await syncReportSummary(); focusRequestedSubmission(); } catch (error) { console.warn("report summary refresh failed", error); }
+            } else if (state.phase === "error") {
+                dataTrust.updateError("事件資料暫時無法更新");
+                if (!parsedEvents.length && state.cached) { parsedEvents = deduplicateEvents(state.cached.events.map(normalizeDisplayEvent)); renderCategoryButtons(); renderEvents(); }
+                else if (!parsedEvents.length) {
+                    reportSummaryByEvent = {}; renderCategoryButtons(); renderEvents();
+                    if (eventList) eventList.innerHTML = '<div class="empty-state" role="status"><strong>事件資料暫時無法載入</strong><p>請稍後再試，或使用重新整理按鈕。</p><button type="button" class="btn btn-primary" data-action="manual-refresh-empty">重新整理</button></div>';
+                }
+            }
+        }
+    });
+
     async function syncNewsAndRender(){
         if (VIDEO_DEMO_ROUTE) {
             parsedEvents = deduplicateEvents(VIDEO_DEMO_EVENTS.map(normalizeDisplayEvent));
@@ -2304,6 +2389,7 @@ import {
         }
         setStatus("正在抓取事件資料...");
         renderLoadingState();
+        return eventDataManager.refresh();
         let res;
         let list;
         try {
@@ -2322,40 +2408,6 @@ import {
             return parsedEvents;
         }
 
-        try {
-            const submissionRes = await fetch("/api/submissions?limit=500", { cache: "no-store" });
-            if (!submissionRes.ok) throw new Error(`HTTP ${submissionRes.status}`);
-            const submissionData = await submissionRes.json();
-            const now = Date.now();
-            const submissions = Array.isArray(submissionData?.submissions) ? submissionData.submissions : [];
-            const publicMapSubmissions = submissions
-                .filter(item => item?.status === "approved" && !item.hiddenByReports)
-                .filter(item => !item.expirationTime || Date.parse(item.expirationTime) > now)
-                .filter(item => Number.isFinite(Number(item.latitude)) && Number.isFinite(Number(item.longitude)))
-                .filter(item => isValidTaiwanCoord(Number(item.latitude), Number(item.longitude)))
-                .map(item => ({
-                    id: `submission:${item.submissionId}`,
-                    submissionId: item.submissionId,
-                    title: item.title,
-                    content: item.description,
-                    summary: item.description,
-                    category: item.category,
-                    address: item.address,
-                    lat: Number(item.latitude), lng: Number(item.longitude),
-                    source: "user_submission", sourceName: "User submission",
-                    url: item.sourceUrl || "", sourceUrl: item.sourceUrl || "",
-                    startsAt: item.eventStartTime || null, endsAt: item.eventEndTime || null,
-                    expiresAt: item.expirationTime || null, status: "approved",
-                    approvalMethod: item.approvalMethod, riskLevel: item.riskLevel,
-                    publicationNotice: item.publicationNotice || "使用者投稿｜尚未經官方證實",
-                    publishedAt: item.publishedAt || item.createdAt, updatedAt: item.updatedAt, createdAt: item.createdAt,
-                    locationPrecision: "exact", locationQuality: "high", locationDisplayMode: "point", locationConfidence: 1
-                }));
-            list.push(...publicMapSubmissions);
-        } catch (error) {
-            console.warn("[island-pulse] public submission feed unavailable", error.name || "error");
-        }
-
         const normalizedEvents = [];
         list.forEach((event, index) => {
             try {
@@ -2370,6 +2422,7 @@ import {
             await syncReportSummary();
             renderCategoryButtons();
             renderEvents();
+            focusRequestedSubmission();
             dataTrust.updateFromResponse(parsedEvents, res, document.querySelectorAll(".event-card-v2").length);
         } catch (error) {
             console.error("[island-pulse] 事件渲染失敗", error);
@@ -2380,6 +2433,7 @@ import {
 
     // ── CITY SYNC ────────────────────────────────────────────
     function syncCityFilter(value){
+        trackEvent("city_filter_change", { city: value });
         document.getElementById("city-filter").value=value;
         document.getElementById("city-filter-mobile").value=value;
         drawCityBoundary(value);
@@ -2690,7 +2744,7 @@ import {
         setReportStatus("", "");
         reportModal.classList.add("visible");
     }
-    function closeReportModal(){ reportModal.classList.remove("visible"); }
+    function closeReportModal(){ reportModal.classList.remove("visible"); reportModal.setAttribute("aria-hidden", "true"); document.getElementById("report-cancel-btn")?.focus(); }
     function openSubmissionReportModal(submissionId) {
         if (!submissionId) return;
         currentSubmissionReportId = submissionId;
@@ -2701,7 +2755,7 @@ import {
         if (typeEl) typeEl.innerHTML = ["information_incorrect", "expired", "duplicate", "spam", "inappropriate", "wrong_location", "other"].map(value => `<option value="${value}">${value}</option>`).join("");
         document.getElementById("report-message").value = "";
         setReportStatus("", "");
-        reportModal.classList.add("visible");
+        reportModal.classList.add("visible"); reportModal.setAttribute("aria-hidden", "false"); document.getElementById("report-type")?.focus();
     }
 
     async function submitReport(){
@@ -3323,7 +3377,13 @@ import {
             event.preventDefault();
             event.stopPropagation();
             const payload = readReportPayload(target);
+            trackEvent("report_open", { sourceType: "event_card" });
             openReportModal(payload.identifier, payload.title);
+        },
+        "manual-refresh-empty"(event) {
+            event.preventDefault();
+            trackEvent("manual_refresh", {});
+            eventDataManager.refresh({ manual: true });
         },
         "report-submission"(event, target) {
             event.preventDefault();
@@ -3349,6 +3409,9 @@ import {
     document.getElementById("event-search-mobile")?.addEventListener("input", debouncedHandleSearch);
     document.getElementById("city-filter").addEventListener("change",e=>syncCityFilter(e.target.value));
     document.getElementById("city-filter-mobile").addEventListener("change",e=>syncCityFilter(e.target.value));
+    document.getElementById("manual-refresh-btn")?.addEventListener("click", () => { trackEvent("manual_refresh", {}); eventDataManager.refresh({ manual: true }); });
+    document.addEventListener("visibilitychange", () => eventDataManager.onVisibilityChange());
+    window.addEventListener("pagehide", () => eventDataManager.stop(), { once: true });
     document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
     document.getElementById("btn-global").addEventListener("click",()=>switchMode(false));
     document.getElementById("btn-tw-mobile").addEventListener("click",()=>switchMode(true));
@@ -3362,6 +3425,11 @@ import {
     document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
     document.getElementById("nearby-toggle-mobile")?.addEventListener("click", requestNearbyLocation);
     document.getElementById("nearby-toggle-desktop")?.addEventListener("click", requestNearbyLocation);
+    document.addEventListener("click", (event) => {
+        if (event.target.closest(".card-action-btn.link, .popup-btn-v2.primary")) trackEvent("source_link_open", { sourceType: "external" });
+        if (event.target.closest(".mobile-submit-event-btn")) trackEvent("submission_entry_click", {});
+        if (event.target.closest(".donate-btn")) trackEvent("donation_click", {});
+    }, true);
     document.getElementById("nearby-radius-mobile")?.addEventListener("change", (e) => setNearbyRadius(e.target.value));
     document.getElementById("nearby-radius-desktop")?.addEventListener("change", (e) => setNearbyRadius(e.target.value));
     document.getElementById("alert-zone-add-current")?.addEventListener("click", requestAlertZoneLocation);
@@ -3400,6 +3468,12 @@ import {
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
     betaModal.addEventListener("click",e=>{ if(e.target===betaModal) closeBetaModal(); });
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        if (reportModal.classList.contains("visible")) closeReportModal();
+        else if (settingsModal.classList.contains("visible")) settingsModal.classList.remove("visible");
+        else if (betaModal.classList.contains("visible")) closeBetaModal();
+    });
 
     function bootstrapApp(){
         if (VIDEO_DEMO_ROUTE) {
@@ -3417,6 +3491,7 @@ import {
         renderAlertZoneSummary();
         updateNearbyControls();
         const dataPromise = syncNewsAndRender();
+        if (!VIDEO_DEMO_ROUTE) eventDataManager.start();
         loadTwGeoJSON();
         if (VIDEO_DEMO_ROUTE) startVideoDemoWhenReady(dataPromise);
     }

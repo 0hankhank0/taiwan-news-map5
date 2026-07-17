@@ -8,7 +8,7 @@
     "start": "node server.js",
     "scraper": "node scraper.js",
     "export:posters": "node exports/tisdc-2026-v2/export-posters.mjs",
-    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:submission && npm run test:submission-audit-log && npm run test:reaction",
+    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:submission && npm run test:submission-flow && npm run test:submission-audit-log && npm run test:reaction && npm run test:nearby-radius && npm run test:frontend-data && npm run test:alerts && npm run test:video-demo",
     "test:content-filter": "node tests/event-content-filter.test.js",
     "test:event-display": "node tests/event-display.test.js",
     "test:event-text": "node tests/event-text.test.mjs",
@@ -18,10 +18,13 @@
     "test:event-refresh": "node tests/event-refresh.test.js",
     "test:admin": "node tests/admin-api.test.js",
     "test:submission": "node tests/submission-api.test.js",
+    "test:submission-flow": "node tests/submission-flow.test.mjs",
     "test:submission-audit-log": "node tests/submission-audit-log.test.js",
     "test:reaction": "node tests/reaction-api.test.js",
     "test:video-demo": "node tests/video-demo.test.js",
-    "test:nearby-radius": "node tests/nearby-radius.test.mjs && node tests/nearby-radius-ui.test.js"
+    "test:nearby-radius": "node tests/nearby-radius.test.mjs && node tests/nearby-radius-ui.test.js",
+    "test:frontend-data": "node tests/event-data-manager.test.mjs",
+    "test:alerts": "node tests/refresh-alerts.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
@@ -37,6 +40,7 @@
     "tsx": "^4.21.0"
   },
   "devDependencies": {
-    "@types/node": "^25.3.3"
+    "@types/node": "^25.3.3",
+    "playwright": "^1.58.2"
   }
 }

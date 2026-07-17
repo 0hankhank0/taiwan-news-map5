@@ -221,7 +221,11 @@
     </div>
 
     <div class="header-right">
-        <div id="status-text">準備載入...</div>
+        <div class="event-refresh-controls">
+            <span id="status-text">準備載入...</span>
+            <span id="event-refresh-state" role="status" aria-live="polite"></span>
+            <button id="manual-refresh-btn" type="button" class="btn btn-ghost">重新整理</button>
+        </div>
         <a class="submit-event-btn submit-event-btn--desktop" href="/submit-event.html">
             <i class="fa-solid fa-plus"></i>
             <span>新增事件</span>

@@ -29,6 +29,7 @@ const {
   withLocationQuality,
 } = require("./location-resolver");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
+const { notifyRefreshAlert } = require("./refresh-alerts");
 
 const Parser = require("rss-parser");
 const axios = require("axios");
@@ -1575,6 +1576,8 @@ async function runEventRefresh(options = {}) {
       });
       await appendRefreshLog({ ...result, trigger, status, startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: true });
       await saveRefreshRunDetail(details);
+      if (activeEvents.length === 0) await notifyRefreshAlert("zero_events", "成功抓取後事件數為 0");
+      if (errorSourceCount) await notifyRefreshAlert("source_failure", `主要資料來源失敗：${Object.keys(sourceFailures).join(", ")}`);
     }
 
     console.log(`[event-refresh] complete runId=${runId} count=${activeEvents.length}`);
@@ -1594,6 +1597,7 @@ async function runEventRefresh(options = {}) {
       });
       await appendRefreshLog({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs, error: safeError });
       await saveRefreshRunDetail({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: safeError, sources: {}, pipeline: {}, finalEvents: [] });
+      await notifyRefreshAlert("refresh_failure", `抓取執行失敗：${safeError}`);
     }
     console.error("[event-refresh] failed:", error.message);
     throw error;

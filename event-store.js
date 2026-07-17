@@ -340,6 +340,7 @@ async function setRefreshStatus(status = {}) {
   if (status.status === "success") {
     payload.lastSuccessAt = completedAt;
     payload.lastSuccessRunId = status.runId || "";
+    payload.consecutiveFailures = 0;
   }
   if (status.status === "error") {
     payload.lastError = {
@@ -347,6 +348,7 @@ async function setRefreshStatus(status = {}) {
       runId: status.runId || "",
       at: completedAt,
     };
+    payload.consecutiveFailures = Number(previous?.consecutiveFailures || 0) + 1;
   }
 
   await setCachedValue(EVENT_REFRESH_STATUS_KEY, payload);

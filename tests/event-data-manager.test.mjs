@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { createEventDataManager } from "../assets/index/modules/event-data-manager.mjs";
+const memory = new Map(); const storage = { getItem: (key) => memory.get(key) || null, setItem: (key, value) => memory.set(key, value) };
+let calls = 0, resolve; const states = [];
+const manager = createEventDataManager({ storage, onState: (state) => states.push(state), fetchEvents: () => { calls += 1; return new Promise((done) => { resolve = done; }); } });
+const first = manager.refresh(); const second = manager.refresh();
+await Promise.resolve(); assert.equal(calls, 1); resolve([{ id: "real-1", updatedAt: "2026-01-01" }]); await Promise.all([first, second]);
+assert.equal(states.at(-1).phase, "success");
+const failing = createEventDataManager({ storage, onState: (state) => states.push(state), fetchEvents: async () => { throw new Error("offline"); } });
+await failing.refresh(); assert.equal(states.at(-1).cached.events[0].id, "real-1");
+console.log("event data manager tests passed");

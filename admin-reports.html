@@ -161,7 +161,7 @@
     const statusEl = document.getElementById("status");
     const reportsEl = document.getElementById("reports");
     const statusLineEl = document.getElementById("statusLine");
-    tokenEl.value = localStorage.getItem("report_admin_token") || "";
+    tokenEl.value = sessionStorage.getItem("report_admin_token") || "";
 
     function escapeHtml(value) {
       return String(value || "").replace(/[&<>"']/g, (ch) => ({
@@ -226,14 +226,13 @@
 
     async function loadReports() {
       const token = tokenEl.value.trim();
-      localStorage.setItem("report_admin_token", token);
+      sessionStorage.setItem("report_admin_token", token);
       const params = new URLSearchParams();
-      if (token) params.set("token", token);
       if (statusEl.value) params.set("status", statusEl.value);
       statusLineEl.textContent = "載入中...";
       reportsEl.innerHTML = "";
       try {
-        const response = await fetch(`/api/reports?${params.toString()}`, { cache: "no-store" });
+      const response = await fetch(`/api/reports?${params.toString()}`, { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         const reports = Array.isArray(data.reports) ? data.reports : [];
@@ -248,10 +247,10 @@
       const token = tokenEl.value.trim();
       const reportId = card.dataset.reportId;
       const adminNote = card.querySelector("[data-note]")?.value || "";
-      const params = new URLSearchParams({ token, reportId });
+      const params = new URLSearchParams({ reportId });
       const response = await fetch(`/api/reports?${params.toString()}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
         body: JSON.stringify({ status, adminNote })
       });
       const data = await response.json().catch(() => ({}));
