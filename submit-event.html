@@ -1,6 +1,86 @@
 <!doctype html>
-<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>投稿事件 | Taiwan News Map</title><style>body{font:16px system-ui;max-width:720px;margin:32px auto;padding:0 18px;background:#0b1020;color:#e5e7eb}form{display:grid;gap:12px}input,textarea,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #475569;background:#121a2d;color:inherit}textarea{min-height:120px}button{background:#075985;border-color:#0284c7;cursor:pointer}.hint,#result{color:#94a3b8;font-size:.9rem}</style></head><body>
-<h1>投稿事件資訊</h1><p class="hint">投稿會先經系統檢查。符合公開條件的低風險事件可能自動顯示，其他內容會等待管理員確認。</p>
-<form id="form"><input name="title" required minlength="4" maxlength="160" placeholder="事件名稱"><textarea name="description" required minlength="10" maxlength="2000" placeholder="事件內容、發生時間與必要資訊"></textarea><select name="category" required><option value="activity">活動</option><option value="traffic">交通</option><option value="construction">施工</option><option value="disaster">災害</option><option value="social">社會</option><option value="other">其他</option></select><input name="address" maxlength="240" placeholder="事件地址／地點"><input name="eventStartTime" type="datetime-local"><input name="sourceUrl" type="url" placeholder="來源網址（選填）"><input name="evidenceUrl" type="url" placeholder="佐證網址（選填）"><button>送出事件</button></form><p id="result"></p>
-<script>const f=document.querySelector('#form'),r=document.querySelector('#result');f.addEventListener('submit',async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(f));d.evidenceUrls=d.evidenceUrl?[d.evidenceUrl]:[];delete d.evidenceUrl;r.textContent='送出中…';try{const x=await fetch('/api/submissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}),j=await x.json();if(!x.ok)throw Error(j.error||'送出失敗');r.textContent='已收到事件投稿。編號：'+j.submissionId;f.reset()}catch(err){r.textContent=err.message}})</script>
-</body></html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>新增事件投稿｜Taiwan News Map</title>
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css">
+  <style>
+    :root { color-scheme:dark; } body{font:16px system-ui,sans-serif;max-width:720px;margin:32px auto;padding:0 18px;background:#0b1020;color:#e5e7eb} form{display:grid;gap:12px} input,textarea,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #475569;background:#121a2d;color:inherit} textarea{min-height:120px} button{background:#075985;border-color:#0284c7;cursor:pointer}.hint,#result,#location-status{color:#94a3b8;font-size:.9rem}.location-panel{padding:14px;border:1px solid #334155;border-radius:10px;background:#0f172a}.location-actions{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}.location-actions button{background:#172554}.coordinate-display{font-variant-numeric:tabular-nums}.map-picker{height:240px;border-radius:8px;overflow:hidden;border:1px solid #334155}.error{color:#fda4af}.success{color:#86efac}@media (max-width:560px){body{margin:18px auto}.map-picker{height:210px}}
+  </style>
+</head>
+<body>
+  <h1>新增事件投稿</h1>
+  <p class="hint">投稿會經自動與人工檢查；公開地圖上的使用者投稿均會標示「尚未經官方證實」。</p>
+  <form id="form">
+    <input name="title" required minlength="4" maxlength="160" placeholder="事件標題">
+    <textarea name="description" required minlength="10" maxlength="2000" placeholder="事件內容、影響範圍與時間"></textarea>
+    <select name="category" required><option value="activity">活動</option><option value="traffic">交通</option><option value="construction">施工</option><option value="public_facility">公共設施</option><option value="disaster">災害</option><option value="police">警政</option><option value="social">社會</option><option value="life">生活</option><option value="other">其他</option></select>
+    <input name="address" maxlength="240" placeholder="地址（僅供文字說明，不會自動轉成地圖座標）">
+    <section class="location-panel" aria-labelledby="location-title">
+      <strong id="location-title">地圖定位</strong>
+      <p class="hint">地址與地圖定位是不同欄位。請使用目前位置或點擊地圖選擇座標；未選座標的投稿會等待管理員確認。</p>
+      <div class="location-actions"><button type="button" id="use-location">使用目前位置</button><button type="button" id="clear-location">清除位置</button></div>
+      <div id="location-status" class="coordinate-display" aria-live="polite">尚未選取位置</div>
+      <div id="location-map" class="map-picker" aria-label="投稿位置地圖"></div>
+    </section>
+    <input name="eventStartTime" type="datetime-local" aria-label="開始時間">
+    <input name="sourceUrl" type="url" placeholder="相關來源網址（選填）">
+    <input name="evidenceUrl" type="url" placeholder="佐證網址（選填）">
+    <button id="submit-button">送出投稿</button>
+  </form>
+  <p id="result" aria-live="polite"></p>
+  <script src="/api/config.js"></script>
+  <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
+  <script type="module">
+    import { buildSubmissionPayload, getSubmissionResult, hasValidTaiwanCoordinates } from "/assets/submit-event.mjs";
+    import { getMapboxToken } from "/assets/index/modules/map.mjs";
+    const form = document.querySelector("#form"), result = document.querySelector("#result"), locationStatus = document.querySelector("#location-status");
+    const submitButton = document.querySelector("#submit-button");
+    let coordinates = null, map = null, marker = null;
+    function updateLocation(next, message = "") {
+      if (next && !hasValidTaiwanCoordinates(next.latitude, next.longitude)) { locationStatus.className = "error"; locationStatus.textContent = "選取的位置不在台灣合理範圍內，請重新選擇。"; return false; }
+      coordinates = next;
+      if (marker) marker.remove();
+      marker = null;
+      if (coordinates) {
+        const lngLat = [coordinates.longitude, coordinates.latitude];
+        if (map) { marker = new mapboxgl.Marker({ draggable:true }).setLngLat(lngLat).addTo(map); marker.on("dragend", () => { const p = marker.getLngLat(); updateLocation({ latitude:p.lat, longitude:p.lng }, "已更新地圖位置"); }); }
+        locationStatus.className = "coordinate-display success";
+        locationStatus.textContent = `${message ? `${message}：` : "已選取位置："}${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}`;
+      } else { locationStatus.className = "coordinate-display"; locationStatus.textContent = "尚未選取位置"; }
+      return true;
+    }
+    function initMap() {
+      const token = window.MAPBOX_ACCESS_TOKEN || getMapboxToken();
+      if (!window.mapboxgl || !token) { locationStatus.textContent = "地圖選點目前無法載入，仍可使用目前位置。"; return; }
+      mapboxgl.accessToken = token;
+      map = new mapboxgl.Map({ container:"location-map", style:"mapbox://styles/mapbox/dark-v11", center:[120.96,23.7], zoom:7 });
+      map.addControl(new mapboxgl.NavigationControl(), "bottom-right");
+      map.on("click", (event) => updateLocation({ latitude:event.lngLat.lat, longitude:event.lngLat.lng }, "已從地圖選取位置"));
+    }
+    document.querySelector("#use-location").addEventListener("click", () => {
+      if (!navigator.geolocation) { locationStatus.className = "error"; locationStatus.textContent = "此瀏覽器不支援取得目前位置。"; return; }
+      locationStatus.className = "coordinate-display"; locationStatus.textContent = "正在取得目前位置…";
+      navigator.geolocation.getCurrentPosition((position) => {
+        const next = { latitude:position.coords.latitude, longitude:position.coords.longitude };
+        if (updateLocation(next, "已使用目前位置") && map) map.flyTo({ center:[next.longitude,next.latitude], zoom:15 });
+      }, (error) => { locationStatus.className = "error"; locationStatus.textContent = `無法取得目前位置：${error.message || "請確認瀏覽器定位權限後再試一次。"}`; }, { enableHighAccuracy:true, timeout:10000, maximumAge:0 });
+    });
+    document.querySelector("#clear-location").addEventListener("click", () => updateLocation(null));
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault(); result.className = ""; result.textContent = "正在送出投稿…"; submitButton.disabled = true;
+      try {
+        const payload = buildSubmissionPayload(new FormData(form), coordinates);
+        const response = await fetch("/api/submissions", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload) });
+        const data = await response.json(); if (!response.ok) throw new Error(data.error || "投稿失敗");
+        const outcome = getSubmissionResult(data); result.className = data.status === "approved" ? "success" : ""; result.textContent = outcome.message;
+        if (outcome.redirect) window.setTimeout(() => { window.location.assign(outcome.redirect); }, 700);
+        else form.reset();
+      } catch (error) { result.className = "error"; result.textContent = error.message || "投稿失敗，請稍後再試。"; }
+      finally { submitButton.disabled = false; }
+    });
+    initMap();
+  </script>
+</body>
+</html>

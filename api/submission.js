@@ -1,6 +1,6 @@
 const crypto = require("crypto");
 const { isAuthorized } = require("../admin-auth");
-const { SUBMISSION_STATUSES, createSubmission, listSubmissions, updateSubmission, addSubmissionReport, getSubmissionReportSummary, getAuditLog } = require("../submission-store");
+const { SUBMISSION_STATUSES, createSubmission, listSubmissions, updateSubmission, addSubmissionReport, getSubmissionReportSummary, getAuditLog, hasValidTaiwanCoordinates } = require("../submission-store");
 const { getCachedValue, setCachedValue, getCachedEvents } = require("../event-store");
 
 const CATEGORIES = new Set(["activity", "traffic", "construction", "public_facility", "disaster", "police", "social", "life", "other"]);
@@ -28,12 +28,13 @@ async function checkReportRate(req) {
 }
 function normalizeInput(body) {
   const title = text(body.title, 160), description = text(body.description, 2000), category = text(body.category, 40);
-  const latitude = body.latitude === "" || body.latitude === undefined ? null : Number(body.latitude);
-  const longitude = body.longitude === "" || body.longitude === undefined ? null : Number(body.longitude);
+  const latitude = body.latitude === "" || body.latitude === undefined || body.latitude === null ? null : Number(body.latitude);
+  const longitude = body.longitude === "" || body.longitude === undefined || body.longitude === null ? null : Number(body.longitude);
   const sourceUrl = text(body.sourceUrl, 500);
   const evidenceUrls = Array.isArray(body.evidenceUrls) ? body.evidenceUrls.map((url) => text(url, 500)).filter(validUrl).slice(0, 3) : [];
   if (title.length < 4 || description.length < 10 || !CATEGORIES.has(category)) throw new Error("Invalid title, description, or category");
-  if ((latitude !== null || longitude !== null) && (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < 20 || latitude > 27 || longitude < 118 || longitude > 123)) throw new Error("Coordinates must be in Taiwan");
+  if ((latitude === null) !== (longitude === null)) throw new Error("Both latitude and longitude are required when setting a location");
+  if (latitude !== null && !hasValidTaiwanCoordinates(latitude, longitude)) throw new Error("Coordinates must be in Taiwan");
   if (sourceUrl && !validUrl(sourceUrl)) throw new Error("Invalid source URL");
   return { title, description, category, eventStartTime: text(body.eventStartTime, 40) || null, eventEndTime: text(body.eventEndTime, 40) || null, address: text(body.address, 240), latitude, longitude, sourceUrl, contactInfo: text(body.contactInfo, 200), evidenceUrls };
 }
@@ -56,7 +57,8 @@ async function findPossibleDuplicate(submission) {
 }
 function decidePublication(submission, analysis, isDuplicate) {
   const missing = Array.isArray(analysis.missing_information) ? analysis.missing_information.length > 0 : true;
-  const safe = analysis.risk_level === "low" && analysis.location_valid === true && !analysis.possible_duplicate && !isDuplicate && Number(analysis.spam_probability) < 0.1 && Number(analysis.credibility_score) >= 0.8 && Number(analysis.evidence_score) >= 0.6 && !missing && (!Array.isArray(analysis.safety_flags) || analysis.safety_flags.length === 0);
+  const safe = hasValidTaiwanCoordinates(submission.latitude, submission.longitude)
+    && analysis.risk_level === "low" && analysis.location_valid === true && !analysis.possible_duplicate && !isDuplicate && Number(analysis.spam_probability) < 0.1 && Number(analysis.credibility_score) >= 0.8 && Number(analysis.evidence_score) >= 0.6 && !missing && (!Array.isArray(analysis.safety_flags) || analysis.safety_flags.length === 0);
   return safe
     ? { status: "approved", approvalMethod: "auto", riskLevel: "low", publicationNotice: "\u4f7f\u7528\u8005\u6295\u7a3f\uff5c\u5c1a\u672a\u7d93\u5b98\u65b9\u8b49\u5be6" }
     : { status: "pending_admin", approvalMethod: null, riskLevel: ["low", "medium", "high"].includes(analysis.risk_level) ? analysis.risk_level : "medium", publicationNotice: null };
@@ -205,7 +207,14 @@ module.exports = async (req, res) => {
       const aiReviewResult = await moderate(submission);
       const publication = decidePublication(submission, aiReviewResult, await findPossibleDuplicate(submission));
       const updated = await updateSubmission(submission.submissionId, { aiReviewResult, ...publication, expirationTime: automaticExpiration(submission) }, { action: publication.status === "approved" ? "auto_approve" : "rules_engine" });
-      return res.status(201).json({ success: true, submissionId: updated.submissionId, status: updated.status });
+      return res.status(201).json({
+        success: true,
+        submissionId: updated.submissionId,
+        status: updated.status,
+        latitude: updated.latitude,
+        longitude: updated.longitude,
+        publicationNotice: updated.status === "approved" ? updated.publicationNotice : null,
+      });
     } catch (error) { return res.status(400).json({ error: error.message || "Invalid submission" }); }
   }
   if (req.method === "PATCH") {
@@ -226,3 +235,4 @@ module.exports = async (req, res) => {
 module.exports.decidePublication = decidePublication;
 module.exports.automaticExpiration = automaticExpiration;
 module.exports.REPORT_REASONS = REPORT_REASONS;
+module.exports.hasValidTaiwanCoordinates = hasValidTaiwanCoordinates;

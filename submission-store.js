@@ -47,14 +47,19 @@ async function listSubmissions({ status, publicOnly = false, limit = 100 } = {})
   if (status) items = items.filter((item) => item.status === status);
   return items.slice(0, Math.max(1, Math.min(MAX_ITEMS, Number(limit) || 100)));
 }
-function isValidTaiwanCoordinate(lat, lng) {
+function hasValidTaiwanCoordinates(lat, lng) {
   return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng))
     && Number(lat) >= 21.5 && Number(lat) <= 26.5 && Number(lng) >= 118 && Number(lng) <= 122.5;
 }
 async function getPublicMapSubmissionEvents() {
   const submissions = await listSubmissions({ publicOnly: true, limit: MAX_ITEMS });
+  const seenSubmissionIds = new Set();
   return submissions
-    .filter((submission) => !submission.hiddenByReports && isValidTaiwanCoordinate(submission.latitude, submission.longitude))
+    .filter((submission) => {
+      if (!submission?.submissionId || seenSubmissionIds.has(submission.submissionId)) return false;
+      seenSubmissionIds.add(submission.submissionId);
+      return !submission.hiddenByReports && hasValidTaiwanCoordinates(submission.latitude, submission.longitude);
+    })
     .map((submission) => ({
       id: `submission:${submission.submissionId}`,
       submissionId: submission.submissionId,
@@ -119,4 +124,5 @@ async function updateSubmission(submissionId, patch, actor = {}) {
 module.exports = {
   SUBMISSION_STATUSES, createSubmission, listSubmissions, updateSubmission,
   getPublicMapSubmissionEvents, getSubmissionReportSummary, addSubmissionReport, getAuditLog,
+  hasValidTaiwanCoordinates,
 };

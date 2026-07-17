@@ -96,22 +96,25 @@ async function call(handler, req) {
   const denied = await call(admin, { method: "GET", url: "/api/health" });
   assert.equal(denied.statusCode, 401);
 
-  const okHealth = await call(admin, { method: "GET", url: "/api/health", query: { token: "test-token" } });
+  const queryTokenDenied = await call(admin, { method: "GET", url: "/api/health", query: { token: "test-token" } });
+  assert.equal(queryTokenDenied.statusCode, 401);
+  const okHealth = await call(admin, { method: "GET", url: "/api/health", headers: { authorization: "Bearer test-token" } });
   assert.equal(okHealth.statusCode, 200);
   assert.equal(okHealth.payload.beta, true);
   assert.equal(okHealth.payload.events.total, 1);
   assert.equal(Object.prototype.hasOwnProperty.call(okHealth.payload.integrations, "mapboxPublicToken"), true);
 
-  const reportsList = await call(admin, { method: "GET", url: "/api/reports", query: { token: "test-token" } });
+  const reportsList = await call(admin, { method: "GET", url: "/api/reports", headers: { authorization: "Bearer test-token" } });
   assert.equal(reportsList.statusCode, 200);
   assert.equal(Array.isArray(reportsList.payload.reports), true);
-  const reportPatch = await call(admin, { method: "PATCH", url: "/api/reports/report_missing", params: { reportId: "report_missing" }, query: { token: "test-token" }, body: { status: "resolved" } });
+  const reportPatch = await call(admin, { method: "PATCH", url: "/api/reports/report_missing", params: { reportId: "report_missing" }, headers: { authorization: "Bearer test-token" }, body: { status: "resolved" } });
   assert.equal(reportPatch.statusCode, 404);
 
   const patch = await call(admin, {
     method: "PATCH",
     url: "/api/admin-events",
-    query: { token: "test-token", eventId: "event_admin_test" },
+    query: { eventId: "event_admin_test" },
+    headers: { authorization: "Bearer test-token" },
     body: {
       lat: 25.0217,
       lng: 121.5358,
