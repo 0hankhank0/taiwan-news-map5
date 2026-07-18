@@ -1,4 +1,17 @@
-require("dotenv").config();
+process.on("warning", (warning) => {
+  if (warning?.code === "DEP0169") {
+    console.error("[DEP0169 diagnostic]", {
+      name: warning.name,
+      code: warning.code,
+      message: warning.message,
+      stack: warning.stack,
+    });
+  }
+});
+
+if (!process.env.VERCEL) {
+  require("dotenv").config({ quiet: true });
+}
 
 const { runEventRefresh } = require("../event-refresh");
 const { acquireCronLock, releaseCronLock, appendRefreshLog, saveRefreshRunDetail } = require("../event-store");

@@ -59,8 +59,18 @@ async function fetchResponse(input, { method = "GET", headers, body, params, tim
     signal: AbortSignal.timeout(timeout),
   });
   if (response.ok) return response;
-  const error = new Error(`HTTP ${response.status}`);
-  error.response = { status: response.status };
+  let payload;
+  let bodyText = "";
+  try {
+    bodyText = await response.text();
+    try { payload = JSON.parse(bodyText); } catch { /* non-JSON error response */ }
+  } catch { /* error diagnostics must never hide the original HTTP failure */ }
+  const responseMessage = String(payload?.message || payload?.error || payload?.detail || bodyText || "").replace(/\s+/g, " ").trim();
+  const error = new Error(responseMessage ? `HTTP ${response.status}: ${sanitizeKktixBodyPreview(responseMessage, 240)}` : `HTTP ${response.status}`);
+  error.httpStatus = Number(response.status) || null;
+  error.responseMessage = sanitizeKktixBodyPreview(responseMessage, 240);
+  error.bodyPreview = sanitizeKktixBodyPreview(bodyText, 400);
+  error.response = { status: error.httpStatus };
   throw error;
 }
 
@@ -1354,7 +1364,32 @@ function shouldTryExternalGeocoding(event, location) {
 }
 function getCityBboxParam(city) {
   const bounds = getCityBounds(city);
-  return bounds ? `${bounds.minLng},${bounds.minLat},${bounds.maxLng},${bounds.maxLat}` : "";
+  const values = [bounds?.minLng, bounds?.minLat, bounds?.maxLng, bounds?.maxLat].map(Number);
+  const [minLng, minLat, maxLng, maxLat] = values;
+  return values.every(Number.isFinite) && minLng < maxLng && minLat < maxLat ? values.join(",") : "";
+}
+
+function buildMapboxQuery(event = {}, location = {}) {
+  const city = normalizeCity(location.city || event.city || "");
+  const parts = [event.address, event.venue, event.location, event.district || location.district, city]
+    .map((value) => String(value || "").replace(/https?:\/\/\S+/gi, " ").replace(/[\r\n]+/g, " ").replace(/([，,。.!！？?、；;])\1+/g, "$1").replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (!parts.length) {
+    const title = String(event.title || "").replace(/https?:\/\/\S+/gi, " ").replace(/[\r\n]+/g, " ");
+    const fragments = title.match(/[^，。；;！!?]{0,12}(?:路|街|大道|段|巷|弄|號|區|鄉|鎮|里|橋|站|館|園|中心|學校)[^，。；;！!?]{0,18}/g);
+    if (fragments?.length) parts.push(...fragments);
+  }
+  const tokens = parts.join(" ").replace(/\s+/g, " ").trim().split(/\s+/).filter(Boolean).slice(0, 15);
+  return tokens.join(" ").slice(0, 80).trim();
+}
+
+function getMapboxProximity(location = {}) {
+  const lat = Number(location.lat);
+  const lng = Number(location.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !isValidTaiwanCoord(lat, lng)) return "";
+  const bounds = getCityBounds(location.city);
+  if (bounds && !isCoordInCity(location.city, lat, lng)) return "";
+  return `${lng},${lat}`;
 }
 
 function buildExternalGeocodingResult(provider, event, location, query, rankedCandidates) {
@@ -1425,29 +1460,38 @@ async function writeGeocodingCache(provider, location, query, result) {
 async function geocodeLocationWithMapbox(event, location, startedAt) {
   const token = getMapboxGeocodingToken();
   if (!token) return null;
-  const query = buildLocationQuery(event, location.city, event.title, event.content);
+  const query = buildMapboxQuery(event, location);
+  if (!query) return null;
   const cached = await readGeocodingCache("mapbox", event, location, query);
   if (cached) return cached;
 
   const remaining = getRemainingTime(startedAt);
   if (remaining < 1200) return null;
 
+  const endpoint = useMapboxPermanentGeocoding() ? "mapbox.places-permanent" : "mapbox.places";
+  const url = `https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(query)}.json`;
+  const bbox = getCityBboxParam(location.city);
+  const proximity = getMapboxProximity(location);
+  const logFailure = (error, attempt) => console.warn("[cron] Mapbox geocoding failed", {
+    httpStatus: error.httpStatus || error.response?.status || null,
+    responseMessage: error.responseMessage || "",
+    queryPreview: query.slice(0, 80), queryLength: query.length, queryTokenCount: query.split(/\s+/).filter(Boolean).length,
+    city: location.city || "", hasBbox: Boolean(bbox), hasProximity: Boolean(proximity), attempt,
+  });
   try {
-    const endpoint = useMapboxPermanentGeocoding() ? "mapbox.places-permanent" : "mapbox.places";
-    const url = `https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(query)}.json`;
-    const bbox = getCityBboxParam(location.city);
-    const response = await fetchResponse(url, {
-      params: {
-        access_token: token,
-        country: "tw",
-        language: "zh-Hant",
-        limit: 5,
-        autocomplete: false,
-        proximity: Number.isFinite(Number(location.lng)) && Number.isFinite(Number(location.lat)) ? `${location.lng},${location.lat}` : undefined,
-        bbox: bbox || undefined,
-      },
-      timeout: Math.max(800, Math.min(1800, remaining - 300)),
-    });
+    let response;
+    try {
+      response = await fetchResponse(url, { params: { access_token: token, country: "tw", language: "zh", limit: 5, autocomplete: false, proximity: proximity || undefined, bbox: bbox || undefined }, timeout: Math.max(800, Math.min(1800, remaining - 300)) });
+    } catch (error) {
+      logFailure(error, 1);
+      if (Number(error.httpStatus || error.response?.status) !== 422) throw error;
+      const simplifiedQuery = query.split(/\s+/).slice(0, 8).join(" ").slice(0, 50) || query;
+      const removeBbox = /bbox|bounding\s*box/i.test(String(error.responseMessage || error.bodyPreview || ""));
+      response = await fetchResponse(`https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(simplifiedQuery)}.json`, {
+        params: { access_token: token, country: "tw", language: "zh", limit: 5, autocomplete: false, bbox: removeBbox ? undefined : (bbox || undefined) },
+        timeout: Math.max(800, Math.min(1800, remaining - 300)),
+      });
+    }
     const payload = await response.json();
     const features = Array.isArray(payload?.features) ? payload.features : [];
     const candidates = features.map((feature) => {
@@ -1470,7 +1514,7 @@ async function geocodeLocationWithMapbox(event, location, startedAt) {
     await writeGeocodingCache("mapbox", location, query, result);
     return result;
   } catch (error) {
-    console.warn("[cron] Mapbox geocoding failed:", error.message);
+    logFailure(error, 2);
     return null;
   }
 }
@@ -1948,6 +1992,11 @@ module.exports = {
   fetchTourismEvents,
   normalizeTourismEvent,
   extractZipJson,
+  fetchResponse,
+  buildMapboxQuery,
+  getMapboxProximity,
+  getCityBboxParam,
+  geocodeLocationWithMapbox,
   buildKktixResponseDiagnostic,
   fetchDefaultSources,
   isGenericCmsNotice,

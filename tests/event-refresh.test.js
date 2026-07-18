@@ -324,6 +324,34 @@ async function call(handler, req) {
 
   // iCulture creates one map event per valid future showInfo session and uses its official coordinates.
   const originalFetch = global.fetch;
+  // Mapbox sends only location-focused, bounded queries and safely records 422 diagnostics.
+  const verboseMapboxEvent = { title: "這是一段很長的新聞標題，內容描述事件經過但不應完整送往地理編碼服務", content: Array.from({ length: 30 }, (_, index) => `token${index}`).join(" "), address: "臺北市中正區忠孝西路一段 1 號", city: "Taipei" };
+  const boundedQuery = eventRefresh.buildMapboxQuery(verboseMapboxEvent, { city: "Taipei" });
+  assert(boundedQuery.length <= 80);
+  assert(boundedQuery.split(/\s+/).length <= 15);
+  assert.equal(boundedQuery.includes("token29"), false);
+  assert.equal(eventRefresh.getMapboxProximity({ city: "Taipei", lat: 0, lng: 121.5 }), "");
+  assert.equal(eventRefresh.getCityBboxParam("not-a-taiwan-city"), "");
+  const originalMapboxToken = process.env.MAPBOX_TOKEN;
+  process.env.MAPBOX_TOKEN = "mapbox-test-token-secret";
+  const mapboxRequests = [];
+  const mapboxWarnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => mapboxWarnings.push(args);
+  global.fetch = async (url) => {
+    mapboxRequests.push(String(url));
+    if (mapboxRequests.length === 1) return { ok: false, status: 422, text: async () => JSON.stringify({ message: "Invalid bbox parameter" }) };
+    return { ok: true, status: 200, json: async () => ({ features: [] }) };
+  };
+  await eventRefresh.geocodeLocationWithMapbox(verboseMapboxEvent, { city: "Taipei", lat: 0, lng: 121.5 }, Date.now());
+  console.warn = originalWarn;
+  if (originalMapboxToken === undefined) delete process.env.MAPBOX_TOKEN; else process.env.MAPBOX_TOKEN = originalMapboxToken;
+  assert.equal(mapboxRequests.length, 2);
+  assert.equal(mapboxRequests[0].includes("proximity="), false);
+  assert.equal(mapboxRequests[1].includes("bbox="), false);
+  assert.equal(mapboxRequests.some((url) => url.includes("token29")), false);
+  assert.equal(JSON.stringify(mapboxWarnings).includes("Invalid bbox parameter"), true);
+  assert.equal(JSON.stringify(mapboxWarnings).includes("mapbox-test-token-secret"), false);
   const cultureStart = new Date(Date.now() + 60 * 60 * 1000);
   const cultureEnd = new Date(Date.now() + 2 * 60 * 60 * 1000);
   const twDate = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date).replace(", ", " ").replaceAll("-", "/");
