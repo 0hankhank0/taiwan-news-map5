@@ -1,6 +1,6 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { isAuthorized } = require("../admin-auth");
-const { getCachedEvents, updateCachedEvent } = require("../event-store");
+const { getOfficialEvents, updateOfficialEvent } = require("../event-store");
 
 const ALLOWED_STATUSES = new Set(["active", "upcoming", "resolved", "cleared", "expired"]);
 const ALLOWED_REVIEW_STATES = new Set(["unreviewed", "pending_review", "reviewed", "merged", "rejected"]);
@@ -81,7 +81,7 @@ module.exports = async (req, res) => {
     const reviewState = String(req.query?.reviewState || "").trim();
     const locationQuality = String(req.query?.locationQuality || "").trim();
     const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 120)));
-    const events = normalizeEventsForFrontend(await getCachedEvents());
+    const events = normalizeEventsForFrontend(await getOfficialEvents());
     let filtered = events;
     if (reviewState) filtered = filtered.filter((event) => String(event.reviewState || "") === reviewState);
     if (locationQuality) filtered = filtered.filter((event) => String(event.locationQuality || "") === locationQuality);
@@ -109,7 +109,7 @@ module.exports = async (req, res) => {
       return sendJson(res, 400, { error: error.message });
     }
 
-    const event = await updateCachedEvent(eventId, patch, "admin");
+    const event = await updateOfficialEvent(eventId, patch, "admin");
     if (!event) return sendJson(res, 404, { error: "Event not found" });
     return sendJson(res, 200, { success: true, event });
   }

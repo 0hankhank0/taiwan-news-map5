@@ -198,7 +198,7 @@ async function call(handler, req) {
   assert.equal(partialResult.status, "partial_success");
   assert.equal((await getRefreshLog())[0].runId, "partial-refresh");
   const partialDetail = await getRefreshRunDetail("partial-refresh");
-  assert.equal(partialDetail.sources.tdxTraffic.status, "error");
+  assert.equal(partialDetail.sources.tdxTraffic.status, "failed");
   assert.equal(JSON.stringify(partialDetail).includes("hidden-value"), false);
 
   await assert.rejects(() => eventRefresh.runEventRefresh({
@@ -233,7 +233,7 @@ async function call(handler, req) {
   const cachedCountBeforeFailure = (await getCachedEvents()).length;
   let attempts = 0;
   global.fetch = async () => { attempts += 1; return { ok: false, status: 500, text: async () => "upstream failure" }; };
-  assert.deepEqual(await eventRefresh.fetchKktixActivityEvents(Date.now()), []);
+  await assert.rejects(() => eventRefresh.fetchKktixActivityEvents(Date.now()));
   assert.equal(attempts, 3);
   assert.equal((await getCachedEvents()).length, cachedCountBeforeFailure);
   const integrationStatus = await call(eventsApi, { method: "GET", query: { integrationStatus: "1" }, url: "/api/integrations/events/status" });

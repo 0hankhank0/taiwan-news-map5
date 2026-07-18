@@ -43,6 +43,7 @@ import { trackEvent } from "./modules/analytics.mjs";
     const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("loop") === "1";
     const VIDEO_DEMO_TEST_MODE = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("test") === "1";
     const requestedSubmissionId = VIDEO_DEMO_ROUTE ? "" : getRequestedSubmissionId();
+    const requestedEventId = VIDEO_DEMO_ROUTE ? "" : new URLSearchParams(window.location.search).get("event")?.trim();
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
@@ -2068,6 +2069,16 @@ import { trackEvent } from "./modules/analytics.mjs";
         }
         removeSubmissionQuery();
     }
+    function focusRequestedEvent() {
+        if (!requestedEventId) return;
+        const event = parsedEvents.find((item) => String(item?.id || "") === requestedEventId);
+        if (!event) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
+        const rendered = renderedMarkers.find((item) => String(item.event?.id || "") === requestedEventId);
+        const lat = Number(event.lat), lng = Number(event.lng);
+        if (!rendered || !Number.isFinite(lat) || !Number.isFinite(lng)) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
+        flyToLatLng([lat, lng], 15, 800); rendered.popup.setLngLat([lng, lat]).addTo(map);
+        showSubmissionFocusNotice("已定位至正式事件");
+    }
 
     function buildEmptyStateHtml() {
         const hasSourceEvents = Array.isArray(parsedEvents) && parsedEvents.length > 0;
@@ -2384,7 +2395,7 @@ import { trackEvent } from "./modules/analytics.mjs";
                 const unchanged = JSON.stringify(next.map((event) => [event.id, event.updatedAt])) === JSON.stringify(parsedEvents.map((event) => [event.id, event.updatedAt]));
                 parsedEvents = next;
                 if (!unchanged) { reportSummaryByEvent = {}; renderCategoryButtons(); renderEvents(); }
-                try { await syncReportSummary(); focusRequestedSubmission(); } catch (error) { console.warn("report summary refresh failed", error); }
+                try { await syncReportSummary(); focusRequestedSubmission(); focusRequestedEvent(); } catch (error) { console.warn("report summary refresh failed", error); }
             } else if (state.phase === "error") {
                 dataTrust.updateError("事件資料暫時無法更新");
                 if (!parsedEvents.length && state.cached) { parsedEvents = deduplicateEvents(state.cached.events.map(normalizeDisplayEvent)); renderCategoryButtons(); renderEvents(); }
@@ -2441,7 +2452,7 @@ import { trackEvent } from "./modules/analytics.mjs";
             await syncReportSummary();
             renderCategoryButtons();
             renderEvents();
-            focusRequestedSubmission();
+            focusRequestedSubmission(); focusRequestedEvent();
             dataTrust.updateFromResponse(parsedEvents, res, document.querySelectorAll(".event-card-v2").length);
         } catch (error) {
             console.error("[island-pulse] 事件渲染失敗", error);

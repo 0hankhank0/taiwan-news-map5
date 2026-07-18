@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>事件管理後台 | Island Pulse Beta</title>
-  <style>
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css"><style>
     :root { color-scheme: dark; --bg:#0b1020; --panel:#121a2d; --panel2:#18223a; --line:rgba(148,163,184,.24); --text:#e5e7eb; --muted:#94a3b8; --accent:#38bdf8; --ok:#34d399; --warn:#fbbf24; --danger:#fb7185; }
     * { box-sizing: border-box; }
     body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
@@ -25,7 +25,7 @@
     button.primary { background:#075985; border-color:#0284c7; }
     button.ok { background:rgba(16,185,129,.18); border-color:rgba(52,211,153,.5); }
     button.warn { background:rgba(251,191,36,.16); border-color:rgba(251,191,36,.5); }
-    .event { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:12px; }
+    .event { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; margin-bottom:12px; }.event.selected-event{border-color:var(--accent);box-shadow:0 0 0 2px rgba(56,189,248,.35)}
     .head { display:grid; grid-template-columns:1fr auto; gap:12px; }
     .title { margin:0 0 8px; font-size:17px; }
     .meta { display:flex; gap:8px; flex-wrap:wrap; margin:8px 0; }
@@ -39,7 +39,7 @@
     .grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin-top:12px; }
     .grid .wide { grid-column:span 2; }
     .grid .full { grid-column:1 / -1; }
-    .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }
+    .actions { display:flex; gap:8px; justify-content:flex-end; margin-top:12px; flex-wrap:wrap; }.location-picker{height:240px;border:1px solid var(--line);border-radius:8px;overflow:hidden}
     .empty { border:1px dashed var(--line); color:var(--muted); padding:32px; border-radius:8px; text-align:center; }
     @media (max-width:900px) { .toolbar,.head,.grid { grid-template-columns:1fr; } .grid .wide,.grid .full { grid-column:auto; } }
   </style>
@@ -74,7 +74,8 @@
     <div id="status" class="status">尚未載入。</div>
     <section id="events"></section>
   </main>
-  <script>
+  <script src="/api/config.js"></script><script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script><script type="module">
+    import { LocationPicker } from "/assets/location-picker.mjs"; import { getMapboxToken } from "/assets/index/modules/map.mjs";
     const tokenEl = document.getElementById("token");
     const qEl = document.getElementById("q");
     const locationQualityEl = document.getElementById("location-quality-filter");
@@ -171,6 +172,7 @@
             <input data-field="district" value="${escapeHtml(event.district)}" />
             <input data-field="lat" value="${escapeHtml(event.lat)}" />
             <input data-field="lng" value="${escapeHtml(event.lng)}" />
+            <input data-location-search class="wide" placeholder="搜尋地址後按 Enter" /><div class="location-picker full" data-location-map></div><div class="full"><a target="_blank" rel="noreferrer" href="/?event=${encodeURIComponent(event.id)}#map">在公開地圖查看</a> <span data-location-status>可點擊或拖曳 Marker 調整位置</span></div>
             <input data-field="mergedIntoEventId" class="wide" placeholder="合併到 event ID" value="${escapeHtml(event.mergedIntoEventId)}" />
             <input data-field="address" class="wide" placeholder="地址" value="${escapeHtml(event.address)}" />
             <textarea class="full" readonly placeholder="定位依據">${escapeHtml(event.locationEvidence || event.locationReason || "")}</textarea>
@@ -199,6 +201,9 @@
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
         const events = Array.isArray(data.events) ? data.events : [];
+        const requestedEventId = new URLSearchParams(location.search).get("event");
+        window.setTimeout(()=>events.forEach(event=>{const card=eventsEl.querySelector(`[data-event-id="${CSS.escape(String(event.id))}"]`);if(!card)return;const picker=new LocationPicker({container:card.querySelector('[data-location-map]'),latInput:card.querySelector('[data-field="lat"]'),lngInput:card.querySelector('[data-field="lng"]'),status:card.querySelector('[data-location-status]'),mapboxToken:window.MAPBOX_ACCESS_TOKEN||getMapboxToken(),initial:{lat:event.lat,lng:event.lng}});const search=card.querySelector('[data-location-search]');search?.addEventListener('keydown',async e=>{if(e.key!=="Enter")return;e.preventDefault();try{await picker.search(search.value)}catch(error){card.querySelector('[data-location-status]').textContent=error.message}})}),0);
+        if (requestedEventId) { const selected=eventsEl.querySelector(`[data-event-id="${CSS.escape(requestedEventId)}"]`); if (selected) { selected.classList.add("selected-event"); selected.scrollIntoView({behavior:"smooth",block:"center"}); } else statusEl.textContent="找不到對應正式事件"; }
         statusEl.textContent = `共 ${data.total || events.length} 筆，顯示 ${events.length} 筆。`;
         eventsEl.innerHTML = events.length ? events.map(renderEvent).join("") : `<div class="empty">沒有符合條件的事件。</div>`;
       } catch (error) {

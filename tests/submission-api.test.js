@@ -3,6 +3,7 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 
+process.env.EVENT_STORE_MODE = "local";
 process.env.REPORT_ADMIN_TOKEN = "submission-test-token";
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-submission-test-${Date.now()}.sqlite`);
 process.env.OPENAI_API_KEY = "";

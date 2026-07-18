@@ -1,8 +1,11 @@
 require("dotenv").config();
 const {
   getCachedEvents,
+  getOfficialEvents,
   getCachedValue,
   setCachedEvents,
+  setOfficialEvents,
+  createEventCandidates,
   setCachedValue,
   setRefreshStatus,
   appendRefreshLog,
@@ -471,26 +474,27 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     const staticCache = await loadStaticCmsCache(accessToken, startedAt);
     const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
     let sawRateLimit = false;
-    const trafficEvents = [];
+    const trafficEvents = []; const subrequests = []; let successes = 0;
 
     for (const source of sourcesToFetch) {
       if (getRemainingTime(startedAt) < 500) break;
       try {
-        const url = buildTdxCmsUrl(source, true);
+        const requestStarted = Date.now(); const url = buildTdxCmsUrl(source, true);
         const data = await fetchTdxJson(url, headers, startedAt);
         const rawRecords = extractArrayFromTdxPayload(data);
         const staticLookup = staticCache.get(`${source.type}:${source.path}`) || new Map();
         const records = rawRecords.map((item) => normalizeCmsLiveRecord(item, source, staticLookup)).filter(Boolean);
-        trafficEvents.push(...records);
+        trafficEvents.push(...records); successes += 1; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"success", httpStatus:200, durationMs:Date.now()-requestStarted, fetchedCount:rawRecords.length, errorCode:null, errorMessage:null });
       } catch (error) {
-        const status = error.response?.status;
+        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) throw new Error(`TDX authorization failed (HTTP ${status})`);
         if (status === 429) sawRateLimit = true;
         console.warn(`[cron] TDX live CMS failed for ${source.type}/${source.path}:`, status ? `HTTP ${status}` : error.message);
       }
       await delay(500); // ??? 0.5 ??
     }
 
-    const filteredEvents = trafficEvents.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng));
+    if (sourcesToFetch.length && successes === 0) throw new Error("All TDX traffic subrequests failed");
+    const filteredEvents = trafficEvents.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)); Object.defineProperty(filteredEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes}});
     if (sawRateLimit) setBackoffUntil("liveCms", now + TDX_BACKOFF_MS);
 
     tdxLiveCmsCache = { events: filteredEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
@@ -498,7 +502,7 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     return filteredEvents;
   } catch (error) {
     console.error("[cron] TDX fetch failed:", error.message);
-    return [];
+    throw error;
   }
 }
 
@@ -521,24 +525,25 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     const headers = getTdxHeaders(accessToken);
     let sawRateLimit = false;
     const sourcesToFetch = TDX_CONSTRUCTION_SOURCES.filter((source) => !TDX_CONSTRUCTION_404_SKIP.has(source.path));
-    const constructionEvents = [];
+    const constructionEvents = []; const subrequests = []; let successes = 0;
 
     for (const source of sourcesToFetch) {
       if (getRemainingTime(startedAt) < 500) break;
       try {
-        const url = buildTdxConstructionUrl(source);
+        const requestStarted = Date.now(); const url = buildTdxConstructionUrl(source);
         const data = await fetchTdxJson(url, headers, startedAt);
         const rawRecords = extractArrayFromTdxPayload(data);
         const records = rawRecords.map((item) => normalizeCmsConstructionRecord(item, source)).filter(Boolean);
-        constructionEvents.push(...records);
+        constructionEvents.push(...records); successes += 1; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"success", httpStatus:200, durationMs:Date.now()-requestStarted, fetchedCount:rawRecords.length, errorCode:null, errorMessage:null });
       } catch (error) {
-        const status = error.response?.status;
+        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) throw new Error(`TDX authorization failed (HTTP ${status})`);
         if (status === 429) sawRateLimit = true;
         console.warn(`[cron] TDX construction failed for ${source.type}/${source.path}:`, status ? `HTTP ${status}` : error.message);
       }
       await delay(500); // ??? 0.5 ??
     }
 
+    if (sourcesToFetch.length && successes === 0) throw new Error("All TDX construction subrequests failed"); Object.defineProperty(constructionEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes}});
     if (sawRateLimit) setBackoffUntil("construction", now + TDX_BACKOFF_MS);
 
     tdxConstructionCache = { events: constructionEvents, expiresAt: now + TDX_CONSTRUCTION_CACHE_MS };
@@ -546,7 +551,7 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     return constructionEvents;
   } catch (error) {
     console.error("[cron] TDX construction fetch failed:", error.message);
-    return [];
+    throw error;
   }
 }
 
@@ -811,7 +816,7 @@ async function fetchKktixActivityEvents(startedAt) {
   } catch (error) {
     console.warn("[cron] KKTIX activity fetch failed:", error.message);
     await recordEventIntegrationStatus("kktix", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", failedCount: 1 });
-    return [];
+    throw error;
   }
 }
 
@@ -999,7 +1004,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     return normalizeAiExtractedEvents(parsed?.events);
   } catch (error) {
     console.error("[cron] AI context extraction failed:", error.message);
-    return [];
+    throw error;
   }
 }
 
@@ -1373,12 +1378,28 @@ function emptySources() {
   };
 }
 
+function collectorResult(status, reason, startedAt, items = [], extra = {}) {
+  return { status, reason: reason || null, durationMs: Math.max(0, Date.now() - startedAt), requestCount: 0, fetchedCount: items.length, parsedCount: items.length, keptCount: items.length, duplicateCount: 0, rejectedCount: 0, error: null, items, ...extra };
+}
+async function runCollector(name, work, options = {}) {
+  const startedAt = Date.now();
+  if (options.skipReason) return collectorResult("skipped", options.skipReason, startedAt, []);
+  try {
+    const items = await work();
+    if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
+    const detail = items.collector || {}; return collectorResult(detail.status || "success", null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0 });
+  } catch (error) {
+    return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
+  }
+}
+
 function normalizeSourceData(sourceData = {}) {
   const normalized = {
     ...emptySources(),
     ...Object.fromEntries(Object.entries(sourceData).filter(([key]) => key !== "__sourceFailures").map(([key, value]) => [key, Array.isArray(value) ? value : []])),
   };
   normalized.__sourceFailures = sourceData.__sourceFailures && typeof sourceData.__sourceFailures === "object" ? sourceData.__sourceFailures : {};
+  normalized.__collectorResults = sourceData.__collectorResults && typeof sourceData.__collectorResults === "object" ? sourceData.__collectorResults : {};
   return normalized;
 }
 
@@ -1387,6 +1408,7 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   const includeNews = mode !== "traffic";
   const sources = emptySources();
   sources.__sourceFailures = {};
+  sources.__collectorResults = {};
   const sourceFailure = (name, error) => {
     sources.__sourceFailures[name] = cleanRefreshLogError(error?.message || error) || "來源抓取失敗";
   };
@@ -1404,16 +1426,23 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   }
 
   if (includeTraffic) {
-    try { sources.tdxEvents = await fetchTDXTrafficEvents(startedAt, sharedAccessToken); } catch (error) { sourceFailure("tdxTraffic", error); }
+    const missingTdx = !sharedAccessToken && (!process.env.TDX_CLIENT_ID || !process.env.TDX_CLIENT_SECRET) ? "缺少 TDX_CLIENT_ID 或 TDX_CLIENT_SECRET" : "";
+    sources.__collectorResults.tdxTraffic = await runCollector("TDX 即時交通", () => fetchTDXTrafficEvents(startedAt, sharedAccessToken), { skipReason: missingTdx });
+    sources.tdxEvents = sources.__collectorResults.tdxTraffic.items;
+    if (sources.__collectorResults.tdxTraffic.status === "failed") sourceFailure("tdxTraffic", sources.__collectorResults.tdxTraffic.reason);
     await delay(Number(options.tdxDelayMs ?? 1000));
-    try { sources.constructionEvents = await fetchTDXConstructionEvents(sharedAccessToken, startedAt); } catch (error) { sourceFailure("tdxConstruction", error); }
+    sources.__collectorResults.tdxConstruction = await runCollector("TDX 施工資訊", () => fetchTDXConstructionEvents(sharedAccessToken, startedAt), { skipReason: missingTdx });
+    sources.constructionEvents = sources.__collectorResults.tdxConstruction.items;
+    if (sources.__collectorResults.tdxConstruction.status === "failed") sourceFailure("tdxConstruction", sources.__collectorResults.tdxConstruction.reason);
   }
 
   if (includeNews) {
-    try { const rssResults = await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt))); sources.rssItems = rssResults.flat(); } catch (error) { sourceFailure("rss", error); }
+    sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
-    try { sources.aiEvents = options.skipAi ? [] : await extractAiEventsWithContext(sources.rssItems, startedAt); } catch (error) { sourceFailure("ai", error); }
-    try { sources.activityEvents = await fetchKktixActivityEvents(startedAt); } catch (error) { sourceFailure("kktix", error); }
+    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (!openaiApiKey ? "缺少 OPENAI_API_KEY" : "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
+    sources.__collectorResults.kktix = await runCollector("KKTIX 活動", () => fetchKktixActivityEvents(startedAt)); sources.activityEvents = sources.__collectorResults.kktix.items;
+    if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
   }
 
   return sources;
@@ -1479,7 +1508,9 @@ function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, 
       if (detailKey !== "rss" && !finalByKey.has(key) && existingByKey.has(key)) return toRefreshItem(item, label, finalByKey, { result: "merged", reason: "合併至既有事件" });
       return toRefreshItem(item, label, finalByKey);
     });
-    return [detailKey, { status: failure ? "error" : "success", count: sources[field].length, durationMs: 0, error: failure, items }];
+    const collector = sources.__collectorResults?.[detailKey];
+    const collectorStatus = collector?.status === "failed" ? "failed" : (collector?.status || (failure ? "failed" : "success"));
+    return [detailKey, { ...(collector || {}), status: collectorStatus, reason: collector?.reason || failure || null, count: sources[field].length, durationMs: collector?.durationMs || 0, error: collector?.error || failure, items }];
   }));
   const candidates = [
     ...sources.tdxEvents, ...sources.constructionEvents, ...sources.activityEvents, ...sources.aiEvents, ...sources.ruleBasedEvents,
@@ -1526,14 +1557,15 @@ async function runEventRefresh(options = {}) {
 
     const existingEvents = Array.isArray(options.existingEvents)
       ? options.existingEvents
-      : await getCachedEvents();
+      : await getOfficialEvents();
     const activeEvents = mergeRefreshEvents(existingEvents, finalEvents, now);
     const cacheTtlSeconds = resolveEventCacheTtlSeconds(options.cacheTtlSeconds ?? process.env.EVENT_CACHE_TTL_SECONDS);
     const cacheOptions = { ex: cacheTtlSeconds };
     let buckets = { traffic: 0, news: 0, activities: 0 };
 
     if (options.write !== false) {
-      await setCachedEvents(activeEvents, cacheOptions);
+      await setOfficialEvents(activeEvents, cacheOptions);
+      await createEventCandidates(finalEvents.map((event) => ({ source: event.sourceName || event.source || "refresh", status: "published", publishedEventId: event.id, batchId: runId, rawSourceData: event, event })), { batchId: runId });
       buckets = await writeEventBucketsToStore(activeEvents, cacheOptions);
     }
 
@@ -1606,6 +1638,7 @@ async function runEventRefresh(options = {}) {
 
 module.exports = {
   collectRefreshSources,
+  runCollector,
   DEFAULT_EVENT_CACHE_TTL_SECONDS,
   enrichCronEvent,
   enrichEventLocations,
