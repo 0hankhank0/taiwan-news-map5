@@ -41,7 +41,6 @@ jobs:
           response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=$MODE" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json")"
-          echo "$response"
           CRON_RESPONSE="$response" node <<'NODE'
           let payload;
           try {
@@ -51,30 +50,44 @@ jobs:
             process.exit(1);
           }
 
-          const counts = payload.sourceCounts || {};
-          const count = Number(payload.count ?? counts.active ?? 0);
+          const rawCounts = payload.sourceCounts && typeof payload.sourceCounts === "object" ? payload.sourceCounts : {};
+          const sourceCounts = Object.fromEntries(
+            Object.entries(rawCounts).map(([name, value]) => [String(name).slice(0, 80), Number(value) || 0])
+          );
+          const count = Number(payload.count ?? sourceCounts.active ?? 0);
+          const errorSourceCount = Math.max(0, Number(payload.errorSourceCount) || 0);
           const summary = {
             success: payload.success,
+            status: payload.status,
             skippedByLock: Boolean(payload.skippedByLock),
             mode: payload.mode,
             count,
+            errorSourceCount,
             cacheTtlSeconds: payload.cacheTtlSeconds,
             durationMs: payload.durationMs,
-            sourceCounts: counts,
+            sourceCounts,
             lock: payload.lock || null,
           };
           console.log(`[cron-summary] ${JSON.stringify(summary)}`);
 
-          if (!payload.success) {
-            console.error("::error::Cron endpoint did not report success.");
-            process.exit(1);
-          }
           if (payload.skippedByLock) {
             console.warn(`::warning::Cron skipped because another refresh owns the active lock: ${JSON.stringify(payload.lock || {})}`);
             process.exit(0);
           }
+          if (payload.status === "partial_success" && count > 0) {
+            console.warn(`::warning::Cron completed with partial success: ${count} active events; ${errorSourceCount} sources failed. sourceCounts=${JSON.stringify(sourceCounts)}`);
+            process.exit(0);
+          }
+          if (payload.success === false) {
+            console.error("::error::Cron endpoint did not report success.");
+            process.exit(1);
+          }
           if (process.env.MODE === "all" && count <= 0) {
             console.error("::error::Cron returned zero active events for mode=all.");
+            process.exit(1);
+          }
+          if (payload.success !== true) {
+            console.error("::error::Cron endpoint returned an unknown success state.");
             process.exit(1);
           }
           NODE
