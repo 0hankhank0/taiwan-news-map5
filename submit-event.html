@@ -17,6 +17,7 @@
     <textarea name="description" required minlength="10" maxlength="2000" placeholder="事件內容、影響範圍與時間"></textarea>
     <select name="category" required><option value="activity">活動</option><option value="traffic">交通</option><option value="construction">施工</option><option value="public_facility">公共設施</option><option value="disaster">災害</option><option value="police">警政</option><option value="social">社會</option><option value="life">生活</option><option value="other">其他</option></select>
     <input name="address" maxlength="240" placeholder="地址（僅供文字說明，不會自動轉成地圖座標）">
+    <input name="latitude" id="latitude" type="hidden"><input name="longitude" id="longitude" type="hidden">
     <section class="location-panel" aria-labelledby="location-title">
       <strong id="location-title">地圖定位</strong>
       <p class="hint">地址與地圖定位是不同欄位。請使用目前位置或點擊地圖選擇座標；未選座標的投稿會等待管理員確認。</p>
@@ -35,9 +36,10 @@
   <script type="module">
     import { buildSubmissionPayload, getSubmissionResult, hasValidTaiwanCoordinates } from "/assets/submit-event.mjs";
     import { getMapboxToken } from "/assets/index/modules/map.mjs";
+    import { LocationPicker } from "/assets/location-picker.mjs";
     const form = document.querySelector("#form"), result = document.querySelector("#result"), locationStatus = document.querySelector("#location-status");
     const submitButton = document.querySelector("#submit-button");
-    let coordinates = null, map = null, marker = null;
+    let coordinates = null, map = null, marker = null, picker = null;
     function updateLocation(next, message = "") {
       if (next && !hasValidTaiwanCoordinates(next.latitude, next.longitude)) { locationStatus.className = "error"; locationStatus.textContent = "選取的位置不在台灣合理範圍內，請重新選擇。"; return false; }
       coordinates = next;
@@ -54,6 +56,8 @@
     function initMap() {
       const token = window.MAPBOX_ACCESS_TOKEN || getMapboxToken();
       if (!window.mapboxgl || !token) { locationStatus.textContent = "地圖選點目前無法載入，仍可使用目前位置。"; return; }
+      picker = new LocationPicker({ container:"location-map", latInput:document.querySelector('#latitude'), lngInput:document.querySelector('#longitude'), status:locationStatus, mapboxToken:token, onChange:(point)=>{ coordinates={ latitude:point.lat, longitude:point.lng }; } });
+      return;
       mapboxgl.accessToken = token;
       map = new mapboxgl.Map({ container:"location-map", style:"mapbox://styles/mapbox/dark-v11", center:[120.96,23.7], zoom:7 });
       map.addControl(new mapboxgl.NavigationControl(), "bottom-right");

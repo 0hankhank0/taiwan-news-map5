@@ -1,8 +1,11 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
-const { getCachedEvents, getEventCacheStatus } = require("../event-store");
+const { getOfficialEvents, getEventCacheStatus } = require("../event-store");
 const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
-const { getPublicMapSubmissionEvents } = require("../submission-store");
+function publicEvent(event = {}) {
+  const fields = ["id","submissionId","title","content","summary","category","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
+  return Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
+}
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -22,18 +25,10 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const [storedEvents, publicSubmissions] = await Promise.all([getCachedEvents(), getPublicMapSubmissionEvents()]);
-    const normalizedEvents = normalizeEventsForFrontend(storedEvents);
-    const seenSubmissionIds = new Set();
-    const combinedEvents = [...normalizedEvents, ...publicSubmissions].filter((event) => {
-      if (event?.source !== "user_submission") return true;
-      if (!event.submissionId || seenSubmissionIds.has(event.submissionId)) return false;
-      seenSubmissionIds.add(event.submissionId);
-      return true;
-    });
-    const events = applyEventQueryFilters(combinedEvents, req.query);
+    const normalizedEvents = normalizeEventsForFrontend(await getOfficialEvents());
+    const events = applyEventQueryFilters(normalizedEvents, req.query).map(publicEvent);
     const cacheStatus = await getEventCacheStatus();
-    const summary = getEventStatusSummary(combinedEvents, cacheStatus);
+    const summary = getEventStatusSummary(normalizedEvents, cacheStatus);
     res.setHeader("X-Event-Count", String(events.length));
     res.setHeader("X-Event-Total", String(summary.total));
     res.setHeader("X-Data-Sources", encodeURIComponent(summary.sources.join(",")));
@@ -44,6 +39,7 @@ module.exports = async (req, res) => {
     return res.status(200).json(events);
   } catch (error) {
     console.error("[events] cache fetch failed:", error.message);
-    return res.status(500).json([]);
+    return res.status(error?.code === "CONFIG" ? 503 : 500).json({ error: "Event service unavailable" });
   }
 };
+module.exports.publicEvent = publicEvent;

@@ -3,11 +3,12 @@ const os = require("os");
 const path = require("path");
 const fs = require("fs");
 
+process.env.EVENT_STORE_MODE = "local";
 process.env.REPORT_ADMIN_TOKEN = "test-token";
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-admin-test-${Date.now()}.sqlite`);
 process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
 
-const { setCachedEvents, getCachedEvents, appendRefreshLog, getRefreshLog, saveRefreshRunDetail } = require("../event-store");
+const { setCachedEvents, getCachedEvents, setOfficialEvents, getOfficialEvents, appendRefreshLog, getRefreshLog, saveRefreshRunDetail } = require("../event-store");
 const admin = require("../api/admin");
 
 function createRes() {
@@ -35,6 +36,7 @@ async function call(handler, req) {
 }
 
 (async () => {
+  const adminEventId = `event_admin_test_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const vercel = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "vercel.json"), "utf8"));
   const rewrites = Object.fromEntries(vercel.rewrites.map((entry) => [entry.source, entry.destination]));
   assert.equal(rewrites["/api/admin-events"], "/api/admin.js?adminRoute=events");
@@ -80,8 +82,8 @@ async function call(handler, req) {
   assert.equal(detailOk.payload.run.runId, "run-204");
   assert.equal(detailOk.payload.details.sources.rss.items[0].processingResult, "accepted");
 
-  await setCachedEvents([{
-    id: "event_admin_test",
+  const adminEvent = {
+    id: adminEventId,
     title: "測試事件",
     content: "台北市大安區測試事件",
     category: "activity",
@@ -91,7 +93,9 @@ async function call(handler, req) {
     source: "test",
     sourceName: "test",
     updatedAt: new Date().toISOString(),
-  }]);
+  };
+  await setCachedEvents([adminEvent]);
+  if (process.env.EVENT_STORE_MODE === "supabase") await setOfficialEvents([adminEvent]);
 
   const denied = await call(admin, { method: "GET", url: "/api/health" });
   assert.equal(denied.statusCode, 401);
@@ -113,7 +117,7 @@ async function call(handler, req) {
   const patch = await call(admin, {
     method: "PATCH",
     url: "/api/admin-events",
-    query: { eventId: "event_admin_test" },
+    query: { eventId: adminEventId },
     headers: { authorization: "Bearer test-token" },
     body: {
       lat: 25.0217,
@@ -129,7 +133,7 @@ async function call(handler, req) {
   assert.equal(patch.payload.success, true);
   assert.equal(patch.payload.event.statusSource, "manual");
 
-  const events = await getCachedEvents();
+  const events = process.env.EVENT_STORE_MODE === "supabase" ? await getOfficialEvents() : await getCachedEvents();
   assert.equal(events[0].category, "traffic");
   assert.equal(events[0].status, "resolved");
   assert.equal(events[0].reviewState, "reviewed");

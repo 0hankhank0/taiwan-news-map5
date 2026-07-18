@@ -20,13 +20,18 @@
     "test:admin-token-storage": "node tests/admin-token-storage.test.js",
     "test:admin-refresh-log-ui": "node tests/admin-refresh-log-ui.test.js",
     "test:submission": "node tests/submission-api.test.js",
+    "test:supabase-submission": "node tests/supabase-submission-map-feed.test.js",
     "test:submission-flow": "node tests/submission-flow.test.mjs",
     "test:submission-audit-log": "node tests/submission-audit-log.test.js",
     "test:reaction": "node tests/reaction-api.test.js",
     "test:video-demo": "node tests/video-demo.test.js",
     "test:nearby-radius": "node tests/nearby-radius.test.mjs && node tests/nearby-radius-ui.test.js",
     "test:frontend-data": "node tests/event-data-manager.test.mjs",
-    "test:alerts": "node tests/refresh-alerts.test.js"
+    "test:alerts": "node tests/refresh-alerts.test.js",
+    "test:candidates": "node tests/event-candidate.test.js",
+    "test:location-picker": "node tests/location-picker.test.mjs",
+    "test:official-security": "node tests/official-events-security.test.js",
+    "test:collector-status": "node tests/collector-status.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -1,4 +1,4 @@
-const { getCachedValue, setCachedValue } = require("./event-store");
+const { getCachedValue, setCachedValue, createEventCandidates, publishEventCandidate } = require("./event-store");
 
 const SUBMISSIONS_KEY = "submissions:all";
 const AUDIT_LOG_KEY = "submissions:audit-log";
@@ -116,6 +116,10 @@ async function updateSubmission(submissionId, patch, actor = {}) {
   if (next.status === "approved" && !next.publishedAt) next.publishedAt = next.updatedAt;
   items[index] = next;
   await writeAll(items);
+  if (next.status === "approved" && hasValidTaiwanCoordinates(next.latitude, next.longitude)) {
+    const [candidate] = await createEventCandidates([{ source: "user_submission", status: "pending", batchId: next.submissionId, rawSourceData: next, event: { id: `submission:${next.submissionId}`, submissionId: next.submissionId, title: next.title, content: next.description, category: next.category, address: next.address, lat: Number(next.latitude), lng: Number(next.longitude), source: "user_submission", sourceName: "User submission", sourceUrl: next.sourceUrl || "", status: "active", publicationNotice: next.publicationNotice || "使用者投稿｜尚未經官方證實", locationPrecision: "exact", locationQuality: "high", locationDisplayMode: "point", locationConfidence: 1 } }], { batchId: next.submissionId });
+    await publishEventCandidate(candidate.candidateId, { id: `submission:${next.submissionId}` });
+  }
   const logs = safeList(await getCachedValue(AUDIT_LOG_KEY));
   await setCachedValue(AUDIT_LOG_KEY, [{ auditId: id("audit"), actorId: actor.id || "system", actorRole: actor.role || "system", action: actor.action || "update", submissionId, actionTime: next.updatedAt, previousStatus: previous.status, newStatus: next.status, changedFields: Object.keys(patch), reviewNote: String(patch.reviewNote || ""), requestId: actor.requestId || "" }, ...logs].slice(0, MAX_ITEMS));
   return next;

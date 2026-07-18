@@ -21,6 +21,7 @@ function mountHandler(route, handlerPath) {
 mountHandler("/api/config.js", "./api/config");
 mountHandler("/api/events", "./api/events");
 mountHandler("/api/admin-events", "./api/admin");
+mountHandler("/api/event-candidates", "./api/event-candidates");
 mountHandler("/api/health", "./api/admin");
 mountHandler("/api/refresh-log", "./api/admin");
 mountHandler("/api/cron", "./api/cron");
