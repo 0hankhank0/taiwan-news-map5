@@ -35,6 +35,11 @@ import {
 import { findPublishedSubmission, getRequestedSubmissionId, removeSubmissionQuery } from "./modules/submission-focus.mjs";
 import { createEventDataManager } from "./modules/event-data-manager.mjs";
 import { trackEvent } from "./modules/analytics.mjs";
+import {
+    buildStatsSummary,
+    getStatsCategoryLabel,
+    sortPopularOrRecentEvents
+} from "./modules/stats-view.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -2504,6 +2509,7 @@ import { trackEvent } from "./modules/analytics.mjs";
     function switchMode(mode){ 
       isTaiwanMode = mode; 
       const mapEl    = document.getElementById('map'); 
+      const mapStage = document.getElementById('map-stage');
       const statsEl  = document.getElementById('stats-view'); 
       document.body.classList.toggle('stats-mode', !mode);
  
@@ -2517,18 +2523,23 @@ import { trackEvent } from "./modules/analytics.mjs";
       }); 
  
       if(mode){ 
+        mapStage.style.display = 'flex';
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
         flyToLatLng(taiwanView.center, taiwanView.zoom, 800); 
         renderEvents(); 
+        requestAnimationFrame(() => {
+          if (map && typeof map.resize === 'function') map.resize();
+        });
       } else { 
+        mapStage.style.display = 'none';
         mapEl.style.display   = 'none'; 
         statsEl.style.display = 'flex'; 
         renderStatsView(); 
       } 
     } 
  
-    async function renderStatsView(){ 
+    async function renderLegacyStatsView(){ 
       const events = parsedEvents.filter(ev=>{ 
         if (!shouldShowRealtimeEvent(ev)) return false;
         const lat=Number(ev.lat), lng=Number(ev.lng); 
@@ -2633,6 +2644,63 @@ import { trackEvent } from "./modules/analytics.mjs";
 
 
     // ── SEARCH ───────────────────────────────────────────────
+    function formatStatsTime(date) {
+      if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '資料整理中';
+      return new Intl.DateTimeFormat('zh-TW', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(date);
+    }
+
+    function renderStatsView() {
+      const events = parsedEvents.filter((event) => {
+        if (!shouldShowRealtimeEvent(event)) return false;
+        return Number.isFinite(Number(event.lat)) && Number.isFinite(Number(event.lng)) && isValidTaiwanCoord(Number(event.lat), Number(event.lng));
+      });
+      updateCurationMeta(events);
+      const summary = buildStatsSummary(events);
+      const stat = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = value; };
+      stat('stat-total', summary.total.toLocaleString());
+      stat('stat-city-count', summary.cityCount.toLocaleString());
+      stat('stat-top-category', summary.topCategory ? summary.topCategory.label : '資料整理中');
+      stat('stat-last-updated', formatStatsTime(summary.lastUpdated));
+      stat('stats-hero-count', summary.total.toLocaleString());
+
+      const renderRanks = (element, rows, labelKey, category) => {
+        if (!element) return;
+        const highest = rows[0]?.count || 1;
+        element.innerHTML = rows.length ? rows.slice(0, 8).map((row) => `
+          <div class="stats-rank-row"><span class="stats-rank-label">${escapeHtml(row[labelKey])}</span><span class="stats-rank-track"><span class="stats-rank-fill${category ? ' stats-rank-fill--category' : ''}" style="width:${Math.round((row.count / highest) * 100)}%"></span></span><strong>${row.count}</strong></div>`).join('') : '<p class="stats-empty">資料整理中</p>';
+      };
+      renderRanks(document.getElementById('city-bars'), summary.cities, 'city', false);
+      renderRanks(document.getElementById('category-bars'), summary.categories, 'label', true);
+
+      const hotEl = document.getElementById('hot-events');
+      if (!hotEl) return;
+      hotEl.innerHTML = '<p class="stats-empty">正在整理互動資料…</p>';
+      const eventIds = events.map((event) => String(event.id || '').trim()).filter(Boolean).slice(0, 100);
+      if (!eventIds.length) { hotEl.innerHTML = '<p class="stats-empty">目前沒有可顯示的事件。</p>'; return; }
+      fetch(`/api/reaction?eventIds=${encodeURIComponent(eventIds.join(','))}`)
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error('reaction request failed')))
+        .then((payload) => {
+          const ranked = sortPopularOrRecentEvents(events, payload?.reactions || {}).slice(0, 5);
+          hotEl.innerHTML = ranked.map((event) => {
+            const title = String(event.title || '未命名事件').trim() || '未命名事件';
+            const time = event.timestamp ? formatStatsTime(new Date(event.timestamp)) : '資料整理中';
+            return `<button class="stats-event" type="button" data-stat-event="${escapeAttribute(String(event.id || ''))}"><span class="stats-event-category">${escapeHtml(getStatsCategoryLabel(event.category))}</span><span class="stats-event-body"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(String(event.city || '未標示'))} · ${time}</small></span><span class="stats-event-reactions">${event.total ? `${event.total} 互動` : '最新'}</span></button>`;
+          }).join('') || '<p class="stats-empty">資料整理中</p>';
+          hotEl.querySelectorAll('[data-stat-event]').forEach((button) => button.addEventListener('click', () => {
+            const event = parsedEvents.find((item) => String(item.id || '') === button.dataset.statEvent);
+            if (!event) return;
+            switchMode(true);
+            flyToLatLng(Number(event.lat), Number(event.lng), 12, 700);
+            history.replaceState(null, '', `${location.pathname}?event=${encodeURIComponent(String(event.id || ''))}`);
+          }));
+        })
+        .catch(() => { hotEl.innerHTML = '<p class="stats-empty">互動資料暫時無法載入。</p>'; });
+      fetch('/api/reactions/total')
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error('total request failed')))
+        .then((payload) => { stat('stat-muyu', (Number(payload?.muyu) || 0).toLocaleString()); stat('stat-candle', (Number(payload?.candle) || 0).toLocaleString()); })
+        .catch(() => { stat('stat-muyu', '0'); stat('stat-candle', '0'); });
+    }
+
     function handleSearch(e){
         searchKeyword=e.target.value.trim().toLowerCase();
         renderEvents();

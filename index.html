@@ -300,14 +300,15 @@
     </aside>
 
     <!-- STATS -->
-    <div id="stats-view" style="display:none;flex:1;min-width:0;overflow-y:auto;background:var(--bg-deep);padding:20px;flex-direction:column;gap:16px;"> 
-      <div class="stats-hero">
+    <div id="stats-view">
+      <div class="stats-shell">
+      <section class="stats-hero">
         <div class="stats-hero-label">Data Story</div>
         <div class="stats-hero-title">把事件量體轉成有節奏的觀察視圖。</div>
         <div class="stats-hero-copy">從城市分布、群眾情感到熱門事件排行，讓統計頁不是備用頁，而是另一個理解台灣公共狀態的入口。現在共收錄 <span id="stats-hero-count">0</span> 筆事件，模式為 <span id="stats-hero-mode">台灣地圖</span>。</div>
-      </div>
+      </section>
 
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;"> 
+      <section class="stats-kpi-grid"> 
         <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px 16px;"> 
           <div style="font-size:16px;margin-bottom:6px;">🪘</div> 
           <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">木魚敲打</div> 
@@ -323,9 +324,9 @@
           <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">當前事件</div> 
           <div id="stat-total" style="font-size:26px;font-weight:500;color:var(--accent);">—</div> 
         </div> 
-      </div> 
+      </section> 
     
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;"> 
+      <section class="stats-main-grid"> 
         <div style="background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;"> 
           <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">城市事件排行</div> 
           <div id="city-bars"></div> 
@@ -334,7 +335,23 @@
           <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">熱門事件（反應最多）</div> 
           <div id="hot-events"></div> 
         </div> 
-      </div> 
+      </section> 
+      <section class="stats-secondary-grid">
+        <article class="stats-panel stats-category-panel">
+          <div class="stats-panel-heading"><span>類別分布</span><small>依目前事件彙整</small></div>
+          <div id="category-bars"></div>
+        </article>
+        <article class="stats-panel stats-reaction-panel">
+          <div class="stats-panel-heading"><span>社群回應</span><small>全站累積</small></div>
+          <div class="stats-reaction-totals"><span>祈福 <strong id="stat-muyu">—</strong></span><span>點燈 <strong id="stat-candle">—</strong></span></div>
+        </article>
+      </section>
+      <section class="stats-kpi-grid stats-kpi-grid--summary" aria-label="摘要資訊">
+        <article class="stats-kpi-card"><span>涵蓋城市</span><strong id="stat-city-count">—</strong></article>
+        <article class="stats-kpi-card"><span>主要類別</span><strong id="stat-top-category">資料整理中</strong></article>
+        <article class="stats-kpi-card"><span>最後更新</span><strong id="stat-last-updated">資料整理中</strong></article>
+      </section>
+      </div>
     
     </div> 
 
