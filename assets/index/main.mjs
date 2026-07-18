@@ -2523,6 +2523,9 @@ import {
       }); 
  
       if(mode){ 
+        isDragging = false;
+        sidebar.style.transform = '';
+        sidebar.style.transition = '';
         mapStage.style.display = 'flex';
         mapEl.style.display   = ''; 
         statsEl.style.display = 'none'; 
@@ -2532,9 +2535,13 @@ import {
           if (map && typeof map.resize === 'function') map.resize();
         });
       } else { 
+        isDragging = false;
+        sidebar.style.transform = '';
+        sidebar.style.transition = '';
         mapStage.style.display = 'none';
         mapEl.style.display   = 'none'; 
         statsEl.style.display = 'flex'; 
+        statsEl.scrollTop = 0;
         renderStatsView(); 
       } 
     } 
@@ -2708,7 +2715,7 @@ import {
 
     // ── DRAWER ───────────────────────────────────────────────
     function toggleDrawer(){
-        if(window.innerWidth<768) {
+        if(window.innerWidth<768 && !document.body.classList.contains('stats-mode')) {
             newsSidebar.classList.toggle("drawer-collapsed");
             scheduleMapResize();
         }
@@ -2720,7 +2727,7 @@ import {
     const sidebar = document.getElementById("news-sidebar");
 
     sidebar.addEventListener("touchstart", e => {
-        if (window.innerWidth >= 768) return;
+        if (window.innerWidth >= 768 || document.body.classList.contains('stats-mode')) return;
         const touch = e.touches[0];
         const sidebarTop = sidebar.getBoundingClientRect().top;
         // 只有在頂部區域 (把手附近) 才觸發拖曳
@@ -2732,6 +2739,7 @@ import {
     }, { passive: true });
 
     sidebar.addEventListener("touchmove", e => {
+        if (document.body.classList.contains('stats-mode')) { isDragging = false; return; }
         if (!isDragging) return;
         const delta = e.touches[0].clientY - startY;
         if (delta < 0) return; // 不能往上拉超過展開位置
@@ -2746,6 +2754,7 @@ import {
     }, { passive: true });
 
     sidebar.addEventListener("touchend", e => {
+        if (document.body.classList.contains('stats-mode')) { isDragging = false; return; }
         if (!isDragging) return;
         isDragging = false;
         sidebar.style.transition = "transform 0.3s cubic-bezier(0.32,0,0.15,1)";
@@ -2763,7 +2772,7 @@ import {
 
     // 點擊地圖收起抽屜
     map.on("click", () => {
-        if (window.innerWidth < 768) {
+        if (window.innerWidth < 768 && !document.body.classList.contains('stats-mode')) {
             sidebar.classList.add("drawer-collapsed");
             scheduleMapResize();
         }
