@@ -78,6 +78,7 @@ const MAX_GEOCODING_PER_CRON = Number(process.env.MAX_GEOCODING_PER_CRON || 20);
 const MIN_EVENT_CACHE_TTL_SECONDS = 60 * 60;
 const DEFAULT_EVENT_CACHE_TTL_SECONDS = 60 * 60 * 6;
 const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
+const KKTIX_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const { recordEventIntegrationStatus } = require("./integration-store");
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
@@ -747,6 +748,48 @@ function parseKktixMeta(item) {
     location: locationLine,
   };
 }
+
+function sanitizeKktixBodyPreview(value, maxLength = 200) {
+  return String(value || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\bauthorization\b\s*[:=]\s*(?:bearer\s+)?[^\s;,&<>"']+/gi, "[redacted-secret]")
+    .replace(/\b(?:set-?cookie|cookie|token|api[_-]?key|secret|password)\b\s*[:=]\s*[^\s;,&<>"']+/gi, "[redacted-secret]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted-email]")
+    .replace(/\b(?:bearer\s+)?(?:sk|pk|rk)_[A-Za-z0-9_-]{8,}\b/gi, "[redacted-secret]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function getKktixHeader(response, name) {
+  const value = response?.headers?.get?.(name);
+  return String(value || "").trim().slice(0, 200);
+}
+
+function buildKktixResponseDiagnostic(response, body) {
+  return {
+    httpStatus: Number(response?.status) || null,
+    url: String(response?.url || "").trim().slice(0, 1000),
+    contentType: getKktixHeader(response, "content-type"),
+    server: getKktixHeader(response, "server"),
+    retryAfter: getKktixHeader(response, "retry-after"),
+    requestId: getKktixHeader(response, "x-request-id") || getKktixHeader(response, "cf-ray"),
+    bodyPreview: sanitizeKktixBodyPreview(body),
+  };
+}
+
+async function createKktixHttpError(response) {
+  let body = "";
+  try { body = await response.text(); } catch {}
+  const error = new Error(`KKTIX HTTP ${Number(response?.status) || "request failed"}`);
+  error.name = "KktixHttpError";
+  error.httpStatus = Number(response?.status) || null;
+  error.kktixDiagnostic = buildKktixResponseDiagnostic(response, body);
+  return error;
+}
+
 async function fetchKktixActivityEvents(startedAt) {
   const attemptedAt = new Date().toISOString();
   try {
@@ -763,9 +806,12 @@ async function fetchKktixActivityEvents(startedAt) {
           headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8" },
         });
         if (response.ok) break;
-        if (response.status < 500 && response.status !== 429) throw new Error(`HTTP ${response.status}`);
-        lastError = new Error(`HTTP ${response.status}`);
-      } catch (error) { lastError = error; }
+        lastError = await createKktixHttpError(response);
+        if (!KKTIX_RETRYABLE_STATUS_CODES.has(Number(response.status))) break;
+      } catch (error) {
+        lastError = error;
+        break;
+      }
       if (attempt < 2) await delay(250 * (2 ** attempt));
     }
     if (!response?.ok) throw lastError || new Error("KKTIX fetch failed");
@@ -815,11 +861,19 @@ async function fetchKktixActivityEvents(startedAt) {
     }
 
     const result = events.slice(0, 30);
-    await recordEventIntegrationStatus("kktix", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: (feed.items || []).length, insertedCount: result.length, duplicateCount: Math.max(0, (feed.items || []).length - result.length), failedCount: 0, lastErrorType: null });
+    await recordEventIntegrationStatus("kktix", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: (feed.items || []).length, insertedCount: result.length, duplicateCount: Math.max(0, (feed.items || []).length - result.length), failedCount: 0, lastErrorType: null, lastDiagnostic: null });
     return result;
   } catch (error) {
-    console.warn("[cron] KKTIX activity fetch failed:", error.message);
-    await recordEventIntegrationStatus("kktix", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", failedCount: 1 });
+    const providerBlocked = Number(error.httpStatus) === 403;
+    const diagnostic = error.kktixDiagnostic || null;
+    console.warn("[cron] KKTIX activity fetch failed:", diagnostic || error.message);
+    await recordEventIntegrationStatus("kktix", {
+      status: providerBlocked ? "provider_blocked" : "error",
+      lastAttemptAt: attemptedAt,
+      lastErrorType: providerBlocked ? "provider_blocked" : (error.name === "TimeoutError" ? "timeout" : "request_error"),
+      lastDiagnostic: diagnostic,
+      failedCount: 1,
+    });
     throw error;
   }
 }
@@ -1675,12 +1729,14 @@ module.exports = {
   enrichCronEvent,
   enrichEventLocations,
   fetchKktixActivityEvents,
+  buildKktixResponseDiagnostic,
   fetchDefaultSources,
   isGenericCmsNotice,
   isDuplicateEvent,
   mergeRefreshEvents,
   normalizeFinalEvents,
   parseKktixMeta,
+  sanitizeKktixBodyPreview,
   resolveEventCacheTtlSeconds,
   runEventRefresh,
 };

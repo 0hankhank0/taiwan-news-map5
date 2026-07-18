@@ -308,17 +308,56 @@ async function call(handler, req) {
   assert.equal(applyEventQueryFilters(sampleEvents, { q: "music" })[0].title, "Concert");
   assert.equal(applyEventQueryFilters(sampleEvents, { limit: "1" }).length, 1);
 
-  // KKTIX success records a bounded integration status; failures retry three times and never clear cached events.
+  // KKTIX only retries transient upstream statuses and records bounded, redacted diagnostics.
   const originalFetch = global.fetch;
   global.fetch = async () => ({ ok: true, text: async () => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>KKTIX test activity</title><link href="https://kktix.com/events/test"/><content type="html"><![CDATA[Time: 2099/07/20 19:00 ~ 2099/07/20 21:00\nLocation: Test venue / Taipei]]></content></entry></feed>` });
   await eventRefresh.fetchKktixActivityEvents(Date.now());
   assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "kktix").status, "success");
   const cachedCountBeforeFailure = (await getCachedEvents()).length;
   let attempts = 0;
-  global.fetch = async () => { attempts += 1; return { ok: false, status: 500, text: async () => "upstream failure" }; };
+  global.fetch = async () => { attempts += 1; return { ok: false, status: 503, url: "https://kktix.com/events.atom", headers: new Headers({ "content-type": "text/html", server: "test" }), text: async () => "upstream failure" }; };
   await assert.rejects(() => eventRefresh.fetchKktixActivityEvents(Date.now()));
   assert.equal(attempts, 3);
   assert.equal((await getCachedEvents()).length, cachedCountBeforeFailure);
+
+  attempts = 0;
+  global.fetch = async () => {
+    attempts += 1;
+    return {
+      ok: false,
+      status: 403,
+      url: "https://kktix.com/events.atom",
+      headers: new Headers({ "content-type": "text/html; charset=utf-8", server: "cloudflare", "retry-after": "120", "cf-ray": "test-ray" }),
+      text: async () => "<html>Cloudflare Access Denied token=secret-value Cookie=session-secret contact=test@example.com Authorization: Bearer hidden-value</html>",
+    };
+  };
+  await assert.rejects(() => eventRefresh.fetchKktixActivityEvents(Date.now()), /KKTIX HTTP 403/);
+  assert.equal(attempts, 1);
+  const blockedStatus = (await getEventIntegrationStatuses()).find((item) => item.service === "kktix");
+  assert.equal(blockedStatus.status, "provider_blocked");
+  assert.equal(blockedStatus.lastErrorType, "provider_blocked");
+  assert.equal(blockedStatus.lastDiagnostic.httpStatus, 403);
+  assert.equal(blockedStatus.lastDiagnostic.contentType, "text/html; charset=utf-8");
+  assert.equal(blockedStatus.lastDiagnostic.server, "cloudflare");
+  assert.equal(blockedStatus.lastDiagnostic.requestId, "test-ray");
+  assert.equal(JSON.stringify(blockedStatus.lastDiagnostic).includes("secret-value"), false);
+  assert.equal(JSON.stringify(blockedStatus.lastDiagnostic).includes("test@example.com"), false);
+  assert.equal(JSON.stringify(blockedStatus.lastDiagnostic).includes("hidden-value"), false);
+
+  const rssFeed = `<?xml version="1.0"?><rss version="2.0"><channel><title>test</title><item><title>Taipei event</title><link>https://example.test/event</link><description>Road event in Taipei</description></item></channel></rss>`;
+  const axios = require("axios");
+  const originalAxiosGet = axios.get;
+  axios.get = async () => ({ data: rssFeed });
+  global.fetch = async (url) => {
+    if (String(url).includes("kktix")) {
+      return { ok: false, status: 403, url: String(url), headers: new Headers({ "content-type": "text/html", server: "cloudflare" }), text: async () => "Cloudflare bot protection" };
+    }
+    return { ok: true, status: 200, url: String(url), headers: new Headers({ "content-type": "application/rss+xml" }), text: async () => rssFeed };
+  };
+  const sourcesAfterKktixBlock = await eventRefresh.fetchDefaultSources("news", Date.now(), { skipAi: true });
+  axios.get = originalAxiosGet;
+  assert.equal(sourcesAfterKktixBlock.__collectorResults.rss.status, "success");
+  assert.equal(sourcesAfterKktixBlock.__collectorResults.kktix.status, "failed");
   const integrationStatus = await call(eventsApi, { method: "GET", query: { integrationStatus: "1" }, url: "/api/integrations/events/status" });
   assert.equal(integrationStatus.statusCode, 200);
   assert.equal(JSON.stringify(integrationStatus.payload).includes("upstream failure"), false);
