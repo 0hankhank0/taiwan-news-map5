@@ -3634,3 +3634,45 @@ body.video-demo-mode .video-demo-range > span {
   box-shadow: 0 12px 30px rgba(0, 0, 0, .35);
   font-weight: 700;
  }
+
+/* Statistics mode: a standalone scrollable surface, not a hidden map overlay. */
+#stats-view {
+    display: none;
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+    overflow-y: auto;
+    background: var(--bg-deep);
+}
+.stats-shell { width: min(1440px, 100%); margin: 0 auto; padding: 28px clamp(18px, 3vw, 48px) 48px; }
+.stats-kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+.stats-kpi-grid--summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stats-main-grid, .stats-secondary-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .85fr); gap: 18px; margin-top: 18px; }
+.stats-kpi-card, .stats-panel, .stats-main-grid > div, .stats-kpi-grid > div { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.stats-kpi-card { display: grid; gap: 8px; }
+.stats-kpi-card > span, .stats-panel-heading, .stats-reaction-totals { color: var(--text-muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.stats-kpi-card strong { color: var(--text-primary); font-family: var(--font-display); font-size: 22px; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+.stats-panel-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.stats-panel-heading span { color: var(--text-secondary); font-weight: 700; }
+.stats-panel-heading small { font-size: 10px; letter-spacing: 0; text-transform: none; }
+.stats-rank-row { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) 2rem; align-items: center; gap: 9px; margin: 10px 0; font-size: 12px; }
+.stats-rank-label { overflow: hidden; color: var(--text-secondary); text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.stats-rank-track { height: 7px; overflow: hidden; border-radius: 99px; background: rgba(99, 120, 180, .12); }
+.stats-rank-fill { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
+.stats-rank-fill--category { background: var(--brand-candle-flame); }
+.stats-rank-row strong { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; font-variant-numeric: tabular-nums; }
+.stats-event { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; width: 100%; align-items: center; gap: 10px; padding: 11px 0; text-align: left; border: 0; border-bottom: 1px solid rgba(99,120,180,.12); background: transparent; color: var(--text-primary); cursor: pointer; transition: background .2s ease, transform .2s ease; }
+.stats-event:hover { background: rgba(99, 120, 180, .07); transform: translateX(2px); }
+.stats-event:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.stats-event-category { color: var(--accent); font-size: 10px; white-space: nowrap; }
+.stats-event-body { display: grid; min-width: 0; gap: 4px; }
+.stats-event-body strong { overflow: hidden; font-size: 12px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.stats-event-body small, .stats-event-reactions, .stats-empty { color: var(--text-muted); font-size: 11px; }
+.stats-event-reactions { white-space: nowrap; }
+.stats-empty { margin: 0; padding: 10px 0; }
+.stats-reaction-totals { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; letter-spacing: 0; text-transform: none; }
+.stats-reaction-totals span { display: grid; gap: 7px; }
+.stats-reaction-totals strong { color: var(--text-primary); font-family: var(--font-display); font-size: 24px; font-variant-numeric: tabular-nums; }
+body.stats-mode #nearby-toggle-desktop, body.stats-mode #nearby-radius-desktop, body.stats-mode #nearby-toggle-mobile, body.stats-mode #nearby-radius-mobile { display: none; }
+@media (max-width: 1000px) { .stats-kpi-grid, .stats-kpi-grid--summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stats-main-grid, .stats-secondary-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .stats-shell { padding-left: 14px; padding-right: 14px; } .stats-kpi-grid, .stats-kpi-grid--summary { grid-template-columns: 1fr; } .stats-event { grid-template-columns: auto minmax(0, 1fr); } .stats-event-reactions { grid-column: 2; } }
