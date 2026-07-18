@@ -2792,6 +2792,7 @@ body::after {
     #mobile-topbar {
         max-width: 100vw;
         overflow: hidden;
+        z-index: 1000;
     }
 
     .mobile-row1,
@@ -2861,13 +2862,8 @@ body::after {
     #news-sidebar {
         width: 100%;
         max-width: 100%;
-        height: min(74vh, 620px);
         border-radius: 22px 22px 0 0;
         box-shadow: 0 -22px 54px rgba(0, 0, 0, 0.54);
-    }
-
-    #news-sidebar.drawer-collapsed {
-        transform: translateY(calc(min(74vh, 620px) - 116px));
     }
 
     .drawer-handle {
@@ -2946,11 +2942,22 @@ body::after {
 
 @media (max-width: 767px) {
     #news-sidebar {
-        height: min(82vh, 720px);
+        /* The fixed filter controls own the space above the sheet.  `dvh`
+           follows Android Chrome as its address bar expands and collapses. */
+        --mobile-control-area: 0px;
+        --drawer-peek-height: 118px;
+        position: fixed;
+        top: var(--mobile-control-area);
+        bottom: 0;
+        height: calc(100dvh - var(--mobile-control-area));
+        max-height: calc(100dvh - var(--mobile-control-area));
+        min-height: 0;
+        overflow: visible;
+        z-index: 999;
     }
 
     #news-sidebar.drawer-collapsed {
-        transform: translateY(calc(min(82vh, 720px) - 118px));
+        transform: translateY(calc(100% - var(--drawer-peek-height)));
     }
 
     .sidebar-header {

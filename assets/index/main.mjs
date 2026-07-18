@@ -2714,6 +2714,17 @@ import {
     }
 
     // ── DRAWER ───────────────────────────────────────────────
+    function updateMobileDrawerBounds() {
+        if (window.innerWidth >= 768) return;
+        const mobileControls = document.getElementById("mobile-topbar");
+        if (!mobileControls || !newsSidebar) return;
+
+        // Measure instead of hard-coding: the mobile refresh/status row can wrap,
+        // and Android Chrome changes the visual viewport while its URL bar moves.
+        const controlsBottom = Math.max(0, Math.ceil(mobileControls.getBoundingClientRect().bottom));
+        newsSidebar.style.setProperty("--mobile-control-area", `${controlsBottom}px`);
+    }
+
     function toggleDrawer(){
         if(window.innerWidth<768 && !document.body.classList.contains('stats-mode')) {
             newsSidebar.classList.toggle("drawer-collapsed");
@@ -2778,6 +2789,15 @@ import {
         }
     });
     window.addEventListener("resize", scheduleMapResize);
+    window.addEventListener("resize", updateMobileDrawerBounds);
+    window.addEventListener("orientationchange", updateMobileDrawerBounds);
+    const handleMobileViewportChange = () => {
+        updateMobileDrawerBounds();
+        scheduleMapResize();
+    };
+    window.visualViewport?.addEventListener("resize", handleMobileViewportChange);
+    window.visualViewport?.addEventListener("scroll", handleMobileViewportChange);
+    updateMobileDrawerBounds();
     if (typeof ResizeObserver !== "undefined") {
         const layoutObserver = new ResizeObserver(() => {
             scheduleMapResize();
