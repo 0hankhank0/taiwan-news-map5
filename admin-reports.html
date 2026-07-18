@@ -3,283 +3,74 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>事件回報後台 | Island Pulse</title>
+  <title>資料回報分析 | Island Pulse</title>
   <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0b1020;
-      --panel: #121a2d;
-      --panel-2: #18223a;
-      --line: rgba(148, 163, 184, 0.24);
-      --text: #e5e7eb;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --danger: #fb7185;
-      --ok: #34d399;
-      --warn: #fbbf24;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
-    }
-    header {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-      background: rgba(11, 16, 32, 0.94);
-      border-bottom: 1px solid var(--line);
-      backdrop-filter: blur(16px);
-    }
-    .wrap { max-width: 1180px; margin: 0 auto; padding: 20px; }
-    h1 { margin: 0 0 4px; font-size: 22px; }
-    .sub { margin: 0; color: var(--muted); font-size: 13px; }
-    .toolbar {
-      display: grid;
-      grid-template-columns: minmax(220px, 1fr) 180px 120px;
-      gap: 10px;
-      margin-top: 16px;
-    }
-    input, select, textarea, button {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--panel);
-      color: var(--text);
-      font: inherit;
-    }
-    input, select, textarea { width: 100%; padding: 10px 12px; }
-    textarea { min-height: 76px; resize: vertical; }
-    button {
-      cursor: pointer;
-      padding: 10px 12px;
-      font-weight: 700;
-    }
-    button:hover { border-color: rgba(56, 189, 248, 0.7); }
-    button.primary { background: #075985; border-color: #0284c7; }
-    button.ok { background: rgba(16, 185, 129, 0.18); border-color: rgba(52, 211, 153, 0.5); }
-    button.danger { background: rgba(244, 63, 94, 0.16); border-color: rgba(251, 113, 133, 0.5); }
-    button.resolve { background: rgba(251, 191, 36, 0.16); border-color: rgba(251, 191, 36, 0.5); }
-    main.wrap { padding-top: 18px; }
-    .status-line { color: var(--muted); margin-bottom: 12px; font-size: 13px; }
-    .report {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-      margin-bottom: 12px;
-    }
-    .report-head {
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 12px;
-      align-items: start;
-    }
-    .title { margin: 0 0 8px; font-size: 17px; }
-    .meta, .snapshot, .ai {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: 8px 0;
-    }
-    .tag {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 3px 8px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-    .tag.ai-valid, .tag.ai-likely_valid { color: var(--ok); border-color: rgba(52, 211, 153, 0.5); }
-    .tag.ai-unclear { color: var(--warn); border-color: rgba(251, 191, 36, 0.5); }
-    .tag.ai-likely_invalid, .tag.ai-spam { color: var(--danger); border-color: rgba(251, 113, 133, 0.5); }
-    .message, .summary {
-      margin: 10px 0;
-      padding: 10px 12px;
-      background: var(--panel-2);
-      border-radius: 8px;
-      white-space: pre-wrap;
-    }
-    .actions {
-      display: grid;
-      grid-template-columns: 1fr auto auto auto;
-      gap: 8px;
-      margin-top: 12px;
-      align-items: start;
-    }
-    a { color: var(--accent); }
-    .nav { display:none; }
-    .admin-nav { display:flex; gap:8px; margin:14px 0; flex-wrap:wrap; font-size:13px; }
-    .admin-nav a { color:var(--accent); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
-    .admin-nav a.active { color:var(--text); background:#075985; border-color:#0284c7; font-weight:700; }
-    .empty {
-      border: 1px dashed var(--line);
-      color: var(--muted);
-      padding: 32px;
-      border-radius: 8px;
-      text-align: center;
-    }
-    @media (max-width: 760px) {
-      .toolbar, .report-head, .actions { grid-template-columns: 1fr; }
-    }
+    :root { --ink:#172033; --muted:#667085; --line:#e4e8ef; --canvas:#f5f7fb; --paper:#fff; --navy:#243b69; --accent:#4565ad; --accent-soft:#edf2ff; --green:#277c63; --green-soft:#e9f7f2; --amber:#a76416; --amber-soft:#fff4e5; --red:#b74b5f; --red-soft:#fff0f2; --slate:#697789; --radius:14px; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--canvas); font-family:"Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif; line-height:1.5; }
+    button,input,select,textarea { font:inherit; } button { cursor:pointer; }
+    .shell { max-width:1440px; margin:auto; padding:0 28px 52px; }
+    header { background:rgba(255,255,255,.92); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; backdrop-filter:blur(14px); }
+    .topbar { max-width:1440px; margin:auto; padding:18px 28px 12px; display:flex; align-items:flex-start; justify-content:space-between; gap:20px; }
+    h1 { margin:0; font-size:25px; letter-spacing:-.04em; } .eyebrow { color:var(--accent); font-size:12px; font-weight:800; letter-spacing:.08em; }
+    .updated { color:var(--muted); font-size:13px; padding-top:5px; font-variant-numeric:tabular-nums; }
+    .admin-nav { max-width:1440px; margin:auto; padding:0 28px 12px; display:flex; gap:4px; overflow:auto; }
+    .admin-nav a { color:var(--muted); text-decoration:none; font-size:13px; padding:7px 10px; border-radius:7px; white-space:nowrap; }
+    .admin-nav a:hover { background:#f0f3f8; color:var(--ink); } .admin-nav a.active { color:var(--navy); background:var(--accent-soft); font-weight:800; }
+    main { padding-top:27px; } .summary-grid { display:grid; grid-template-columns:1.45fr repeat(5,1fr); gap:12px; }
+    .metric { background:var(--paper); min-height:101px; padding:18px; border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 8px 24px rgba(32,48,81,.035); }
+    .metric.hero { background:var(--navy); color:#fff; border-color:var(--navy); } .metric-label { display:block; color:var(--muted); font-size:12px; font-weight:700; } .hero .metric-label { color:#c6d4f5; }
+    .metric strong { display:block; margin-top:4px; font-size:28px; letter-spacing:-.06em; font-variant-numeric:tabular-nums; } .metric small { display:block; margin-top:1px; font-size:11px; color:var(--muted); } .hero small { color:#c6d4f5; }
+    .analytics { display:grid; grid-template-columns:1.55fr .95fr; gap:16px; margin-top:16px; } .panel { background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:19px; }
+    .panel h2 { margin:0; font-size:15px; letter-spacing:-.02em; } .panel-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:17px; } .panel-note { color:var(--muted); font-size:11px; }
+    .trend { height:185px; position:relative; border-bottom:1px solid var(--line); background:repeating-linear-gradient(to bottom, transparent 0, transparent 45px, #eef1f5 46px); overflow:hidden; }
+    .trend svg { width:100%; height:100%; overflow:visible; } .trend-labels { display:flex; justify-content:space-between; color:var(--muted); font-size:10px; margin-top:7px; }
+    .legend { display:flex; gap:13px; align-items:center; font-size:11px; color:var(--muted); } .legend i { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:4px; }
+    .distribution { display:grid; gap:12px; } .distribution-row { display:grid; grid-template-columns:80px 1fr 26px; align-items:center; gap:10px; font-size:12px; } .bar { height:8px; border-radius:99px; background:#edf0f5; overflow:hidden; } .bar > span { display:block; height:100%; border-radius:inherit; background:var(--accent); } .count { color:var(--muted); text-align:right; font-variant-numeric:tabular-nums; }
+    .split-charts { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; } .mini-chart { min-height:170px; } .type-list { display:grid; gap:10px; margin-top:15px; }
+    .review { margin-top:28px; } .section-heading { display:flex; justify-content:space-between; align-items:end; gap:16px; margin-bottom:12px; } .section-heading h2 { margin:0; font-size:19px; letter-spacing:-.035em; } .section-heading p { margin:3px 0 0; color:var(--muted); font-size:13px; }
+    .filters { display:grid; grid-template-columns:160px 145px 145px 145px minmax(180px,1fr) auto; gap:9px; padding:12px; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); }
+    input,select,textarea { min-width:0; border:1px solid #d9dfe9; color:var(--ink); background:#fff; border-radius:8px; padding:9px 10px; outline:none; } input:focus,select:focus,textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(69,101,173,.14); }
+    .primary { border:0; color:#fff; background:var(--accent); border-radius:8px; padding:9px 15px; font-weight:800; transition:transform .18s,background .18s; } .primary:hover { background:#345594; transform:translateY(-1px); } .primary:active { transform:translateY(0); }
+    .loadbar { color:var(--muted); min-height:22px; padding:14px 1px 4px; font-size:13px; }
+    .report-list { display:grid; gap:10px; } .report { padding:17px 18px; background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); border-left:4px solid #c9d2e4; transition:box-shadow .2s,transform .2s; } .report:hover { box-shadow:0 12px 30px rgba(34,52,87,.07); transform:translateY(-1px); }
+    .report.new,.report.ai_reviewed { border-left-color:#d99a38; } .report.accepted { border-left-color:var(--green); } .report.rejected { border-left-color:var(--red); } .report.resolved { border-left-color:var(--accent); }
+    .report-head { display:flex; justify-content:space-between; align-items:flex-start; gap:18px; } .report h3 { margin:0; font-size:16px; letter-spacing:-.02em; } .report-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; } .tag { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--muted); background:#f4f6f9; border-radius:5px; padding:3px 6px; } .tag.status-new,.tag.status-ai_reviewed { color:var(--amber); background:var(--amber-soft); } .tag.status-accepted { color:var(--green); background:var(--green-soft); } .tag.status-rejected { color:var(--red); background:var(--red-soft); } .tag.status-resolved { color:var(--accent); background:var(--accent-soft); }
+    .report-body { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:20px; margin-top:12px; } .message { margin:0; color:#374151; font-size:13px; white-space:pre-wrap; } .ai-note { padding:10px 12px; color:#596579; font-size:12px; background:#f7f8fb; border-radius:8px; } .ai-note strong { color:var(--ink); font-size:11px; }
+    .actions { display:grid; grid-template-columns:minmax(180px,1fr) auto auto auto; align-items:start; gap:8px; margin-top:14px; } textarea { min-height:40px; resize:vertical; font-size:12px; } .action { border:1px solid transparent; background:#fff; padding:8px 10px; border-radius:7px; font-size:12px; font-weight:800; } .accept { color:var(--green); border-color:#b9e2d5; } .reject { color:var(--red); border-color:#f0c2cb; } .resolve { color:var(--accent); border-color:#c8d5f3; } .action:hover { background:#f6f8fb; }
+    .publish { margin-top:28px; display:flex; align-items:center; gap:16px; padding:17px 20px; color:#fff; background:#1e2d4d; border-radius:var(--radius); } .publish-title { font-weight:800; } .publish-title span { color:#b8c7e6; font-weight:500; } .publish-states { display:flex; flex-wrap:wrap; gap:10px; margin-left:auto; font-size:12px; color:#d9e1f2; } .publish-states b { color:#fff; font-variant-numeric:tabular-nums; }
+    .empty { padding:36px; color:var(--muted); background:var(--paper); border:1px dashed #c8d0df; border-radius:var(--radius); text-align:center; }
+    @media (max-width:1050px) { .summary-grid { grid-template-columns:repeat(3,1fr); } .metric.hero { grid-column:span 2; } .filters { grid-template-columns:repeat(3,1fr); } .analytics { grid-template-columns:1fr; } }
+    @media (max-width:700px) { .shell,.topbar,.admin-nav { padding-left:16px; padding-right:16px; } .topbar { padding-top:14px; } h1 { font-size:21px; } .updated { font-size:11px; } .summary-grid,.split-charts,.filters { grid-template-columns:1fr 1fr; } .metric.hero { grid-column:span 2; } .report-body,.actions { grid-template-columns:1fr; } .report-head { display:block; } .report-head > a { display:inline-block; margin-top:10px; } .publish { align-items:flex-start; flex-direction:column; } .publish-states { margin-left:0; } }
   </style>
 </head>
 <body>
-  <header>
-    <div class="wrap">
-      <h1>事件回報後台</h1>
-      <p class="sub">AI 只提供審核建議；事件資料需人工覆核後再處理。</p>
-      <div class="nav">
-        <a href="/admin-events.html">事件管理</a>
-        <a href="/admin-health.html">監控頁</a>
-        <a href="/">回地圖</a>
-      </div>
-      <nav class="admin-nav" aria-label="管理後台導覽">
-        <a href="/admin-events.html">事件管理</a><a href="/admin-submissions.html">投稿審核</a><a href="/admin-action-log.html">投稿紀錄</a><a href="/admin-refresh-log.html">抓取紀錄</a><a class="active" href="/admin-reports.html" aria-current="page">資料回報</a><a href="/admin-health.html">系統監控</a><a href="/">回到地圖</a>
-      </nav>
-      <div class="toolbar">
-        <input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" />
-        <select id="status">
-          <option value="">全部狀態</option>
-          <option value="new">new</option>
-          <option value="ai_reviewed">ai_reviewed</option>
-          <option value="accepted">accepted</option>
-          <option value="rejected">rejected</option>
-          <option value="resolved">resolved</option>
-        </select>
-        <button id="load" class="primary" type="button">載入</button>
-      </div>
-    </div>
-  </header>
-  <main class="wrap">
-    <div id="statusLine" class="status-line">尚未載入。</div>
-    <section id="reports"></section>
-    <section id="candidates"></section>
+  <header><div class="topbar"><div><span class="eyebrow">ISLAND PULSE · ADMIN</span><h1>資料回報分析</h1></div><div id="updated" class="updated">最近更新：尚未載入</div></div><nav class="admin-nav" aria-label="管理頁面"><a href="/admin-events.html">事件管理</a><a href="/admin-submissions.html">活動投稿</a><a href="/admin-action-log.html">操作紀錄</a><a href="/admin-refresh-log.html">更新紀錄</a><a class="active" href="/admin-reports.html" aria-current="page">資料回報</a><a href="/admin-health.html">系統健康</a><a href="/">回到地圖</a></nav></header>
+  <main class="shell">
+    <section class="summary-grid" aria-label="回報統計"><article class="metric hero"><span class="metric-label">今日新增回報</span><strong id="todayCount">—</strong><small>近 24 小時收到的資料品質回報</small></article><article class="metric"><span class="metric-label">待處理</span><strong id="pendingCount">—</strong><small>new / AI 審核中</small></article><article class="metric"><span class="metric-label">接受</span><strong id="acceptedCount">—</strong><small>已確認有效</small></article><article class="metric"><span class="metric-label">拒絕</span><strong id="rejectedCount">—</strong><small>不成立或重複</small></article><article class="metric"><span class="metric-label">解決</span><strong id="resolvedCount">—</strong><small>已完成修正</small></article><article class="metric"><span class="metric-label">有效率</span><strong id="efficiency">—</strong><small>接受 ÷ 已審核</small></article></section>
+    <section class="analytics"><article class="panel"><div class="panel-head"><h2>最近 30 天回報趨勢</h2><div class="legend"><span><i style="background:#4565ad"></i>新增</span><span><i style="background:#277c63"></i>接受</span><span><i style="background:#b74b5f"></i>拒絕</span></div></div><div id="trend" class="trend"></div><div class="trend-labels"><span>30 天前</span><span>15 天前</span><span>今天</span></div></article><article class="panel"><div class="panel-head"><h2>狀態分布</h2><span class="panel-note">全部回報</span></div><div id="statusDistribution" class="distribution"></div></article></section>
+    <section class="split-charts"><article class="panel mini-chart"><h2>錯誤類型分布</h2><div id="typeDistribution" class="type-list"></div></article><article class="panel mini-chart"><h2>城市／分類分布</h2><div id="locationDistribution" class="type-list"></div></article></section>
+    <section class="review"><div class="section-heading"><div><h2>回報審核</h2><p>快速篩選、檢視 AI 建議並留下審核紀錄。</p></div></div><div class="filters"><input id="token" type="password" placeholder="REPORT_ADMIN_TOKEN" autocomplete="off" aria-label="管理權杖"><select id="dateFilter" aria-label="日期"><option value="">所有日期</option><option value="today">今天</option><option value="7">最近 7 天</option><option value="30">最近 30 天</option></select><select id="statusFilter" aria-label="狀態"><option value="">所有狀態</option><option value="new">待處理</option><option value="ai_reviewed">AI 已審核</option><option value="accepted">接受</option><option value="rejected">拒絕</option><option value="resolved">解決</option></select><select id="cityFilter" aria-label="城市"><option value="">所有城市</option></select><select id="typeFilter" aria-label="類型"><option value="">所有類型</option></select><input id="search" type="search" placeholder="搜尋標題、內容、事件 ID"><button id="load" class="primary" type="button">套用篩選</button></div><div id="statusLine" class="loadbar">輸入管理權杖後載入資料。</div><div id="reports" class="report-list"></div></section>
+    <section class="publish" aria-label="事件發布狀態"><div class="publish-title">事件發布狀態 <span>›</span></div><div id="publishStates" class="publish-states"><span>等待載入發布佇列</span></div></section>
   </main>
   <script>
-    const tokenEl = document.getElementById("token");
-    const statusEl = document.getElementById("status");
-    const reportsEl = document.getElementById("reports");
-    const statusLineEl = document.getElementById("statusLine");
-    tokenEl.value = sessionStorage.getItem("report_admin_token") || "";
-
-    function escapeHtml(value) {
-      return String(value || "").replace(/[&<>"']/g, (ch) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;"
-      }[ch]));
-    }
-
-    function formatDate(value) {
-      const date = new Date(value || "");
-      if (Number.isNaN(date.getTime())) return "";
-      return date.toLocaleString("zh-TW", { hour12: false });
-    }
-
-    function sourceLink(report) {
-      const url = report.eventSnapshot?.sourceUrl || report.eventSnapshot?.url || "";
-      if (!url) return "";
-      return `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">原始來源</a>`;
-    }
-
-    function renderReport(report) {
-      const ai = report.aiReview || {};
-      const snap = report.eventSnapshot || {};
-      const note = report.adminNote || "";
-      return `
-        <article class="report" data-report-id="${escapeHtml(report.reportId)}">
-          <div class="report-head">
-            <div>
-              <h2 class="title">${escapeHtml(report.title)}</h2>
-              <div class="meta">
-                <span class="tag">#${escapeHtml(report.reportId)}</span>
-                <span class="tag">event ${escapeHtml(report.eventId)}</span>
-                <span class="tag">status ${escapeHtml(report.status)}</span>
-                <span class="tag">${escapeHtml(report.errorType)}</span>
-                <span class="tag">${escapeHtml(formatDate(report.createdAt))}</span>
-                ${report.validReportCount ? `<span class="tag">同事件有效回報 ${escapeHtml(report.validReportCount)}</span>` : ""}
-              </div>
-            </div>
-            <div>${sourceLink(report)}</div>
-          </div>
-          <div class="message">${escapeHtml(report.message)}</div>
-          <div class="ai">
-            <span class="tag ai-${escapeHtml(ai.status || "unclear")}">AI ${escapeHtml(ai.status || "unclear")}</span>
-            <span class="tag">confidence ${Math.round(Number(ai.confidence || 0) * 100)}%</span>
-            <span class="tag">${escapeHtml(ai.suggestedAction || "needs_human_review")}</span>
-          </div>
-          <div class="summary">${escapeHtml(ai.summary || "AI 未啟用或尚未回傳。")}</div>
-          <div class="snapshot">
-            <span class="tag">${escapeHtml(snap.city || "未知城市")}</span>
-            <span class="tag">${escapeHtml(snap.category || "未知分類")}</span>
-            <span class="tag">lat ${escapeHtml(snap.lat ?? "")}</span>
-            <span class="tag">lng ${escapeHtml(snap.lng ?? "")}</span>
-          </div>
-          <div class="actions">
-            <textarea data-note placeholder="人工備註">${escapeHtml(note)}</textarea>
-            <button class="ok" type="button" data-update="accepted">accepted</button>
-            <button class="danger" type="button" data-update="rejected">rejected</button>
-            <button class="resolve" type="button" data-update="resolved">resolved</button>
-          </div>
-        </article>
-      `;
-    }
-
-    async function loadReports() {
-      const token = tokenEl.value.trim();
-      sessionStorage.setItem("report_admin_token", token);
-      const params = new URLSearchParams();
-      if (statusEl.value) params.set("status", statusEl.value);
-      statusLineEl.textContent = "載入中...";
-      reportsEl.innerHTML = "";
-      try {
-      const response = await fetch(`/api/reports?${params.toString()}`, { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-        const reports = Array.isArray(data.reports) ? data.reports : [];
-        statusLineEl.textContent = `共 ${data.total || reports.length} 筆，顯示 ${reports.length} 筆。`;
-        reportsEl.innerHTML = reports.length ? reports.map(renderReport).join("") : `<div class="empty">目前沒有符合條件的回報。</div>`;
-      } catch (error) {
-        statusLineEl.textContent = `載入失敗：${error.message}`;
-      }
-    }
-
-    async function updateReport(card, status) {
-      const token = tokenEl.value.trim();
-      const reportId = card.dataset.reportId;
-      const adminNote = card.querySelector("[data-note]")?.value || "";
-      const params = new URLSearchParams({ reportId });
-      const response = await fetch(`/api/reports?${params.toString()}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-        body: JSON.stringify({ status, adminNote })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-      await loadReports();
-    }
-
-    document.getElementById("load").addEventListener("click", loadReports);
-    statusEl.addEventListener("change", loadReports);
-    reportsEl.addEventListener("click", async (event) => {
-      const button = event.target.closest("[data-update]");
-      if (!button) return;
-      const card = button.closest(".report");
-      button.disabled = true;
-      try {
-        await updateReport(card, button.dataset.update);
-      } catch (error) {
-        alert(`更新失敗：${error.message}`);
-      } finally {
-        button.disabled = false;
-      }
-    });
-
-    const initialReportId = new URLSearchParams(location.search).get("reportId");
-    if (initialReportId) statusLineEl.textContent = `Discord 連結指定回報：${initialReportId}`;
+    const $ = (s) => document.querySelector(s); const tokenEl = $('#token'); const reportsEl = $('#reports'); let allReports = [];
+    tokenEl.value = sessionStorage.getItem('report_admin_token') || '';
+    const labels = { new:'待處理', ai_reviewed:'AI 已審核', accepted:'接受', rejected:'拒絕', resolved:'解決' };
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c])); }
+    function dateOf(v) { const d = new Date(v); return Number.isNaN(d.getTime()) ? null : d; } function dayKey(v) { const d=dateOf(v); return d ? `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` : ''; }
+    function isToday(v) { return dayKey(v) === dayKey(new Date()); } function countBy(items, fn) { return items.reduce((m,x)=>{const k=fn(x)||'未標示';m[k]=(m[k]||0)+1;return m;},{}); }
+    function fill(id, text) { $(id).textContent = text; } function renderBars(id, data, labelFn = x => x) { const values=Object.entries(data).sort((a,b)=>b[1]-a[1]).slice(0,6), max=Math.max(1,...values.map(x=>x[1])); $(id).innerHTML = values.length ? values.map(([key,n])=>`<div class="distribution-row"><span>${escapeHtml(labelFn(key))}</span><div class="bar"><span style="width:${n/max*100}%"></span></div><span class="count">${n}</span></div>`).join('') : '<div class="panel-note">尚無資料</div>'; }
+    function renderTrend(reports) { const days=[]; for(let i=29;i>=0;i--){const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()-i);days.push(dayKey(d));} const series=(predicate)=>days.map(day=>reports.filter(r=>dayKey(predicate(r))===day).length); const add=series(r=>r.createdAt), accepted=series(r=>r.status==='accepted'||r.status==='resolved'?r.updatedAt:r.createdAt), rejected=series(r=>r.status==='rejected'?r.updatedAt:r.createdAt), max=Math.max(1,...add,...accepted,...rejected); const points=a=>a.map((v,i)=>`${(i/29)*100},${100-(v/max)*86-5}`).join(' '); $('#trend').innerHTML=`<svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="回報趨勢圖"><polyline fill="none" stroke="#4565ad" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${points(add)}"/><polyline fill="none" stroke="#277c63" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${points(accepted)}"/><polyline fill="none" stroke="#b74b5f" stroke-width="1.5" vector-effect="non-scaling-stroke" points="${points(rejected)}"/></svg>`; }
+    function updateAnalytics() { const pending=allReports.filter(r=>r.status==='new'||r.status==='ai_reviewed'), accepted=allReports.filter(r=>r.status==='accepted'), rejected=allReports.filter(r=>r.status==='rejected'), resolved=allReports.filter(r=>r.status==='resolved'), reviewed=accepted.length+rejected.length+resolved.length; fill('#todayCount', allReports.filter(r=>isToday(r.createdAt)).length); fill('#pendingCount',pending.length); fill('#acceptedCount',accepted.length); fill('#rejectedCount',rejected.length); fill('#resolvedCount',resolved.length); fill('#efficiency', reviewed ? `${Math.round((accepted.length+resolved.length)/reviewed*100)}%` : '—'); renderTrend(allReports); renderBars('#statusDistribution',countBy(allReports,r=>r.status),k=>labels[k]||k); renderBars('#typeDistribution',countBy(allReports,r=>r.errorType)); renderBars('#locationDistribution',countBy(allReports,r=>r.eventSnapshot?.city || r.city || r.eventSnapshot?.category)); }
+    function populateSelect(id, values) { const el=$(id), current=el.value, first=el.options[0].outerHTML; el.innerHTML=first+[...values].filter(Boolean).sort().map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join(''); el.value=current; }
+    function filterReports() { const q=$('#search').value.trim().toLowerCase(), date=$('#dateFilter').value,status=$('#statusFilter').value,city=$('#cityFilter').value,type=$('#typeFilter').value,now=Date.now(); return allReports.filter(r=>{const d=dateOf(r.createdAt)?.getTime()||0; const hay=[r.title,r.message,r.reportId,r.eventId].join(' ').toLowerCase(); return (!status||r.status===status)&&(!city||(r.eventSnapshot?.city||r.city)===city)&&(!type||r.errorType===type)&&(!q||hay.includes(q))&&(!date||(date==='today'?isToday(r.createdAt):d>=now-Number(date)*864e5)); }); }
+    function renderReports() { const reports=filterReports(); $('#statusLine').textContent=`顯示 ${reports.length} / ${allReports.length} 筆回報`; reportsEl.innerHTML=reports.length?reports.map(renderReport).join(''):'<div class="empty">沒有符合目前篩選條件的回報。</div>'; }
+    function renderReport(r) { const ai=r.aiReview||{}, snap=r.eventSnapshot||{}, source=snap.sourceUrl||snap.url; return `<article class="report ${escapeHtml(r.status)}" data-report-id="${escapeHtml(r.reportId)}"><div class="report-head"><div><h3>${escapeHtml(r.title||'未命名回報')}</h3><div class="report-meta"><span class="tag status-${escapeHtml(r.status)}">${escapeHtml(labels[r.status]||r.status)}</span><span class="tag">${escapeHtml(r.errorType||'未分類')}</span><span class="tag">${escapeHtml(snap.city||r.city||'未標示城市')}</span><span class="tag">#${escapeHtml(r.reportId)}</span><span class="tag">${escapeHtml(dateOf(r.createdAt)?.toLocaleString('zh-TW',{hour12:false})||'')}</span></div></div>${source?`<a href="${escapeHtml(source)}" target="_blank" rel="noreferrer">查看來源</a>`:''}</div><div class="report-body"><p class="message">${escapeHtml(r.message||'')}</p><div class="ai-note"><strong>AI 審查 · ${escapeHtml(ai.status||'unclear')} · ${Math.round(Number(ai.confidence||0)*100)}%</strong><br>${escapeHtml(ai.summary||'尚無 AI 審查摘要。')}</div></div><div class="actions"><textarea data-note placeholder="留下審核備註">${escapeHtml(r.adminNote||'')}</textarea><button class="action accept" data-update="accepted">接受</button><button class="action reject" data-update="rejected">拒絕</button><button class="action resolve" data-update="resolved">解決</button></div></article>`; }
+    async function loadPublishStates() { const token=tokenEl.value.trim(); if(!token)return; try { const response=await fetch('/api/event-candidates',{headers:token?{Authorization:`Bearer ${token}`}:{},cache:'no-store'}); const data=await response.json(); if(!response.ok)throw new Error(data.error); const tally=countBy(data.candidates||[],c=>c.status); const states=['pending','publishing','published','failed']; $('#publishStates').innerHTML=states.map(s=>`<span>${s} <b>${tally[s]||0}</b></span>`).join('<span>｜</span>'); } catch { $('#publishStates').innerHTML='<span>發布佇列暫時無法載入</span>'; } }
+    async function loadReports() { const token=tokenEl.value.trim(); sessionStorage.setItem('report_admin_token',token); $('#statusLine').textContent='正在載入回報資料…'; reportsEl.innerHTML=''; try { const response=await fetch('/api/reports?limit=500',{cache:'no-store',headers:token?{Authorization:`Bearer ${token}`}:{}}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`); allReports=Array.isArray(data.reports)?data.reports:[]; populateSelect('#cityFilter',new Set(allReports.map(r=>r.eventSnapshot?.city||r.city))); populateSelect('#typeFilter',new Set(allReports.map(r=>r.errorType))); updateAnalytics(); renderReports(); $('#updated').textContent=`最近更新：${new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit',hour12:false})}`; loadPublishStates(); } catch(error) { $('#statusLine').textContent=`載入失敗：${error.message}`; reportsEl.innerHTML='<div class="empty">請確認管理權杖後重試。</div>'; } }
+    async function updateReport(card,status) { const response=await fetch(`/api/reports?reportId=${encodeURIComponent(card.dataset.reportId)}`,{method:'PATCH',headers:{'Content-Type':'application/json',...(tokenEl.value.trim()?{Authorization:`Bearer ${tokenEl.value.trim()}`}:{})},body:JSON.stringify({status,adminNote:card.querySelector('[data-note]').value})}); const data=await response.json().catch(()=>({})); if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`); await loadReports(); }
+    $('#load').addEventListener('click',loadReports); ['#dateFilter','#statusFilter','#cityFilter','#typeFilter'].forEach(id=>$(id).addEventListener('change',renderReports)); $('#search').addEventListener('input',renderReports); reportsEl.addEventListener('click',async e=>{const b=e.target.closest('[data-update]');if(!b)return; b.disabled=true;try{await updateReport(b.closest('.report'),b.dataset.update);}catch(err){$('#statusLine').textContent=`更新失敗：${err.message}`;}finally{b.disabled=false;}}); if(tokenEl.value)loadReports();
   </script>
-<script>
-async function loadCandidates(){const token=tokenEl.value.trim(),el=document.getElementById('candidates');if(!token)return;try{const r=await fetch('/api/event-candidates',{headers:{Authorization:`Bearer ${token}`},cache:'no-store'}),d=await r.json();if(!r.ok)throw new Error(d.error);el.innerHTML=(d.candidates||[]).map(c=>{if(c.status!=='published'||!c.publishedEventId)return `<article class="report"><b>${escapeHtml(c.source)}</b> <span class="tag">${escapeHtml(c.status)}</span></article>`;const id=encodeURIComponent(c.publishedEventId);return `<article class="report"><b>${escapeHtml(c.source)}</b> <span class="tag">published</span> <a href="/admin-events.html?event=${id}">在事件管理開啟</a> <a href="/?event=${id}#map">在公開地圖查看</a></article>`}).join('')}catch(e){el.innerHTML='<p class="status-line">無法載入 candidate</p>'}}
-document.getElementById('load').addEventListener('click',loadCandidates);
-</script></body>
+</body>
 </html>
