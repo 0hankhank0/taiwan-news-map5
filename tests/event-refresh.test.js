@@ -308,8 +308,30 @@ async function call(handler, req) {
   assert.equal(applyEventQueryFilters(sampleEvents, { q: "music" })[0].title, "Concert");
   assert.equal(applyEventQueryFilters(sampleEvents, { limit: "1" }).length, 1);
 
-  // KKTIX only retries transient upstream statuses and records bounded, redacted diagnostics.
+  // iCulture creates one map event per valid future showInfo session and uses its official coordinates.
   const originalFetch = global.fetch;
+  const cultureStart = new Date(Date.now() + 60 * 60 * 1000);
+  const cultureEnd = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  const twDate = (date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(date).replace(", ", " ").replaceAll("-", "/");
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ([
+    { UID: "culture-1", title: "iCulture test activity", showInfo: [
+      { time: twDate(cultureStart), endTime: twDate(cultureEnd), location: "\u81fa\u5317\u5e02\u4e2d\u6b63\u5340\u6e2c\u8a66\u8def 1 \u865f", locationName: "\u6587\u5316\u5834\u9928", latitude: "25.0478", longitude: "121.5170" },
+      { time: twDate(cultureStart), endTime: twDate(cultureEnd), location: "\u81fa\u5317\u5e02\u4e2d\u6b63\u5340\u6e2c\u8a66\u8def 1 \u865f", locationName: "\u6587\u5316\u5834\u9928", latitude: "25.0478", longitude: "121.5170" },
+      { time: twDate(cultureStart), endTime: twDate(cultureEnd), location: "\u672a\u77e5\u5730\u5740", latitude: "25.0478", longitude: "121.5170" },
+      { time: twDate(cultureStart), endTime: twDate(cultureEnd), location: "\u81fa\u5317\u5e02\u4e2d\u6b63\u5340\u6e2c\u8a66\u8def 2 \u865f", latitude: "0", longitude: "0" },
+    ] },
+  ]) });
+  const cultureEvents = await eventRefresh.fetchCultureActivityEvents(Date.now());
+  assert.equal(cultureEvents.length, 1);
+  assert.equal(cultureEvents[0].source, "iCulture");
+  assert.equal(cultureEvents[0].sourceName, "iCulture");
+  assert.equal(cultureEvents[0].address, "\u81fa\u5317\u5e02\u4e2d\u6b63\u5340\u6e2c\u8a66\u8def 1 \u865f");
+  assert.equal(cultureEvents[0].venue, "\u6587\u5316\u5834\u9928");
+  assert.equal(cultureEvents[0].lat, 25.0478);
+  assert.equal(cultureEvents[0].lng, 121.517);
+  assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "iculture").status, "success");
+
+  // KKTIX only retries transient upstream statuses and records bounded, redacted diagnostics.
   global.fetch = async () => ({ ok: true, text: async () => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>KKTIX test activity</title><link href="https://kktix.com/events/test"/><content type="html"><![CDATA[Time: 2099/07/20 19:00 ~ 2099/07/20 21:00\nLocation: Test venue / Taipei]]></content></entry></feed>` });
   await eventRefresh.fetchKktixActivityEvents(Date.now());
   assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "kktix").status, "success");
@@ -352,11 +374,20 @@ async function call(handler, req) {
     if (String(url).includes("kktix")) {
       return { ok: false, status: 403, url: String(url), headers: new Headers({ "content-type": "text/html", server: "cloudflare" }), text: async () => "Cloudflare bot protection" };
     }
+    if (String(url).includes("cloud.culture.tw")) {
+      return { ok: true, status: 200, url: String(url), json: async () => ([{
+        UID: "culture-after-kktix-block", title: "iCulture remains available", showInfo: [{
+          time: twDate(cultureStart), endTime: twDate(cultureEnd), location: "\u81fa\u5317\u5e02\u4e2d\u6b63\u5340\u6e2c\u8a66\u8def 1 \u865f", locationName: "\u6587\u5316\u5834\u9928", latitude: "25.0478", longitude: "121.5170",
+        }],
+      }]) };
+    }
     return { ok: true, status: 200, url: String(url), headers: new Headers({ "content-type": "application/rss+xml" }), text: async () => rssFeed };
   };
   const sourcesAfterKktixBlock = await eventRefresh.fetchDefaultSources("news", Date.now(), { skipAi: true });
   axios.get = originalAxiosGet;
   assert.equal(sourcesAfterKktixBlock.__collectorResults.rss.status, "success");
+  assert.equal(sourcesAfterKktixBlock.__collectorResults.iculture.status, "success");
+  assert.equal(sourcesAfterKktixBlock.cultureActivityEvents.length, 1);
   assert.equal(sourcesAfterKktixBlock.__collectorResults.kktix.status, "failed");
   const integrationStatus = await call(eventsApi, { method: "GET", query: { integrationStatus: "1" }, url: "/api/integrations/events/status" });
   assert.equal(integrationStatus.statusCode, 200);

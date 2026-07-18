@@ -23,6 +23,7 @@ const {
 const {
   buildLocationQuery,
   getCityBounds,
+  inferCityFromText: inferTaiwanCityFromText,
   isCoordInCity,
   isValidTaiwanCoord,
   makeGeocodingCacheKey,
@@ -79,6 +80,9 @@ const MIN_EVENT_CACHE_TTL_SECONDS = 60 * 60;
 const DEFAULT_EVENT_CACHE_TTL_SECONDS = 60 * 60 * 6;
 const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
 const KKTIX_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+const ICULTURE_ACTIVITY_FEED = "https://cloud.culture.tw/frontsite/trans/SearchShowAction.do?category=all&method=doFindTypeJ";
+const ICULTURE_TIMEOUT_MS = 3000;
+const ICULTURE_MAX_EVENTS = 30;
 const { recordEventIntegrationStatus } = require("./integration-store");
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
@@ -878,6 +882,87 @@ async function fetchKktixActivityEvents(startedAt) {
   }
 }
 
+function parseICultureDate(value = "") {
+  const match = String(value || "").trim().match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!match) return null;
+  const [, year, month, day, hour = "0", minute = "0", second = "0"] = match;
+  const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}+08:00`);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function getICultureShowInfo(activity) {
+  const value = activity?.showinfo ?? activity?.showInfo ?? [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch { return []; }
+  }
+  return [];
+}
+
+function buildICultureSourceUrl(uid) {
+  const endpoint = String(process.env.ICULTURE_ACTIVITY_FEED_URL || ICULTURE_ACTIVITY_FEED).trim();
+  return uid ? `${endpoint}${endpoint.includes("?") ? "&" : "?"}uid=${encodeURIComponent(uid)}` : endpoint;
+}
+
+async function fetchCultureActivityEvents(startedAt) {
+  const attemptedAt = new Date().toISOString();
+  try {
+    if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
+    const endpoint = String(process.env.ICULTURE_ACTIVITY_FEED_URL || ICULTURE_ACTIVITY_FEED).trim();
+    const response = await fetch(endpoint, {
+      signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
+      headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
+    });
+    if (!response.ok) {
+      const error = new Error(`iCulture HTTP ${Number(response.status) || "request failed"}`);
+      error.httpStatus = Number(response.status) || null;
+      throw error;
+    }
+    const payload = await response.json();
+    const activities = Array.isArray(payload) ? payload : (Array.isArray(payload?.data) ? payload.data : []);
+    const now = Date.now();
+    const windowEnd = now + 30 * 24 * 60 * 60 * 1000;
+    const seen = new Set();
+    const events = [];
+    for (const activity of activities) {
+      const uid = String(activity?.UID ?? activity?.uid ?? activity?.id ?? "").trim();
+      const title = String(activity?.title ?? activity?.name ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (!uid || !title) continue;
+      for (const show of getICultureShowInfo(activity)) {
+        const startsAt = parseICultureDate(show?.time ?? show?.startTime ?? show?.startDate);
+        const endsAt = parseICultureDate(show?.endTime ?? show?.endtime) || startsAt;
+        if (!startsAt || !endsAt || endsAt < now || startsAt > windowEnd) continue;
+        const lat = Number(show?.latitude ?? show?.lat);
+        const lng = Number(show?.longitude ?? show?.lng ?? show?.lon);
+        const address = String(show?.location ?? show?.address ?? "").replace(/\s+/g, " ").trim();
+        const venue = String(show?.locationName ?? show?.venue ?? "").replace(/\s+/g, " ").trim();
+        const city = inferTaiwanCityFromText(`${address} ${venue} ${title}`) || inferCityFromText(`${address} ${venue} ${title}`)?.city;
+        if (!isValidTaiwanCoord(lat, lng) || !city) continue;
+        const dedupeKey = `${uid}:${startsAt}`;
+        if (seen.has(dedupeKey)) continue;
+        seen.add(dedupeKey);
+        const sourceUrl = buildICultureSourceUrl(uid);
+        events.push(enrichCronEvent({
+          id: `iCulture_${uid}_${startsAt}`.replace(/[^A-Za-z0-9_-]/g, "_"), title,
+          content: String(activity?.descriptionFilterHtml ?? activity?.description ?? venue ?? title).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220),
+          category: "activity", url: sourceUrl, sourceUrl, address, venue, location: address || venue,
+          lat, lng, city, district: extractDistrict(address), source: "iCulture", sourceName: "iCulture",
+          eventFingerprint: `iculture:${dedupeKey}`, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(),
+          expiresAt: Math.min(endsAt + 2 * 60 * 60 * 1000, windowEnd), createdAt: now,
+        }));
+        if (events.length >= ICULTURE_MAX_EVENTS) break;
+      }
+      if (events.length >= ICULTURE_MAX_EVENTS) break;
+    }
+    await recordEventIntegrationStatus("iculture", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: activities.length, insertedCount: events.length, duplicateCount: Math.max(0, activities.length - events.length), failedCount: 0, lastErrorType: null, lastDiagnostic: null });
+    return events;
+  } catch (error) {
+    console.warn("[cron] iCulture activity fetch failed:", error.message);
+    await recordEventIntegrationStatus("iculture", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", lastDiagnostic: error.httpStatus ? { httpStatus: error.httpStatus } : null, failedCount: 1 });
+    throw error;
+  }
+}
+
 function getAzureOpenAiConfig() {
   const endpoint = String(process.env.AZURE_OPENAI_ENDPOINT || "").trim().replace(/\/+$/, "");
   const apiVersion = String(process.env.AZURE_OPENAI_API_VERSION || "").trim();
@@ -1456,6 +1541,8 @@ function emptySources() {
     rssItems: [],
     tdxEvents: [],
     constructionEvents: [],
+    cultureActivityEvents: [],
+    kktixActivityEvents: [],
     activityEvents: [],
     aiEvents: [],
     ruleBasedEvents: [],
@@ -1526,7 +1613,12 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     const azureOpenAiConfig = getAzureOpenAiConfig();
     sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
-    sources.__collectorResults.kktix = await runCollector("KKTIX 活動", () => fetchKktixActivityEvents(startedAt)); sources.activityEvents = sources.__collectorResults.kktix.items;
+    sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt));
+    sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
+    if (sources.__collectorResults.iculture.status === "failed") sourceFailure("iculture", sources.__collectorResults.iculture.reason);
+    sources.__collectorResults.kktix = await runCollector("KKTIX 活動", () => fetchKktixActivityEvents(startedAt));
+    sources.kktixActivityEvents = sources.__collectorResults.kktix.items;
+    sources.activityEvents = [...sources.cultureActivityEvents, ...sources.kktixActivityEvents];
     if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
   }
 
@@ -1556,7 +1648,7 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
 
 const REFRESH_SOURCE_FIELDS = Object.freeze([
   ["rss", "rssItems", "RSS 新聞"], ["tdxTraffic", "tdxEvents", "TDX 即時交通"],
-  ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["kktix", "activityEvents", "KKTIX 活動"],
+  ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["iculture", "cultureActivityEvents", "iCulture 活動"], ["kktix", "kktixActivityEvents", "KKTIX 活動"],
   ["ai", "aiEvents", "AI 提取事件"], ["ruleBased", "ruleBasedEvents", "規則式提取事件"],
 ]);
 
@@ -1729,6 +1821,7 @@ module.exports = {
   enrichCronEvent,
   enrichEventLocations,
   fetchKktixActivityEvents,
+  fetchCultureActivityEvents,
   buildKktixResponseDiagnostic,
   fetchDefaultSources,
   isGenericCmsNotice,
