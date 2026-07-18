@@ -36,13 +36,33 @@ const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content
 const { notifyRefreshAlert } = require("./refresh-alerts");
 
 const Parser = require("rss-parser");
-const axios = require("axios");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
 
 // ?? ??????????????????????
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+function buildRequestUrl(input, params = {}) {
+  const url = new URL(String(input));
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, String(value));
+  }
+  return url;
+}
+
+async function fetchResponse(input, { method = "GET", headers, body, params, timeout = 2000 } = {}) {
+  const response = await fetch(buildRequestUrl(input, params), {
+    method,
+    headers,
+    body,
+    signal: AbortSignal.timeout(timeout),
+  });
+  if (response.ok) return response;
+  const error = new Error(`HTTP ${response.status}`);
+  error.response = { status: response.status };
+  throw error;
+}
 
 const parser = new Parser();
 
@@ -224,15 +244,14 @@ function getRemainingTime(startedAt) {
 
 async function fetchOneRssFeed(rssUrl, startedAt) {
   try {
-    const xmlResponse = await axios.get(rssUrl, {
+    const xmlResponse = await fetchResponse(rssUrl, {
       timeout: Math.max(800, Math.min(RSS_TIMEOUT_MS, getRemainingTime(startedAt) - 200)),
-      responseType: "text",
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         Accept: "application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
       },
     });
-    const feed = await parser.parseString(String(xmlResponse.data || ""));
+    const feed = await parser.parseString(await xmlResponse.text());
     return feed.items || [];
   } catch (error) {
     console.warn(`[cron] RSS fetch failed for ${rssUrl}:`, error.message);
@@ -241,19 +260,20 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
 }
 
 async function fetchTDXAccessToken(startedAt) {
-  const response = await axios.post(
+  const response = await fetchResponse(
     "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
-    new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: process.env.TDX_CLIENT_ID,
-      client_secret: process.env.TDX_CLIENT_SECRET,
-    }),
     {
+      method: "POST",
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: process.env.TDX_CLIENT_ID,
+        client_secret: process.env.TDX_CLIENT_SECRET,
+      }),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 200)),
     }
   );
-  return response.data?.access_token || "";
+  return (await response.json())?.access_token || "";
 }
 
 function getTdxHeaders(accessToken) {
@@ -413,11 +433,11 @@ function normalizeCmsConstructionRecord(item, source) {
   };
 }
 async function fetchTdxJson(url, headers, startedAt) {
-  const response = await axios.get(url, {
+  const response = await fetchResponse(url, {
     headers,
     timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
   });
-  return response.data;
+  return response.json();
 }
 
 // ?? ????? for...of ???????????
@@ -1321,7 +1341,7 @@ async function geocodeLocationWithMapbox(event, location, startedAt) {
     const endpoint = useMapboxPermanentGeocoding() ? "mapbox.places-permanent" : "mapbox.places";
     const url = `https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(query)}.json`;
     const bbox = getCityBboxParam(location.city);
-    const response = await axios.get(url, {
+    const response = await fetchResponse(url, {
       params: {
         access_token: token,
         country: "tw",
@@ -1333,7 +1353,8 @@ async function geocodeLocationWithMapbox(event, location, startedAt) {
       },
       timeout: Math.max(800, Math.min(1800, remaining - 300)),
     });
-    const features = Array.isArray(response.data?.features) ? response.data.features : [];
+    const payload = await response.json();
+    const features = Array.isArray(payload?.features) ? payload.features : [];
     const candidates = features.map((feature) => {
       const center = Array.isArray(feature?.center) ? feature.center : [];
       const context = Array.isArray(feature?.context) ? feature.context.map((item) => item.text || item.short_code || "").join(" ") : "";
@@ -1372,7 +1393,7 @@ async function geocodeLocationWithGeoapify(event, location, startedAt) {
   try {
     const bbox = getCityBboxParam(location.city);
     const filter = bbox ? `rect:${bbox}|countrycode:tw` : "countrycode:tw";
-    const response = await axios.get("https://api.geoapify.com/v1/geocode/search", {
+    const response = await fetchResponse("https://api.geoapify.com/v1/geocode/search", {
       params: {
         text: query,
         apiKey: token,
@@ -1384,7 +1405,8 @@ async function geocodeLocationWithGeoapify(event, location, startedAt) {
       },
       timeout: Math.max(800, Math.min(1800, remaining - 300)),
     });
-    const rows = Array.isArray(response.data?.results) ? response.data.results : [];
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.results) ? payload.results : [];
     const candidates = rows.map((row) => ({
       source: "geoapify",
       lat: Number(row.lat),

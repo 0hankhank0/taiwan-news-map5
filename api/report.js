@@ -1,4 +1,3 @@
-const axios = require("axios");
 const { createReport, getPublicReportSummary } = require("../report-store");
 
 const AI_STATUSES = new Set(["valid", "likely_valid", "unclear", "likely_invalid", "spam"]);
@@ -240,7 +239,13 @@ async function notifyDiscord(req, report) {
   };
 
   try {
-    await axios.post(webhookUrl, payload, { headers: { "Content-Type": "application/json" } });
+    const response = await fetch(new URL(webhookUrl), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!response.ok) throw new Error(`Discord webhook HTTP ${response.status}`);
   } catch (error) {
     console.warn("[report] Discord webhook failed:", error.message);
   }

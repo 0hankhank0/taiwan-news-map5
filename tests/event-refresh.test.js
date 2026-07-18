@@ -367,9 +367,6 @@ async function call(handler, req) {
   assert.equal(JSON.stringify(blockedStatus.lastDiagnostic).includes("hidden-value"), false);
 
   const rssFeed = `<?xml version="1.0"?><rss version="2.0"><channel><title>test</title><item><title>Taipei event</title><link>https://example.test/event</link><description>Road event in Taipei</description></item></channel></rss>`;
-  const axios = require("axios");
-  const originalAxiosGet = axios.get;
-  axios.get = async () => ({ data: rssFeed });
   global.fetch = async (url) => {
     if (String(url).includes("kktix")) {
       return { ok: false, status: 403, url: String(url), headers: new Headers({ "content-type": "text/html", server: "cloudflare" }), text: async () => "Cloudflare bot protection" };
@@ -384,7 +381,6 @@ async function call(handler, req) {
     return { ok: true, status: 200, url: String(url), headers: new Headers({ "content-type": "application/rss+xml" }), text: async () => rssFeed };
   };
   const sourcesAfterKktixBlock = await eventRefresh.fetchDefaultSources("news", Date.now(), { skipAi: true });
-  axios.get = originalAxiosGet;
   assert.equal(sourcesAfterKktixBlock.__collectorResults.rss.status, "success");
   assert.equal(sourcesAfterKktixBlock.__collectorResults.iculture.status, "success");
   assert.equal(sourcesAfterKktixBlock.cultureActivityEvents.length, 1);
