@@ -610,8 +610,8 @@ async function appendRefreshLog(entry = {}) {
 function createLockPayload(owner, ttlSeconds) {
   const now = Date.now();
   return {
-    owner,
-    startedAt: new Date(now).toISOString(),
+    ownerRunId: owner,
+    acquiredAt: new Date(now).toISOString(),
     expiresAt: new Date(now + ttlSeconds * 1000).toISOString(),
   };
 }
@@ -620,15 +620,37 @@ async function acquireCronLock(options = {}) {
   const ttlSeconds = Math.max(30, Number(options.ttlSeconds || process.env.CRON_LOCK_TTL_SECONDS || DEFAULT_CRON_LOCK_TTL_SECONDS));
   const owner = String(options.owner || `cron-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   const lock = createLockPayload(owner, ttlSeconds);
-  const acquired = await trySetCachedValue(CRON_LOCK_KEY, lock, { ex: ttlSeconds });
-  if (acquired) return { acquired: true, lock };
-  return { acquired: false, lock: await getCronLockStatus() };
+  let acquired = await trySetCachedValue(CRON_LOCK_KEY, lock, { ex: ttlSeconds });
+  if (acquired) return { acquired: true, lock: getCronLockStatusPayload(lock) };
+
+  // A lock can expire or be released between the failed NX write and the
+  // status read. Retry once so callers never report a lock skip with
+  // `locked: false`.
+  let current = await getCronLockStatus();
+  if (!current.locked) {
+    acquired = await trySetCachedValue(CRON_LOCK_KEY, lock, { ex: ttlSeconds });
+    if (acquired) return { acquired: true, lock: getCronLockStatusPayload(lock) };
+    current = await getCronLockStatus();
+  }
+
+  if (current.locked) return { acquired: false, lock: current };
+  throw new Error("Cron lock state changed before acquisition; retry request");
 }
 
 async function releaseCronLock(owner) {
   const current = await getCachedValue(CRON_LOCK_KEY);
-  if (owner && current?.owner && current.owner !== owner) return false;
+  const currentOwner = current?.ownerRunId || current?.owner;
+  if (owner && currentOwner && currentOwner !== owner) return false;
   return deleteCachedValue(CRON_LOCK_KEY);
+}
+
+function getCronLockStatusPayload(lock) {
+  return {
+    locked: true,
+    ownerRunId: String(lock.ownerRunId || lock.owner || ""),
+    acquiredAt: String(lock.acquiredAt || lock.startedAt || ""),
+    expiresAt: String(lock.expiresAt || ""),
+  };
 }
 
 async function getCronLockStatus() {
@@ -643,12 +665,7 @@ async function getCronLockStatus() {
     return { locked: false };
   }
 
-  return {
-    locked: true,
-    owner: lock.owner || "",
-    startedAt: lock.startedAt || "",
-    expiresAt: lock.expiresAt || "",
-  };
+  return getCronLockStatusPayload(lock);
 }
 
 function findEventIndex(events, eventId) {

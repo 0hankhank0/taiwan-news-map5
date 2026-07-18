@@ -40,7 +40,19 @@ module.exports = async (req, res) => {
   const startedAt = Date.now();
   const runId = `cron-${startedAt}-${Math.random().toString(36).slice(2, 8)}`;
   const mode = getMode(req);
-  const lockResult = await acquireCronLock({ owner: runId });
+  let lockResult;
+  try {
+    lockResult = await acquireCronLock({ owner: runId });
+  } catch (error) {
+    console.error("[cron] Lock acquisition failed:", error.message);
+    return sendJson(res, 503, {
+      success: false,
+      skippedByLock: false,
+      runId,
+      durationMs: Date.now() - startedAt,
+      error: "Cron lock unavailable",
+    });
+  }
 
   if (!lockResult.acquired) {
     const completedAt = new Date().toISOString();

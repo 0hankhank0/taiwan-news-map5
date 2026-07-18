@@ -70,8 +70,8 @@ jobs:
             process.exit(1);
           }
           if (payload.skippedByLock) {
-            console.error(`::error::Cron skipped by active lock: ${JSON.stringify(payload.lock || {})}`);
-            process.exit(1);
+            console.warn(`::warning::Cron skipped because another refresh owns the active lock: ${JSON.stringify(payload.lock || {})}`);
+            process.exit(0);
           }
           if (process.env.MODE === "all" && count <= 0) {
             console.error("::error::Cron returned zero active events for mode=all.");

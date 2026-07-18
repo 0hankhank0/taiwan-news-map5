@@ -22,11 +22,13 @@ const {
   deleteCachedValue,
   getCachedEvents,
   getCachedValue,
+  getCronLockStatus,
   getRefreshStatus,
   getRefreshLog,
   getRefreshRunDetail,
   releaseCronLock,
   saveRefreshRunDetail,
+  setCachedValue,
 } = require("../event-store");
 const { applyEventQueryFilters } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
@@ -64,6 +66,30 @@ async function call(handler, req) {
   await deleteCachedValue(CRON_LOCK_KEY);
 
   assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
+  const firstLock = await acquireCronLock({ owner: "lock-owner", ttlSeconds: 60 });
+  assert.equal(firstLock.acquired, true);
+  assert.equal(firstLock.lock.locked, true);
+  assert.equal(firstLock.lock.ownerRunId, "lock-owner");
+  assert.ok(firstLock.lock.acquiredAt);
+  assert.ok(firstLock.lock.expiresAt);
+  const duplicateLock = await acquireCronLock({ owner: "duplicate-owner", ttlSeconds: 60 });
+  assert.equal(duplicateLock.acquired, false);
+  assert.equal(duplicateLock.lock.locked, true);
+  assert.equal(duplicateLock.lock.ownerRunId, "lock-owner");
+  assert.equal(await releaseCronLock("duplicate-owner"), false);
+  assert.equal((await getCronLockStatus()).locked, true);
+  assert.equal(await releaseCronLock("lock-owner"), true);
+  assert.deepEqual(await getCronLockStatus(), { locked: false });
+
+  await setCachedValue(CRON_LOCK_KEY, {
+    ownerRunId: "expired-owner",
+    acquiredAt: new Date(Date.now() - 120000).toISOString(),
+    expiresAt: new Date(Date.now() - 60000).toISOString(),
+  });
+  assert.deepEqual(await getCronLockStatus(), { locked: false });
+  const lockAfterExpiry = await acquireCronLock({ owner: "after-expiry", ttlSeconds: 60 });
+  assert.equal(lockAfterExpiry.acquired, true);
+  await releaseCronLock("after-expiry");
   assert.equal(eventRefresh.DEFAULT_EVENT_CACHE_TTL_SECONDS, 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
@@ -331,6 +357,7 @@ async function call(handler, req) {
   assert.equal(ok.payload.mode, "traffic");
   assert.equal(ok.payload.events, undefined);
   assert.equal(ok.payload.geocodingHits, 0);
+  assert.deepEqual(await getCronLockStatus(), { locked: false });
 
   await acquireCronLock({ owner: "other-run", ttlSeconds: 60 });
   const skipped = await call(cron, {
@@ -339,11 +366,26 @@ async function call(handler, req) {
   });
   assert.equal(skipped.statusCode, 200);
   assert.equal(skipped.payload.skippedByLock, true);
+  assert.equal(skipped.payload.lock.locked, true);
+  assert.equal(skipped.payload.lock.ownerRunId, "other-run");
+  assert.ok(skipped.payload.lock.acquiredAt);
+  assert.ok(skipped.payload.lock.expiresAt);
   const skippedLog = (await getRefreshLog())[0];
   assert.equal(skippedLog.status, "skipped");
   assert.equal(skippedLog.skippedReason, "cron_lock");
   assert.equal((await getRefreshRunDetail(skippedLog.runId)).status, "skipped");
   await releaseCronLock("other-run");
+
+  eventRefresh.runEventRefresh = async () => { throw new Error("expected refresh failure"); };
+  delete require.cache[require.resolve("../api/cron")];
+  const failingCron = require("../api/cron");
+  const failed = await call(failingCron, {
+    method: "POST",
+    headers: { authorization: "Bearer cron-test-secret" },
+  });
+  assert.equal(failed.statusCode, 500);
+  assert.equal(failed.payload.success, false);
+  assert.deepEqual(await getCronLockStatus(), { locked: false });
 
   for (let index = 0; index < 51; index += 1) {
     await saveRefreshRunDetail({ runId: `retention-${index}`, startedAt: new Date(now + index * 1000).toISOString(), completedAt: new Date(now + index * 1000).toISOString(), status: "success", mode: "all", sources: {}, pipeline: {}, finalEvents: [] });
