@@ -1,4 +1,3 @@
-require("dotenv").config();
 const {
   getCachedEvents,
   getOfficialEvents,
@@ -39,6 +38,7 @@ const Parser = require("rss-parser");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
 
 // ?? ??????????????????????
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -103,6 +103,9 @@ const KKTIX_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const ICULTURE_ACTIVITY_FEED = "https://cloud.culture.tw/frontsite/trans/SearchShowAction.do?category=all&method=doFindTypeJ";
 const ICULTURE_TIMEOUT_MS = 3000;
 const ICULTURE_MAX_EVENTS = 30;
+const TOURISM_EVENTS_FEED = "https://media.taiwan.net.tw/XMLReleaseAll_public/v2.0/Zh_tw/Event-json.zip";
+const TOURISM_EVENTS_TIMEOUT_MS = 5000;
+const TOURISM_EVENTS_MAX_EVENTS = 100;
 const { recordEventIntegrationStatus } = require("./integration-store");
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
@@ -983,6 +986,99 @@ async function fetchCultureActivityEvents(startedAt) {
   }
 }
 
+function extractZipJson(buffer) {
+  const archive = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+  const endOffset = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  if (endOffset < 0) throw new Error("Tourism Events response is not a ZIP archive");
+  const centralDirectoryOffset = archive.readUInt32LE(endOffset + 16);
+  let offset = centralDirectoryOffset;
+  while (offset + 46 <= archive.length && archive.readUInt32LE(offset) === 0x02014b50) {
+    const compression = archive.readUInt16LE(offset + 10);
+    const compressedSize = archive.readUInt32LE(offset + 20);
+    const fileNameLength = archive.readUInt16LE(offset + 28);
+    const extraLength = archive.readUInt16LE(offset + 30);
+    const commentLength = archive.readUInt16LE(offset + 32);
+    const localOffset = archive.readUInt32LE(offset + 42);
+    const fileName = archive.subarray(offset + 46, offset + 46 + fileNameLength).toString("utf8");
+    if (/\.json$/i.test(fileName)) {
+      if (archive.readUInt32LE(localOffset) !== 0x04034b50) throw new Error("Tourism Events ZIP has an invalid local entry");
+      const localNameLength = archive.readUInt16LE(localOffset + 26);
+      const localExtraLength = archive.readUInt16LE(localOffset + 28);
+      const bodyStart = localOffset + 30 + localNameLength + localExtraLength;
+      const compressed = archive.subarray(bodyStart, bodyStart + compressedSize);
+      if (compression === 0) return JSON.parse(compressed.toString("utf8").replace(/^\uFEFF/, ""));
+      if (compression === 8) return JSON.parse(zlib.inflateRawSync(compressed).toString("utf8").replace(/^\uFEFF/, ""));
+      throw new Error(`Tourism Events ZIP uses unsupported compression ${compression}`);
+    }
+    offset += 46 + fileNameLength + extraLength + commentLength;
+  }
+  throw new Error("Tourism Events ZIP does not contain a JSON file");
+}
+
+function parseTourismDate(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const timestamp = Date.parse(text);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function normalizeTourismEvent(item, now = Date.now()) {
+  const id = String(item?.EventID || "").trim();
+  const title = String(item?.EventName || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const lat = Number(item?.PositionLat);
+  const lng = Number(item?.PositionLon);
+  const address = String(item?.PostalAddress || "").replace(/\s+/g, " ").trim();
+  const locatedCities = Array.isArray(item?.LocatedCities) ? item.LocatedCities.join(" ") : String(item?.LocatedCities || "");
+  const startsAt = parseTourismDate(item?.StartDateTime);
+  const endsAt = parseTourismDate(item?.EndDateTime);
+  const status = String(item?.EventStatus || "").trim().toLowerCase();
+  if (!id || !title || !isValidTaiwanCoord(lat, lng) || (endsAt && endsAt < now) || /end|ended|closed|結束/.test(status)) return null;
+  const city = inferTaiwanCityFromText(`${locatedCities} ${address} ${title}`) || inferCityFromText(`${locatedCities} ${address} ${title}`)?.city;
+  if (!city) return null;
+  const images = Array.isArray(item?.Images) ? item.Images : [];
+  const image = images.map((value) => typeof value === "string" ? value : (value?.Src || value?.src || value?.URL || value?.url || "")).find(Boolean) || "";
+  const sourceUrl = String(item?.WebsiteURL || "").trim() || TOURISM_EVENTS_FEED;
+  return enrichCronEvent({
+    id: `tourism-events_${id}`.replace(/[^A-Za-z0-9_-]/g, "_"), title,
+    content: String(item?.Description || title).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 220),
+    category: "activity", url: sourceUrl, sourceUrl, address, location: address || locatedCities,
+    lat, lng, city, district: extractDistrict(address), source: "Tourism Events", sourceName: "Tourism Events",
+    image, images, eventFingerprint: `tourism-events:${id}`,
+    startsAt: startsAt ? new Date(startsAt).toISOString() : null,
+    endsAt: endsAt ? new Date(endsAt).toISOString() : null,
+    expiresAt: endsAt || (startsAt ? startsAt + 30 * 24 * 60 * 60 * 1000 : now + 30 * 24 * 60 * 60 * 1000),
+    publishedAt: item?.UpdateTime || now, createdAt: now, tourismEvent: {
+      EventID: id, EventName: title, Description: item?.Description || "", PositionLat: lat, PositionLon: lng,
+      PostalAddress: address, LocatedCities: item?.LocatedCities || [], WebsiteURL: item?.WebsiteURL || "", Images: images,
+      StartDateTime: item?.StartDateTime || "", EndDateTime: item?.EndDateTime || "", EventStatus: item?.EventStatus || "", UpdateTime: item?.UpdateTime || "",
+    },
+  });
+}
+
+async function fetchTourismEvents(startedAt) {
+  const attemptedAt = new Date().toISOString();
+  try {
+    if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
+    const response = await fetch(TOURISM_EVENTS_FEED, {
+      signal: AbortSignal.timeout(Math.max(800, Math.min(TOURISM_EVENTS_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
+    });
+    if (!response.ok) { const error = new Error(`Tourism Events HTTP ${response.status}`); error.httpStatus = response.status; throw error; }
+    const payload = extractZipJson(Buffer.from(await response.arrayBuffer()));
+    const rawEvents = Array.isArray(payload) ? payload : (Array.isArray(payload?.Events) ? payload.Events : (Array.isArray(payload?.XML_Head?.Infos?.Info) ? payload.XML_Head.Infos.Info : (Array.isArray(payload?.data) ? payload.data : [])));
+    const seen = new Set();
+    const events = rawEvents.map((item) => normalizeTourismEvent(item)).filter(Boolean).filter((item) => {
+      if (seen.has(item.eventFingerprint)) return false;
+      seen.add(item.eventFingerprint); return true;
+    }).slice(0, TOURISM_EVENTS_MAX_EVENTS);
+    await recordEventIntegrationStatus("tourismEvents", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: rawEvents.length, insertedCount: events.length, duplicateCount: Math.max(0, rawEvents.length - events.length), failedCount: 0, lastErrorType: null, lastDiagnostic: null });
+    return events;
+  } catch (error) {
+    console.warn("[cron] Tourism Events fetch failed:", error.message);
+    await recordEventIntegrationStatus("tourismEvents", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", lastDiagnostic: error.httpStatus ? { httpStatus: error.httpStatus } : null, failedCount: 1 });
+    throw error;
+  }
+}
+
 function getAzureOpenAiConfig() {
   const endpoint = String(process.env.AZURE_OPENAI_ENDPOINT || "").trim().replace(/\/+$/, "");
   const apiVersion = String(process.env.AZURE_OPENAI_API_VERSION || "").trim();
@@ -1113,7 +1209,6 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
   requireAzureOpenAiConfig();
 
   const simplifiedNews = await prepareNewsContexts(newsItems, {
-    axios,
     maxArticles: Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT),
     maxChars: ARTICLE_CONTEXT_MAX_CHARS,
     timeoutMs: Math.max(500, Math.min(AI_ARTICLE_CONTEXT_TIMEOUT_MS, getRemainingTime(startedAt) - 500)),
@@ -1562,8 +1657,9 @@ function emptySources() {
   return {
     rssItems: [],
     tdxEvents: [],
-    constructionEvents: [],
-    cultureActivityEvents: [],
+  constructionEvents: [],
+  cultureActivityEvents: [],
+  tourismEvents: [],
     kktixActivityEvents: [],
     activityEvents: [],
     aiEvents: [],
@@ -1638,9 +1734,12 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt));
     sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
     if (sources.__collectorResults.iculture.status === "failed") sourceFailure("iculture", sources.__collectorResults.iculture.reason);
+    sources.__collectorResults.tourismEvents = await runCollector("觀光署活動", () => fetchTourismEvents(startedAt));
+    sources.tourismEvents = sources.__collectorResults.tourismEvents.items;
+    if (sources.__collectorResults.tourismEvents.status === "failed") sourceFailure("tourismEvents", sources.__collectorResults.tourismEvents.reason);
     sources.__collectorResults.kktix = await runCollector("KKTIX 活動", () => fetchKktixActivityEvents(startedAt));
     sources.kktixActivityEvents = sources.__collectorResults.kktix.items;
-    sources.activityEvents = [...sources.cultureActivityEvents, ...sources.kktixActivityEvents];
+    sources.activityEvents = [...sources.cultureActivityEvents, ...sources.tourismEvents, ...sources.kktixActivityEvents];
     if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
   }
 
@@ -1660,6 +1759,8 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     rssItems: sources.rssItems.length,
     tdx: sources.tdxEvents.length,
     construction: sources.constructionEvents.length,
+    iCulture: sources.cultureActivityEvents.length,
+    tourismEvents: sources.tourismEvents.length,
     activities: sources.activityEvents.length,
     ai: sources.aiEvents.length,
     ruleBased: sources.ruleBasedEvents.length,
@@ -1670,7 +1771,7 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
 
 const REFRESH_SOURCE_FIELDS = Object.freeze([
   ["rss", "rssItems", "RSS 新聞"], ["tdxTraffic", "tdxEvents", "TDX 即時交通"],
-  ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["iculture", "cultureActivityEvents", "iCulture 活動"], ["kktix", "kktixActivityEvents", "KKTIX 活動"],
+  ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["iculture", "cultureActivityEvents", "iCulture 活動"], ["tourismEvents", "tourismEvents", "觀光署活動"], ["kktix", "kktixActivityEvents", "KKTIX 活動"],
   ["ai", "aiEvents", "AI 提取事件"], ["ruleBased", "ruleBasedEvents", "規則式提取事件"],
 ]);
 
@@ -1844,6 +1945,9 @@ module.exports = {
   enrichEventLocations,
   fetchKktixActivityEvents,
   fetchCultureActivityEvents,
+  fetchTourismEvents,
+  normalizeTourismEvent,
+  extractZipJson,
   buildKktixResponseDiagnostic,
   fetchDefaultSources,
   isGenericCmsNotice,

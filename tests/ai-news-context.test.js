@@ -46,12 +46,11 @@ async function run() {
     contentSnippet: "RSS 摘要",
     link: "https://example.test/full",
   }, {
-    axios: {
-      get: async () => ({
+    fetch: async () => ({
+        ok: true,
         headers: { "content-type": "text/html; charset=utf-8" },
-        data: html,
+        text: async () => html,
       }),
-    },
   });
   assert.equal(fetched.contextSource, "article");
   assert(fetched.content.includes("松仁路"));
@@ -61,7 +60,7 @@ async function run() {
     contentSnippet: "RSS fallback 摘要",
     link: "https://example.test/403",
   }, {
-    axios: { get: async () => { throw new Error("403"); } },
+    fetch: async () => { throw new Error("403"); },
   });
   assert.equal(failedFetch.contextSource, "rss");
   assert(failedFetch.content.includes("RSS fallback"));

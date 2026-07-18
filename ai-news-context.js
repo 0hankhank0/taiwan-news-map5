@@ -151,23 +151,23 @@ function buildFallbackNewsContext(item = {}, options = {}) {
 async function fetchNewsContext(item = {}, options = {}) {
   const maxChars = Number(options.maxChars) || ARTICLE_CONTEXT_MAX_CHARS;
   const timeoutMs = Number(options.timeoutMs) || DEFAULT_ARTICLE_TIMEOUT_MS;
-  const httpClient = options.axios;
+  const fetchClient = options.fetch || global.fetch;
   const fallback = buildFallbackNewsContext(item, { maxChars });
   const url = fallback.link;
-  if (!httpClient || !/^https?:\/\//i.test(url)) return fallback;
+  if (typeof fetchClient !== "function" || !/^https?:\/\//i.test(url)) return fallback;
 
   try {
-    const response = await httpClient.get(url, {
-      timeout: timeoutMs,
-      responseType: "text",
+    const response = await fetchClient(url, {
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
-    const contentType = String(response.headers?.["content-type"] || "");
+    if (!response.ok) return fallback;
+    const contentType = String(response.headers?.get?.("content-type") || response.headers?.["content-type"] || "");
     if (contentType && !/html|text/i.test(contentType)) return fallback;
-    const articleContext = extractArticleContextFromHtml(response.data, { maxChars });
+    const articleContext = extractArticleContextFromHtml(await response.text(), { maxChars });
     if (!articleContext || articleContext.length < Math.min(80, fallback.content.length || 80)) return fallback;
     return {
       ...fallback,

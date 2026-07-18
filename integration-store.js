@@ -1,7 +1,7 @@
 const { getCachedValue, setCachedValue } = require("./event-store");
 
 const INTEGRATION_STATUS_KEY = "integrations:events:status";
-const SERVICES = ["iculture", "kktix", "kktv"];
+const SERVICES = ["iculture", "tourismEvents", "kktix", "kktv"];
 
 function emptyStatus(service) {
   return {

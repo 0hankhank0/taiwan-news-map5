@@ -6,9 +6,23 @@ delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-refresh-test-${Date.now()}.sqlite`);
 process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
+process.env.EVENT_STORE_MODE = "local";
 process.env.CRON_SECRET = "cron-test-secret";
 
 const eventRefresh = require("../event-refresh");
+
+function makeStoredZipJson(payload) {
+  const name = Buffer.from("events.json");
+  const body = Buffer.from(JSON.stringify(payload));
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(body.length, 18); local.writeUInt32LE(body.length, 22); local.writeUInt16LE(name.length, 26);
+  const centralOffset = local.length + name.length + body.length;
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6); central.writeUInt32LE(body.length, 20); central.writeUInt32LE(body.length, 24); central.writeUInt16LE(name.length, 28);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(1, 8); end.writeUInt16LE(1, 10); end.writeUInt32LE(central.length + name.length, 12); end.writeUInt32LE(centralOffset, 16);
+  return Buffer.concat([local, name, body, central, name, end]);
+}
 const eventNormalizer = require("../event-normalizer");
 const {
   CRON_LOCK_KEY,
@@ -330,6 +344,23 @@ async function call(handler, req) {
   assert.equal(cultureEvents[0].lat, 25.0478);
   assert.equal(cultureEvents[0].lng, 121.517);
   assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "iculture").status, "success");
+
+  // Tourism Events normalizes the official ZIP payload, rejects bad/end records, and de-duplicates EventID.
+  const tourismFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const tourismPast = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const tourismRecord = { EventID: "tourism-1", EventName: "Tourism test activity", Description: "Official activity", PositionLat: "25.0478", PositionLon: "121.517", PostalAddress: "臺北市中正區測試路 1 號", LocatedCities: ["臺北市"], WebsiteURL: "https://example.test/tourism", Images: [{ Src: "https://example.test/image.jpg" }], StartDateTime: tourismFuture, EndDateTime: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(), EventStatus: "Open", UpdateTime: tourismFuture };
+  assert.equal(eventRefresh.normalizeTourismEvent({ ...tourismRecord, PositionLat: "0" }), null);
+  assert.equal(eventRefresh.normalizeTourismEvent({ ...tourismRecord, EndDateTime: tourismPast }), null);
+  const tourismZip = makeStoredZipJson([tourismRecord, tourismRecord]);
+  global.fetch = async () => ({ ok: true, status: 200, arrayBuffer: async () => tourismZip.buffer.slice(tourismZip.byteOffset, tourismZip.byteOffset + tourismZip.byteLength) });
+  const tourismEvents = await eventRefresh.fetchTourismEvents(Date.now());
+  assert.equal(tourismEvents.length, 1);
+  assert.equal(tourismEvents[0].source, "Tourism Events");
+  assert.equal(tourismEvents[0].tourismEvent.EventID, "tourism-1");
+  assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "tourismEvents").status, "success");
+  global.fetch = async () => ({ ok: false, status: 503 });
+  await assert.rejects(() => eventRefresh.fetchTourismEvents(Date.now()), /Tourism Events HTTP 503/);
+  assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "tourismEvents").status, "error");
 
   // KKTIX only retries transient upstream statuses and records bounded, redacted diagnostics.
   global.fetch = async () => ({ ok: true, text: async () => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><title>KKTIX test activity</title><link href="https://kktix.com/events/test"/><content type="html"><![CDATA[Time: 2099/07/20 19:00 ~ 2099/07/20 21:00\nLocation: Test venue / Taipei]]></content></entry></feed>` });
