@@ -1,4 +1,5 @@
 node_modules/
+/%SystemDrive%/
 .env
 .DS_Store
 dist/
