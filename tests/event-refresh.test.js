@@ -68,6 +68,63 @@ async function call(handler, req) {
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds(), 60 * 60 * 6);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("120"), 60 * 60);
   assert.equal(eventRefresh.resolveEventCacheTtlSeconds("7200"), 7200);
+
+  const azureEnvNames = ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_VERSION", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_DEPLOYMENT", "OPENAI_API_KEY"];
+  const originalAzureEnv = Object.fromEntries(azureEnvNames.map((name) => [name, process.env[name]]));
+  const restoreAzureEnv = () => {
+    for (const name of azureEnvNames) {
+      if (originalAzureEnv[name] === undefined) delete process.env[name];
+      else process.env[name] = originalAzureEnv[name];
+    }
+  };
+  const originalAiFetch = global.fetch;
+  process.env.AZURE_OPENAI_ENDPOINT = "https://example-resource.openai.azure.com///";
+  process.env.AZURE_OPENAI_API_VERSION = "2024-02-15-preview";
+  process.env.AZURE_OPENAI_API_KEY = "azure-test-key";
+  process.env.AZURE_OPENAI_DEPLOYMENT = "gpt 4o/test";
+  process.env.OPENAI_API_KEY = "ordinary-openai-test-key";
+  let azureRequest;
+  global.fetch = async (url, options) => {
+    azureRequest = { url, options };
+    return { ok: true, status: 200, json: async () => ({ choices: [] }) };
+  };
+  await eventRefresh.createAzureOpenAiChatCompletion({ messages: [] });
+  assert.equal(azureRequest.url, "https://example-resource.openai.azure.com/openai/deployments/gpt%204o%2Ftest/chat/completions?api-version=2024-02-15-preview");
+  assert.equal(azureRequest.options.headers["api-key"], "azure-test-key");
+  assert.equal(azureRequest.options.headers["Content-Type"], "application/json");
+  assert.equal(Object.hasOwn(azureRequest.options.headers, "Authorization"), false);
+  assert.equal(azureRequest.url.includes("api.openai.com"), false);
+
+  for (const missingName of azureEnvNames.slice(0, 4)) {
+    const saved = process.env[missingName];
+    delete process.env[missingName];
+    let fetchCount = 0;
+    global.fetch = async () => { fetchCount += 1; throw new Error("fetch should not run"); };
+    await assert.rejects(
+      () => eventRefresh.createAzureOpenAiChatCompletion({ messages: [] }),
+      (error) => error.message === `Azure OpenAI configuration incomplete: missing ${missingName}`
+    );
+    assert.equal(fetchCount, 0);
+    process.env[missingName] = saved;
+  }
+
+  global.fetch = async () => ({ ok: false, status: 401, json: async () => ({ error: { message: "azure-test-key must not leak" } }) });
+  await assert.rejects(
+    () => eventRefresh.createAzureOpenAiChatCompletion({ messages: [] }),
+    (error) => error.message === "Azure OpenAI authentication failed (HTTP 401)"
+  );
+  try {
+    await eventRefresh.createAzureOpenAiChatCompletion({ messages: [] });
+  } catch (error) {
+    assert.equal(error.message.includes("azure-test-key"), false);
+  }
+  global.fetch = async () => ({ ok: false, status: 429, json: async () => ({ error: { message: "azure-test-key must not leak" } }) });
+  await assert.rejects(
+    () => eventRefresh.createAzureOpenAiChatCompletion({ messages: [] }),
+    (error) => error.message === "Azure OpenAI rate limit or quota exceeded (HTTP 429)"
+  );
+  global.fetch = originalAiFetch;
+  restoreAzureEnv();
   assert.equal(eventRefresh.isGenericCmsNotice("天候不佳小心駕駛"), true);
   assert.equal(eventRefresh.isGenericCmsNotice("中山高北上事故封閉，請改道"), false);
 

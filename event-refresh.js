@@ -45,8 +45,12 @@ const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const parser = new Parser();
 
-const openaiApiKey = process.env.OPENAI_API_KEY;
-const OPENAI_CHAT_COMPLETIONS_URL = "https://api.openai.com/v1/chat/completions";
+const AZURE_OPENAI_CONFIG_KEYS = Object.freeze([
+  "AZURE_OPENAI_ENDPOINT",
+  "AZURE_OPENAI_API_VERSION",
+  "AZURE_OPENAI_API_KEY",
+  "AZURE_OPENAI_DEPLOYMENT",
+]);
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
@@ -56,7 +60,7 @@ const DEFAULT_RSS_SOURCES = [
 
 const RSS_TIMEOUT_MS = 2200;
 const TDX_TIMEOUT_MS = 1800;
-const OPENAI_TIMEOUT_MS = 5000;
+const AZURE_OPENAI_TIMEOUT_MS = 5000;
 const MAX_NEWS_FOR_AI = Number(process.env.MAX_NEWS_FOR_AI || DEFAULT_AI_CONTEXT_LIMIT);
 const AI_ARTICLE_CONTEXT_TIMEOUT_MS = Number(process.env.AI_ARTICLE_CONTEXT_TIMEOUT_MS || DEFAULT_ARTICLE_TIMEOUT_MS);
 const SOFT_DEADLINE_MS = 7000;
@@ -820,36 +824,61 @@ async function fetchKktixActivityEvents(startedAt) {
   }
 }
 
-async function createOpenAiChatCompletion(body, timeoutMs = OPENAI_TIMEOUT_MS) {
-  const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${openaiApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
-  });
+function getAzureOpenAiConfig() {
+  const endpoint = String(process.env.AZURE_OPENAI_ENDPOINT || "").trim().replace(/\/+$/, "");
+  const apiVersion = String(process.env.AZURE_OPENAI_API_VERSION || "").trim();
+  const apiKey = String(process.env.AZURE_OPENAI_API_KEY || "").trim();
+  const deployment = String(process.env.AZURE_OPENAI_DEPLOYMENT || "").trim();
+  const values = { AZURE_OPENAI_ENDPOINT: endpoint, AZURE_OPENAI_API_VERSION: apiVersion, AZURE_OPENAI_API_KEY: apiKey, AZURE_OPENAI_DEPLOYMENT: deployment };
+  const missing = AZURE_OPENAI_CONFIG_KEYS.filter((name) => !values[name]);
 
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const errorBody = await response.json();
-      detail = errorBody?.error?.message || errorBody?.error?.code || "";
-    } catch {}
-    throw new Error(`OpenAI ${response.status}${detail ? `: ${detail}` : ""}`);
+  if (missing.length) return { missing, error: `Azure OpenAI configuration incomplete: missing ${missing.join(", ")}` };
+
+  return {
+    missing: [],
+    url: `${endpoint}/openai/deployments/${encodeURIComponent(deployment)}/chat/completions?api-version=${encodeURIComponent(apiVersion)}`,
+    headers: { "api-key": apiKey, "Content-Type": "application/json" },
+  };
+}
+
+function requireAzureOpenAiConfig() {
+  const config = getAzureOpenAiConfig();
+  if (config.error) throw new Error(config.error);
+  return config;
+}
+
+function azureOpenAiErrorForStatus(status) {
+  if (status === 401) return "Azure OpenAI authentication failed (HTTP 401)";
+  if (status === 429) return "Azure OpenAI rate limit or quota exceeded (HTTP 429)";
+  return `Azure OpenAI request failed (HTTP ${Number.isInteger(status) ? status : "unknown"})`;
+}
+
+async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TIMEOUT_MS) {
+  const config = requireAzureOpenAiConfig();
+  let response;
+  try {
+    response = await fetch(config.url, {
+      method: "POST",
+      headers: config.headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
+    });
+  } catch {
+    throw new Error("Azure OpenAI request failed");
   }
 
+  if (!response.ok) throw new Error(azureOpenAiErrorForStatus(response.status));
   return response.json();
 }
 
-function parseOpenAiJsonCompletion(completion) {
+function parseAiJsonCompletion(completion) {
   const content = completion?.choices?.[0]?.message?.content || "{}";
   return JSON.parse(content);
 }
 
 async function extractAiEvents(newsItems) {
-  if (!openaiApiKey || !newsItems.length) return [];
+  if (!newsItems.length) return [];
+  requireAzureOpenAiConfig();
 
   const simplifiedNews = newsItems.slice(0, MAX_NEWS_FOR_AI).map((item) => ({
     title: item.title || "",
@@ -870,7 +899,7 @@ async function extractAiEvents(newsItems) {
   ].join(" ");
 
   try {
-    const completion = await createOpenAiChatCompletion({
+    const completion = await createAzureOpenAiChatCompletion({
       model: "gpt-4o-mini",
       temperature: 0,
       messages: [
@@ -910,18 +939,19 @@ async function extractAiEvents(newsItems) {
           },
         },
       },
-    }, OPENAI_TIMEOUT_MS);
+    }, AZURE_OPENAI_TIMEOUT_MS);
 
-    const parsed = parseOpenAiJsonCompletion(completion);
+    const parsed = parseAiJsonCompletion(completion);
     return Array.isArray(parsed?.events) ? parsed.events : [];
   } catch (error) {
-    console.error("[cron] AI extraction failed:", error.message);
-    return [];
+    console.error("[cron] Azure OpenAI extraction failed:", error.message);
+    throw error;
   }
 }
 
 async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
-  if (!openaiApiKey || !newsItems.length) return [];
+  if (!newsItems.length) return [];
+  requireAzureOpenAiConfig();
 
   const simplifiedNews = await prepareNewsContexts(newsItems, {
     axios,
@@ -952,7 +982,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
   ].join(" ");
 
   try {
-    const completion = await createOpenAiChatCompletion({
+    const completion = await createAzureOpenAiChatCompletion({
       model: "gpt-4o-mini",
       temperature: 0,
       messages: [
@@ -998,12 +1028,12 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
           },
         },
       },
-    }, Math.max(800, Math.min(OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
+    }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
 
-    const parsed = parseOpenAiJsonCompletion(completion);
+    const parsed = parseAiJsonCompletion(completion);
     return normalizeAiExtractedEvents(parsed?.events);
   } catch (error) {
-    console.error("[cron] AI context extraction failed:", error.message);
+    console.error("[cron] Azure OpenAI context extraction failed:", error.message);
     throw error;
   }
 }
@@ -1439,7 +1469,8 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   if (includeNews) {
     sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
-    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (!openaiApiKey ? "缺少 OPENAI_API_KEY" : "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    const azureOpenAiConfig = getAzureOpenAiConfig();
+    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
     sources.__collectorResults.kktix = await runCollector("KKTIX 活動", () => fetchKktixActivityEvents(startedAt)); sources.activityEvents = sources.__collectorResults.kktix.items;
     if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
@@ -1637,6 +1668,7 @@ async function runEventRefresh(options = {}) {
 }
 
 module.exports = {
+  createAzureOpenAiChatCompletion,
   collectRefreshSources,
   runCollector,
   DEFAULT_EVENT_CACHE_TTL_SECONDS,
