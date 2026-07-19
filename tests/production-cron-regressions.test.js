@@ -24,10 +24,15 @@ const cron = require("../api/cron");
     await store.setCachedValue("tdx:live_cms_events", { events: [{ id: `tdx-live-${expectedStatus}`, title: "cached traffic", category: "traffic", city: "Taipei", lat: 25.04, lng: 121.52 }] });
     await store.setCachedValue("tdx:construction_events", { events: [{ id: `tdx-construction-${expectedStatus}`, title: "cached construction", category: "construction", city: "Taipei", lat: 25.04, lng: 121.52 }] });
     global.fetch = async () => ({ ok: false, status: 400, text: async () => JSON.stringify({ error: "unauthorized_client" }) });
-    const sources = await refresh.fetchDefaultSources("traffic", Date.now());
+    const infoLogs = [];
+    const originalInfo = console.info;
+    console.info = (...args) => infoLogs.push(args);
+    const sources = await refresh.fetchDefaultSources("traffic", Date.now(), { runId: `tdx-log-${expectedStatus}` });
+    console.info = originalInfo;
     assert.match(sources.__collectorResults.tdxTraffic.reason, new RegExp(expectedStatus));
     assert.equal(sources.tdxEvents.length, 1, "TDX traffic cache must be retained");
     assert.equal(sources.constructionEvents.length, 1, "TDX construction cache must be retained");
+    assert(infoLogs.some((args) => args[0] === "[cron] source fallback" && args[1]?.source === "tdxTraffic" && args[1]?.fallbackType === "persistent_cache" && args[1]?.failureCode === expectedStatus && args[1]?.runId === `tdx-log-${expectedStatus}`));
   }
   await assertTdxFallback(undefined, "authorization_failed");
   await assertTdxFallback("quota_exhausted", "quota_exhausted");
@@ -78,6 +83,13 @@ const cron = require("../api/cron");
   const existingCulture = { id: "iCulture_cold", title: "cached culture", source: "iCulture", sourceName: "iCulture", category: "activity", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 86400000 };
   const coldResult = await refresh.runEventRefresh({ write: false, existingEvents: [existingCulture], sourceData: { cultureActivityEvents: [], activityEvents: [] } });
   assert.equal(coldResult.events.some((event) => event.id === "iCulture_cold"), true, "cold-start timeout path must retain official iCulture data");
+
+  const originalInfo = console.info;
+  const officialFallbackLogs = [];
+  console.info = (...args) => officialFallbackLogs.push(args);
+  await refresh.runEventRefresh({ runId: "official-fallback-log", write: false, existingEvents: [{ id: "tdx-official", source: "TDX CMS", category: "traffic", title: "retained", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 86400000 }], sourceData: {}, sourceFailures: { tdxTraffic: "TDX authorization_failed" } });
+  console.info = originalInfo;
+  assert(officialFallbackLogs.some((args) => args[0] === "[cron] source fallback" && args[1]?.fallbackType === "existing_official_events" && args[1]?.retainedCount === 1 && args[1]?.failureCode === "authorization_failed" && args[1]?.runId === "official-fallback-log"));
 
   const alert = refresh.buildSourceFailureAlert({ tdxTraffic: "TDX quota_exhausted", iculture: "timeout", kktix: "provider_blocked" });
   assert.match(alert, /quota_exhausted/);

@@ -119,6 +119,25 @@ const TOURISM_EVENTS_MAX_EVENTS = 100;
 const { recordEventIntegrationStatus } = require("./integration-store");
 let latestICultureEvents = [];
 
+function logSourceFallback({ source, fallbackType, retainedCount, failureCode, runId }) {
+  console.info("[cron] source fallback", {
+    source: String(source || "unknown"),
+    fallbackType: ["persistent_cache", "existing_official_events", "memory_cache"].includes(fallbackType) ? fallbackType : "existing_official_events",
+    retainedCount: Math.max(0, Number(retainedCount) || 0),
+    failureCode: String(failureCode || "provider_unavailable").replace(/[^a-z0-9_-]/gi, "_").slice(0, 80),
+    runId: String(runId || "unknown").slice(0, 160),
+  });
+}
+
+function failureCodeFromReason(reason) {
+  const text = String(reason || "").toLowerCase();
+  if (text.includes("quota_exhausted")) return "quota_exhausted";
+  if (text.includes("authorization_failed")) return "authorization_failed";
+  if (text.includes("provider_blocked")) return "provider_blocked";
+  if (text.includes("timeout")) return "timeout";
+  return "provider_unavailable";
+}
+
 function locationText(value) {
   if (typeof value === "string") return value.replace(/\[object Object\]/gi, "").replace(/\s+/g, " ").trim();
   if (!value || typeof value !== "object") return "";
@@ -980,7 +999,7 @@ function buildICultureSourceUrl(uid) {
   return uid ? `${endpoint}${endpoint.includes("?") ? "&" : "?"}uid=${encodeURIComponent(uid)}` : endpoint;
 }
 
-async function fetchCultureActivityEvents(startedAt) {
+async function fetchCultureActivityEvents(startedAt, options = {}) {
   const attemptedAt = new Date().toISOString();
   try {
     if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
@@ -992,9 +1011,17 @@ async function fetchCultureActivityEvents(startedAt) {
           signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
           headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
         });
-        if (response.ok || attempt === 1) break;
+        if (response.ok || attempt === 1) {
+          console.info("[cron] iCulture retry result", { attempt: attempt + 1, outcome: response.ok ? "success" : "http_error", runId: String(options.runId || "unknown").slice(0, 160) });
+          break;
+        }
+        console.info("[cron] iCulture retry", { attempt: attempt + 1, outcome: "http_error", runId: String(options.runId || "unknown").slice(0, 160) });
       } catch (error) {
-        if (attempt === 1) throw error;
+        if (attempt === 1) {
+          console.info("[cron] iCulture retry result", { attempt: attempt + 1, outcome: "failed", runId: String(options.runId || "unknown").slice(0, 160) });
+          throw error;
+        }
+        console.info("[cron] iCulture retry", { attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: String(options.runId || "unknown").slice(0, 160) });
       }
       await delay(350);
     }
@@ -1048,6 +1075,7 @@ async function fetchCultureActivityEvents(startedAt) {
     // Preserve the last known-good feed in warm runtimes; cold starts retain
     // existing activities through the refresh merge instead of clearing them.
     const retained = [...latestICultureEvents];
+    logSourceFallback({ source: "iculture", fallbackType: "memory_cache", retainedCount: retained.length, failureCode: error.name === "TimeoutError" ? "timeout" : "provider_unavailable", runId: options.runId });
     Object.defineProperty(retained, "collector", { value: { status: "warning", reason: "iCulture timeout; retained existing data", cacheRetained: true } });
     return retained;
   }
@@ -1831,6 +1859,9 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     const detail = collectorResult("warning", tdxAvailabilityError, Date.now(), sources.tdxEvents, { error: tdxAvailabilityError, cacheRetained: true });
     sources.__collectorResults.tdxTraffic = detail;
     sources.__collectorResults.tdxConstruction = { ...detail, items: sources.constructionEvents, fetchedCount: sources.constructionEvents.length, parsedCount: sources.constructionEvents.length, keptCount: sources.constructionEvents.length };
+    const failureCode = failureCodeFromReason(tdxAvailabilityError);
+    logSourceFallback({ source: "tdxTraffic", fallbackType: "persistent_cache", retainedCount: sources.tdxEvents.length, failureCode, runId: options.runId });
+    logSourceFallback({ source: "tdxConstruction", fallbackType: "persistent_cache", retainedCount: sources.constructionEvents.length, failureCode, runId: options.runId });
     sourceFailure("tdxTraffic", tdxAvailabilityError);
     sourceFailure("tdxConstruction", tdxAvailabilityError);
   } else if (includeTraffic) {
@@ -1850,7 +1881,7 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     const azureOpenAiConfig = getAzureOpenAiConfig();
     sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
-    sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt));
+    sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt, { runId: options.runId }));
     sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
     if (["failed", "warning"].includes(sources.__collectorResults.iculture.status)) sourceFailure("iculture", sources.__collectorResults.iculture.reason);
     sources.__collectorResults.tourismEvents = await runCollector("觀光署活動", () => fetchTourismEvents(startedAt));
@@ -1906,6 +1937,23 @@ function buildSourceFailureAlert(sourceFailures = {}) {
     }
   }
   return `來源狀態：${messages.join("；")}`;
+}
+
+function sourceMatchesOfficialEvent(source, event = {}) {
+  const provider = `${event.source || ""} ${event.sourceName || ""}`.toLowerCase();
+  if (source === "tdxTraffic") return provider.includes("tdx") && event.category !== "construction";
+  if (source === "tdxConstruction") return provider.includes("tdx") && event.category === "construction";
+  if (source === "iculture") return provider.includes("iculture");
+  if (source === "kktix") return provider.includes("kktix");
+  if (source === "tourismEvents") return provider.includes("tourism events");
+  return false;
+}
+
+function logExistingOfficialFallbacks(sourceFailures, existingEvents, runId) {
+  for (const [source, reason] of Object.entries(sourceFailures || {})) {
+    const retainedCount = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => sourceMatchesOfficialEvent(source, event)).length;
+    if (retainedCount) logSourceFallback({ source, fallbackType: "existing_official_events", retainedCount, failureCode: failureCodeFromReason(reason), runId });
+  }
 }
 
 const REFRESH_SOURCE_FIELDS = Object.freeze([
@@ -1982,7 +2030,7 @@ async function runEventRefresh(options = {}) {
 
   try {
     console.log(`[event-refresh] start runId=${runId} mode=${mode}`);
-    const sources = await collectRefreshSources(mode, startedAt, options);
+    const sources = await collectRefreshSources(mode, startedAt, { ...options, runId });
     const geocodingStats = { geocodingAttempts: 0, geocodingHits: 0 };
     const finalEvents = await enrichEventLocations(normalizeFinalEvents([
       ...sources.tdxEvents,
@@ -2013,6 +2061,7 @@ async function runEventRefresh(options = {}) {
     const durationMs = Date.now() - startedAt;
     const sourceCounts = getSourceCounts(sources, finalEvents, activeEvents);
     const sourceFailures = Object.fromEntries(Object.entries({ ...(sources.__sourceFailures || {}), ...(options.sourceFailures || {}) }).map(([key, value]) => [key, cleanRefreshLogError(value)]).filter(([, value]) => value));
+    logExistingOfficialFallbacks(sourceFailures, existingEvents, runId);
     const errorSourceCount = Object.keys(sourceFailures).length;
     const status = errorSourceCount ? "partial_success" : "success";
     const completedAt = new Date().toISOString();
