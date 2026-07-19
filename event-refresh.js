@@ -138,6 +138,16 @@ function failureCodeFromReason(reason) {
   return "provider_unavailable";
 }
 
+function logICultureAttempt({ stage, attempt, outcome, runId }) {
+  console.info("[cron] iCulture attempt", {
+    source: "iculture",
+    stage,
+    attempt: Math.max(1, Number(attempt) || 1),
+    outcome,
+    runId: String(runId || "unknown").slice(0, 160),
+  });
+}
+
 function locationText(value) {
   if (typeof value === "string") return value.replace(/\[object Object\]/gi, "").replace(/\s+/g, " ").trim();
   if (!value || typeof value !== "object") return "";
@@ -1001,27 +1011,29 @@ function buildICultureSourceUrl(uid) {
 
 async function fetchCultureActivityEvents(startedAt, options = {}) {
   const attemptedAt = new Date().toISOString();
+  let attempts = 0;
   try {
     if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
     const endpoint = String(process.env.ICULTURE_ACTIVITY_FEED_URL || ICULTURE_ACTIVITY_FEED).trim();
     let response;
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      attempts = attempt + 1;
       try {
         response = await fetch(endpoint, {
           signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
           headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
         });
         if (response.ok || attempt === 1) {
-          console.info("[cron] iCulture retry result", { attempt: attempt + 1, outcome: response.ok ? "success" : "http_error", runId: String(options.runId || "unknown").slice(0, 160) });
+          logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: response.ok ? "response_ok" : "http_error", runId: options.runId });
           break;
         }
-        console.info("[cron] iCulture retry", { attempt: attempt + 1, outcome: "http_error", runId: String(options.runId || "unknown").slice(0, 160) });
+        logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: "http_error", runId: options.runId });
       } catch (error) {
         if (attempt === 1) {
-          console.info("[cron] iCulture retry result", { attempt: attempt + 1, outcome: "failed", runId: String(options.runId || "unknown").slice(0, 160) });
+          logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: options.runId });
           throw error;
         }
-        console.info("[cron] iCulture retry", { attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: String(options.runId || "unknown").slice(0, 160) });
+        logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: options.runId });
       }
       await delay(350);
     }
@@ -1068,6 +1080,7 @@ async function fetchCultureActivityEvents(startedAt, options = {}) {
     }
     latestICultureEvents = events;
     await recordEventIntegrationStatus("iculture", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: activities.length, insertedCount: events.length, duplicateCount: Math.max(0, activities.length - events.length), failedCount: 0, lastErrorType: null, lastDiagnostic: null });
+    logICultureAttempt({ stage: "collection", attempt: attempts, outcome: "success", runId: options.runId });
     return events;
   } catch (error) {
     console.warn("[cron] iCulture activity fetch failed:", error.message);
@@ -1075,6 +1088,7 @@ async function fetchCultureActivityEvents(startedAt, options = {}) {
     // Preserve the last known-good feed in warm runtimes; cold starts retain
     // existing activities through the refresh merge instead of clearing them.
     const retained = [...latestICultureEvents];
+    logICultureAttempt({ stage: "collection", attempt: attempts || 1, outcome: retained.length ? "fallback" : "failed", runId: options.runId });
     logSourceFallback({ source: "iculture", fallbackType: "memory_cache", retainedCount: retained.length, failureCode: error.name === "TimeoutError" ? "timeout" : "provider_unavailable", runId: options.runId });
     Object.defineProperty(retained, "collector", { value: { status: "warning", reason: "iCulture timeout; retained existing data", cacheRetained: true } });
     return retained;
@@ -1952,7 +1966,35 @@ function sourceMatchesOfficialEvent(source, event = {}) {
 function logExistingOfficialFallbacks(sourceFailures, existingEvents, runId) {
   for (const [source, reason] of Object.entries(sourceFailures || {})) {
     const retainedCount = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => sourceMatchesOfficialEvent(source, event)).length;
-    if (retainedCount) logSourceFallback({ source, fallbackType: "existing_official_events", retainedCount, failureCode: failureCodeFromReason(reason), runId });
+    if (retainedCount || source === "kktix") logSourceFallback({ source, fallbackType: "existing_official_events", retainedCount, failureCode: failureCodeFromReason(reason), runId });
+  }
+}
+
+function logSourceSummaries({ sources, sourceFailures, existingEvents, activeEvents, runId }) {
+  const sourceFields = {
+    tdxTraffic: "tdxEvents",
+    tdxConstruction: "constructionEvents",
+    iculture: "cultureActivityEvents",
+    kktix: "kktixActivityEvents",
+  };
+  for (const [source, field] of Object.entries(sourceFields)) {
+    const collector = sources.__collectorResults?.[source] || {};
+    const failedReason = sourceFailures[source] || "";
+    const sourceItems = Array.isArray(sources[field]) ? sources[field] : [];
+    const persistentCacheCount = collector.cacheRetained && source.startsWith("tdx") ? sourceItems.length : 0;
+    const retainedExistingCount = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => sourceMatchesOfficialEvent(source, event)).length;
+    const finalMergedCount = (Array.isArray(activeEvents) ? activeEvents : []).filter((event) => sourceMatchesOfficialEvent(source, event)).length;
+    const failureCode = failedReason ? failureCodeFromReason(failedReason) : null;
+    console.info("[cron] source summary", {
+      source,
+      fetchedCount: collector.cacheRetained ? 0 : sourceItems.length,
+      persistentCacheCount,
+      retainedExistingCount,
+      finalMergedCount,
+      outcome: failureCode ? (persistentCacheCount || retainedExistingCount ? "fallback" : "failed") : "success",
+      failureCode,
+      runId: String(runId || "unknown").slice(0, 160),
+    });
   }
 }
 
@@ -2062,6 +2104,7 @@ async function runEventRefresh(options = {}) {
     const sourceCounts = getSourceCounts(sources, finalEvents, activeEvents);
     const sourceFailures = Object.fromEntries(Object.entries({ ...(sources.__sourceFailures || {}), ...(options.sourceFailures || {}) }).map(([key, value]) => [key, cleanRefreshLogError(value)]).filter(([, value]) => value));
     logExistingOfficialFallbacks(sourceFailures, existingEvents, runId);
+    logSourceSummaries({ sources, sourceFailures, existingEvents, activeEvents, runId });
     const errorSourceCount = Object.keys(sourceFailures).length;
     const status = errorSourceCount ? "partial_success" : "success";
     const completedAt = new Date().toISOString();

@@ -45,8 +45,22 @@ const cron = require("../api/cron");
     if (cultureAttempts === 1) { const error = new Error("timed out"); error.name = "TimeoutError"; throw error; }
     return { ok: true, json: async () => [] };
   };
-  assert.deepEqual(await refresh.fetchCultureActivityEvents(Date.now()), []);
+  const cultureInfo = [];
+  const originalInfoForCulture = console.info;
+  console.info = (...args) => cultureInfo.push(args);
+  assert.deepEqual(await refresh.fetchCultureActivityEvents(Date.now(), { runId: "iculture-retry-success" }), []);
+  console.info = originalInfoForCulture;
   assert.equal(cultureAttempts, 2, "iCulture must make one delayed retry");
+  assert(cultureInfo.some((args) => args[0] === "[cron] iCulture attempt" && args[1]?.stage === "collection" && args[1]?.attempt === 2 && args[1]?.outcome === "success" && args[1]?.runId === "iculture-retry-success"));
+  assert.equal(cultureInfo.some((args) => args[1]?.stage === "collection" && args[1]?.outcome === "failed"), false);
+
+  const failedCultureInfo = [];
+  console.info = (...args) => failedCultureInfo.push(args);
+  global.fetch = async () => ({ ok: true, json: async () => { const error = new Error("timed out"); error.name = "TimeoutError"; throw error; } });
+  await refresh.fetchCultureActivityEvents(Date.now(), { runId: "iculture-parse-failure" });
+  console.info = originalInfoForCulture;
+  assert.equal(failedCultureInfo.some((args) => args[1]?.stage === "collection" && args[1]?.outcome === "success"), false, "a response-only success must not be logged as final success");
+  assert(failedCultureInfo.some((args) => args[1]?.stage === "collection" && args[1]?.outcome === "failed"));
 
   const future = new Date(Date.now() + 86400000).toISOString();
   const tourism = refresh.normalizeTourismEvent({
@@ -87,9 +101,15 @@ const cron = require("../api/cron");
   const originalInfo = console.info;
   const officialFallbackLogs = [];
   console.info = (...args) => officialFallbackLogs.push(args);
-  await refresh.runEventRefresh({ runId: "official-fallback-log", write: false, existingEvents: [{ id: "tdx-official", source: "TDX CMS", category: "traffic", title: "retained", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 86400000 }], sourceData: {}, sourceFailures: { tdxTraffic: "TDX authorization_failed" } });
+  await refresh.runEventRefresh({ runId: "official-fallback-log", write: false, existingEvents: [
+    { id: "tdx-official", source: "TDX CMS", category: "traffic", title: "retained", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 86400000 },
+    { id: "kktix-official", source: "KKTIX", category: "activity", title: "retained activity", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 86400000 },
+  ], sourceData: {}, sourceFailures: { tdxTraffic: "TDX authorization_failed", kktix: "KKTIX provider_blocked" } });
   console.info = originalInfo;
   assert(officialFallbackLogs.some((args) => args[0] === "[cron] source fallback" && args[1]?.fallbackType === "existing_official_events" && args[1]?.retainedCount === 1 && args[1]?.failureCode === "authorization_failed" && args[1]?.runId === "official-fallback-log"));
+  assert(officialFallbackLogs.some((args) => args[0] === "[cron] source fallback" && args[1]?.source === "kktix" && args[1]?.fallbackType === "existing_official_events" && args[1]?.retainedCount === 1 && args[1]?.failureCode === "provider_blocked"));
+  assert(officialFallbackLogs.some((args) => args[0] === "[cron] source summary" && args[1]?.source === "tdxTraffic" && args[1]?.persistentCacheCount === 0 && args[1]?.retainedExistingCount === 1 && args[1]?.finalMergedCount === 1));
+  assert(officialFallbackLogs.some((args) => args[0] === "[cron] source summary" && args[1]?.source === "kktix" && args[1]?.retainedExistingCount === 1 && args[1]?.finalMergedCount === 1 && args[1]?.failureCode === "provider_blocked"));
 
   const alert = refresh.buildSourceFailureAlert({ tdxTraffic: "TDX quota_exhausted", iculture: "timeout", kktix: "provider_blocked" });
   assert.match(alert, /quota_exhausted/);
