@@ -31,7 +31,13 @@ function isAuthorized(req) {
 }
 
 function getMode(req) {
-  const mode = String(req.query?.mode || req.body?.mode || "all").trim();
+  // Avoid req.query's legacy getter, which can invoke url.parse (DEP0169).
+  const base = `https://${req.headers?.host || "localhost"}`;
+  const queryMode = new URL(req.url || "/", base).searchParams.get("mode");
+  // Test/local adapters may provide a plain data property. Reading its
+  // descriptor is safe; it deliberately refuses an accessor getter.
+  const queryValue = Object.getOwnPropertyDescriptor(req, "query")?.value;
+  const mode = String(queryMode || queryValue?.mode || req.body?.mode || "all").trim();
   return ["news", "traffic", "all"].includes(mode) ? mode : "all";
 }
 
@@ -105,3 +111,4 @@ module.exports = async (req, res) => {
 };
 
 module.exports.isAuthorized = isAuthorized;
+module.exports.getMode = getMode;

@@ -117,6 +117,15 @@ const TOURISM_EVENTS_FEED = "https://media.taiwan.net.tw/XMLReleaseAll_public/v2
 const TOURISM_EVENTS_TIMEOUT_MS = 5000;
 const TOURISM_EVENTS_MAX_EVENTS = 100;
 const { recordEventIntegrationStatus } = require("./integration-store");
+let latestICultureEvents = [];
+
+function locationText(value) {
+  if (typeof value === "string") return value.replace(/\[object Object\]/gi, "").replace(/\s+/g, " ").trim();
+  if (!value || typeof value !== "object") return "";
+  return [value.addressCountry, value.addressRegion, value.addressLocality, value.streetAddress, value.name, value.Address, value.address, value.location]
+    .filter((part) => typeof part === "string" && part.trim())
+    .join(" ").replace(/\s+/g, " ").trim();
+}
 
 const TDX_CONSTRUCTION_404_SKIP = new Set(["Taoyuan", "Tainan"]);
 
@@ -273,20 +282,53 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
 }
 
 async function fetchTDXAccessToken(startedAt) {
-  const response = await fetchResponse(
+  const clientId = String(process.env.TDX_CLIENT_ID || "").trim();
+  const clientSecret = String(process.env.TDX_CLIENT_SECRET || "").trim();
+  if (!clientId || !clientSecret) {
+    const error = new Error("TDX provider_unavailable: credentials are not configured");
+    error.code = "provider_unavailable";
+    throw error;
+  }
+  let response;
+  try {
+    response = await fetchResponse(
     "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
     {
       method: "POST",
       body: new URLSearchParams({
         grant_type: "client_credentials",
-        client_id: process.env.TDX_CLIENT_ID,
-        client_secret: process.env.TDX_CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
       }),
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 200)),
     }
-  );
-  return (await response.json())?.access_token || "";
+    );
+  } catch (error) {
+    if (Number(error.httpStatus || error.response?.status) === 400 && /unauthorized_client/i.test(`${error.message} ${error.responseMessage || ""}`)) {
+      const authorizationError = new Error("TDX authorization_failed: token client was rejected");
+      authorizationError.code = "authorization_failed";
+      authorizationError.httpStatus = 400;
+      throw authorizationError;
+    }
+    throw error;
+  }
+  const accessToken = String((await response.json())?.access_token || "").trim();
+  if (!accessToken) { const error = new Error("TDX provider_unavailable: token response unavailable"); error.code = "provider_unavailable"; throw error; }
+  return accessToken;
+}
+
+function getTdxStatusOverride() {
+  const value = String(process.env.TDX_STATUS_OVERRIDE || "").trim();
+  // This is an explicit operator assertion for a known quota incident; all
+  // other values are ignored so they cannot mask an authentication failure.
+  return value === "quota_exhausted" ? value : "";
+}
+
+function getTdxAvailabilityMessage(error) {
+  const override = getTdxStatusOverride();
+  const status = override || (["quota_exhausted", "authorization_failed", "provider_unavailable"].includes(error?.code) ? error.code : "provider_unavailable");
+  return `TDX ${status}: token service unavailable`;
 }
 
 function getTdxHeaders(accessToken) {
@@ -343,7 +385,7 @@ function normalizeCmsStaticRecord(item, source) {
     lat,
     lng,
     roadName: String(item.RoadName || item.roadName || item.LinkName || "").trim(),
-    location: String(item.LocationDescription || item.locationDescription || "").trim(),
+    location: locationText(item.LocationDescription || item.locationDescription),
   };
 }
 
@@ -388,7 +430,7 @@ function normalizeCmsLiveRecord(item, source, staticLookup) {
   if (isGenericCmsNotice(message)) return null;
 
   const roadName = staticInfo?.roadName || String(item.RoadName || item.roadName || item.LinkName || "").trim();
-  const location = staticInfo?.location || String(item.LocationDescription || item.locationDescription || "").trim();
+  const location = staticInfo?.location || locationText(item.LocationDescription || item.locationDescription);
   const titleBase = roadName || location || `${source.city} CMS`;
 
   return {
@@ -423,7 +465,7 @@ function normalizeCmsConstructionRecord(item, source) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
 
   const roadName = String(item.RoadName || item.roadName || item.LinkName || "").trim();
-  const location = String(item.LocationDescription || item.locationDescription || item.WorkScope || "").trim();
+  const location = locationText(item.LocationDescription || item.locationDescription || item.WorkScope);
   const description = String(item.ConstructionDescription || item.Description || item.WorkContent || item.Memo || "").trim();
   const titleBase = roadName || location || `${source.city} construction`;
 
@@ -613,11 +655,12 @@ function cleanMultilineText(text) {
 }
 
 function extractDistrict(text = "") {
-  const source = cleanNewsText(text).replace(/\u53f0/g, "\u81fa");
-  const matches = [...source.matchAll(/([\u4e00-\u9fff]{1,5}(?:\u5340|\u9109|\u93ae|\u5e02))/g)]
-    .map((match) => match[1])
-    .filter((name) => !/[\u7e23\u5e02]$/.test(name) || name.length <= 3);
-  return matches[0] || "";
+  const source = locationText(text).replace(/台/g, "臺");
+  // Only parse a district when it follows a recognised Taiwan city/county.
+  // This prevents prose such as「逛市」or「行於閩南地區」from becoming data.
+  const match = source.match(/(?:臺北市|新北市|桃園市|臺中市|臺南市|高雄市|基隆市|新竹市|嘉義市|宜蘭縣|新竹縣|苗栗縣|彰化縣|南投縣|雲林縣|嘉義縣|屏東縣|臺東縣|花蓮縣|澎湖縣|金門縣|連江縣)\s*([\u4e00-\u9fff]{1,3}(?:區|鄉|鎮|市))/);
+  if (match) return match[1];
+  return /^[\u4e00-\u9fff]{1,3}(?:區|鄉|鎮|市)$/.test(source) ? source : "";
 }
 
 function parseEventTime(value) {
@@ -942,10 +985,19 @@ async function fetchCultureActivityEvents(startedAt) {
   try {
     if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
     const endpoint = String(process.env.ICULTURE_ACTIVITY_FEED_URL || ICULTURE_ACTIVITY_FEED).trim();
-    const response = await fetch(endpoint, {
-      signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
-      headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
-    });
+    let response;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        response = await fetch(endpoint, {
+          signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
+          headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
+        });
+        if (response.ok || attempt === 1) break;
+      } catch (error) {
+        if (attempt === 1) throw error;
+      }
+      await delay(350);
+    }
     if (!response.ok) {
       const error = new Error(`iCulture HTTP ${Number(response.status) || "request failed"}`);
       error.httpStatus = Number(response.status) || null;
@@ -967,8 +1019,8 @@ async function fetchCultureActivityEvents(startedAt) {
         if (!startsAt || !endsAt || endsAt < now || startsAt > windowEnd) continue;
         const lat = Number(show?.latitude ?? show?.lat);
         const lng = Number(show?.longitude ?? show?.lng ?? show?.lon);
-        const address = String(show?.location ?? show?.address ?? "").replace(/\s+/g, " ").trim();
-        const venue = String(show?.locationName ?? show?.venue ?? "").replace(/\s+/g, " ").trim();
+        const address = locationText(show?.location ?? show?.address);
+        const venue = locationText(show?.locationName ?? show?.venue);
         const city = inferTaiwanCityFromText(`${address} ${venue} ${title}`) || inferCityFromText(`${address} ${venue} ${title}`)?.city;
         if (!isValidTaiwanCoord(lat, lng) || !city) continue;
         const dedupeKey = `${uid}:${startsAt}`;
@@ -987,12 +1039,17 @@ async function fetchCultureActivityEvents(startedAt) {
       }
       if (events.length >= ICULTURE_MAX_EVENTS) break;
     }
+    latestICultureEvents = events;
     await recordEventIntegrationStatus("iculture", { status: "success", lastAttemptAt: attemptedAt, fetchedCount: activities.length, insertedCount: events.length, duplicateCount: Math.max(0, activities.length - events.length), failedCount: 0, lastErrorType: null, lastDiagnostic: null });
     return events;
   } catch (error) {
     console.warn("[cron] iCulture activity fetch failed:", error.message);
     await recordEventIntegrationStatus("iculture", { status: "error", lastAttemptAt: attemptedAt, lastErrorType: error.name === "TimeoutError" ? "timeout" : "request_error", lastDiagnostic: error.httpStatus ? { httpStatus: error.httpStatus } : null, failedCount: 1 });
-    throw error;
+    // Preserve the last known-good feed in warm runtimes; cold starts retain
+    // existing activities through the refresh merge instead of clearing them.
+    const retained = [...latestICultureEvents];
+    Object.defineProperty(retained, "collector", { value: { status: "warning", reason: "iCulture timeout; retained existing data", cacheRetained: true } });
+    return retained;
   }
 }
 
@@ -1037,7 +1094,8 @@ function normalizeTourismEvent(item, now = Date.now()) {
   const title = String(item?.EventName || "").replace(/\s+/g, " ").trim().slice(0, 120);
   const lat = Number(item?.PositionLat);
   const lng = Number(item?.PositionLon);
-  const address = String(item?.PostalAddress || "").replace(/\s+/g, " ").trim();
+  const postalAddress = item?.PostalAddress;
+  const address = locationText(postalAddress);
   const locatedCities = Array.isArray(item?.LocatedCities) ? item.LocatedCities.join(" ") : String(item?.LocatedCities || "");
   const startsAt = parseTourismDate(item?.StartDateTime);
   const endsAt = parseTourismDate(item?.EndDateTime);
@@ -1372,14 +1430,14 @@ function getCityBboxParam(city) {
 function buildMapboxQuery(event = {}, location = {}) {
   const city = normalizeCity(location.city || event.city || "");
   const parts = [event.address, event.venue, event.location, event.district || location.district, city]
-    .map((value) => String(value || "").replace(/https?:\/\/\S+/gi, " ").replace(/[\r\n]+/g, " ").replace(/([，,。.!！？?、；;])\1+/g, "$1").replace(/\s+/g, " ").trim())
+    .map((value) => (typeof value === "string" ? value : "").replace(/\[object Object\]/gi, " ").replace(/https?:\/\/\S+/gi, " ").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim())
     .filter(Boolean);
   if (!parts.length) {
     const title = String(event.title || "").replace(/https?:\/\/\S+/gi, " ").replace(/[\r\n]+/g, " ");
     const fragments = title.match(/[^，。；;！!?]{0,12}(?:路|街|大道|段|巷|弄|號|區|鄉|鎮|里|橋|站|館|園|中心|學校)[^，。；;！!?]{0,18}/g);
     if (fragments?.length) parts.push(...fragments);
   }
-  const tokens = parts.join(" ").replace(/\s+/g, " ").trim().split(/\s+/).filter(Boolean).slice(0, 15);
+  const tokens = [...new Set(parts.join(" ").replace(/\s+/g, " ").trim().split(/\s+/).filter(Boolean))].slice(0, 15);
   return tokens.join(" ").slice(0, 80).trim();
 }
 
@@ -1485,7 +1543,12 @@ async function geocodeLocationWithMapbox(event, location, startedAt) {
     } catch (error) {
       logFailure(error, 1);
       if (Number(error.httpStatus || error.response?.status) !== 422) throw error;
-      const simplifiedQuery = query.split(/\s+/).slice(0, 8).join(" ").slice(0, 50) || query;
+      const fallbackParts = [event.address, event.district, location.district, location.city, event.city]
+        .filter((value) => typeof value === "string" && value.trim() && value !== "[object Object]")
+        .map((value) => value.replace(/\s+/g, " ").trim());
+      let simplifiedQuery = [...new Set(fallbackParts)].join(" ").slice(0, 50);
+      if (!simplifiedQuery || simplifiedQuery === query || simplifiedQuery.length >= query.length) simplifiedQuery = query.slice(0, Math.max(1, Math.min(40, query.length - 1))).trim();
+      if (!simplifiedQuery || simplifiedQuery === query) throw error;
       const removeBbox = /bbox|bounding\s*box/i.test(String(error.responseMessage || error.bodyPreview || ""));
       response = await fetchResponse(`https://api.mapbox.com/geocoding/v5/${endpoint}/${encodeURIComponent(simplifiedQuery)}.json`, {
         params: { access_token: token, country: "tw", language: "zh", limit: 5, autocomplete: false, bbox: removeBbox ? undefined : (bbox || undefined) },
@@ -1720,7 +1783,7 @@ async function runCollector(name, work, options = {}) {
   try {
     const items = await work();
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
-    const detail = items.collector || {}; return collectorResult(detail.status || "success", null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0 });
+    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained) });
   } catch (error) {
     return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
   }
@@ -1747,18 +1810,30 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   };
 
   let sharedAccessToken = await getCachedValue("tdx_access_token");
-  if (includeTraffic && !sharedAccessToken && process.env.TDX_CLIENT_ID && process.env.TDX_CLIENT_SECRET) {
+  const hasTdxCredentials = Boolean(String(process.env.TDX_CLIENT_ID || "").trim() && String(process.env.TDX_CLIENT_SECRET || "").trim());
+  let tdxAvailabilityError = "";
+  if (includeTraffic && !sharedAccessToken && hasTdxCredentials) {
     try {
       sharedAccessToken = await fetchTDXAccessToken(startedAt);
       if (sharedAccessToken) {
         await setCachedValue("tdx_access_token", sharedAccessToken, { ex: 43200 });
       }
     } catch (error) {
+      tdxAvailabilityError = getTdxAvailabilityMessage(error);
       console.warn("[cron] Failed to get TDX token:", error.message);
     }
   }
 
-  if (includeTraffic) {
+  if (includeTraffic && tdxAvailabilityError) {
+    const [liveCache, constructionCache] = await Promise.all([getCachedValue(TDX_LIVE_CACHE_KEY), getCachedValue(TDX_CONSTRUCTION_CACHE_KEY)]);
+    sources.tdxEvents = Array.isArray(liveCache?.events) ? liveCache.events : (Array.isArray(liveCache) ? liveCache : []);
+    sources.constructionEvents = Array.isArray(constructionCache?.events) ? constructionCache.events : (Array.isArray(constructionCache) ? constructionCache : []);
+    const detail = collectorResult("warning", tdxAvailabilityError, Date.now(), sources.tdxEvents, { error: tdxAvailabilityError, cacheRetained: true });
+    sources.__collectorResults.tdxTraffic = detail;
+    sources.__collectorResults.tdxConstruction = { ...detail, items: sources.constructionEvents, fetchedCount: sources.constructionEvents.length, parsedCount: sources.constructionEvents.length, keptCount: sources.constructionEvents.length };
+    sourceFailure("tdxTraffic", tdxAvailabilityError);
+    sourceFailure("tdxConstruction", tdxAvailabilityError);
+  } else if (includeTraffic) {
     const missingTdx = !sharedAccessToken && (!process.env.TDX_CLIENT_ID || !process.env.TDX_CLIENT_SECRET) ? "缺少 TDX_CLIENT_ID 或 TDX_CLIENT_SECRET" : "";
     sources.__collectorResults.tdxTraffic = await runCollector("TDX 即時交通", () => fetchTDXTrafficEvents(startedAt, sharedAccessToken), { skipReason: missingTdx });
     sources.tdxEvents = sources.__collectorResults.tdxTraffic.items;
@@ -1777,7 +1852,7 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
     sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt));
     sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
-    if (sources.__collectorResults.iculture.status === "failed") sourceFailure("iculture", sources.__collectorResults.iculture.reason);
+    if (["failed", "warning"].includes(sources.__collectorResults.iculture.status)) sourceFailure("iculture", sources.__collectorResults.iculture.reason);
     sources.__collectorResults.tourismEvents = await runCollector("觀光署活動", () => fetchTourismEvents(startedAt));
     sources.tourismEvents = sources.__collectorResults.tourismEvents.items;
     if (sources.__collectorResults.tourismEvents.status === "failed") sourceFailure("tourismEvents", sources.__collectorResults.tourismEvents.reason);
@@ -1811,6 +1886,26 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     normalized: finalEvents.length,
     active: activeEvents.length,
   };
+}
+
+function buildSourceFailureAlert(sourceFailures = {}) {
+  const messages = [];
+  for (const [source, reason] of Object.entries(sourceFailures)) {
+    const text = String(reason || "").toLowerCase();
+    if (source.startsWith("tdx")) {
+      if (!messages.some((message) => message.startsWith("TDX："))) {
+        const status = text.includes("quota_exhausted") ? "quota_exhausted" : (text.includes("authorization_failed") ? "authorization_failed" : "provider_unavailable");
+        messages.push(`TDX：${status}；已保留既有交通資料`);
+      }
+    } else if (source === "iculture") {
+      messages.push("iCulture：timeout/provider_unavailable；已保留既有資料");
+    } else if (source === "kktix") {
+      messages.push("KKTIX：provider_blocked；次要來源降級，既有活動保留");
+    } else {
+      messages.push(`${source}：provider_unavailable`);
+    }
+  }
+  return `來源狀態：${messages.join("；")}`;
 }
 
 const REFRESH_SOURCE_FIELDS = Object.freeze([
@@ -1909,7 +2004,9 @@ async function runEventRefresh(options = {}) {
 
     if (options.write !== false) {
       await setOfficialEvents(activeEvents, cacheOptions);
-      await createEventCandidates(finalEvents.map((event) => ({ source: event.sourceName || event.source || "refresh", status: "published", publishedEventId: event.id, batchId: runId, rawSourceData: event, event })), { batchId: runId });
+      // Published refresh output is already canonical in events:official.
+      // Candidates are pending review items only; never clone the whole event
+      // payload (raw source, tourism object, and images) into KV.
       buckets = await writeEventBucketsToStore(activeEvents, cacheOptions);
     }
 
@@ -1953,7 +2050,7 @@ async function runEventRefresh(options = {}) {
       await appendRefreshLog({ ...result, trigger, status, startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: true });
       await saveRefreshRunDetail(details);
       if (activeEvents.length === 0) await notifyRefreshAlert("zero_events", "成功抓取後事件數為 0");
-      if (errorSourceCount) await notifyRefreshAlert("source_failure", `主要資料來源失敗：${Object.keys(sourceFailures).join(", ")}`);
+      if (errorSourceCount) await notifyRefreshAlert("source_failure", buildSourceFailureAlert(sourceFailures));
     }
 
     console.log(`[event-refresh] complete runId=${runId} count=${activeEvents.length}`);
@@ -1988,6 +2085,7 @@ module.exports = {
   enrichCronEvent,
   enrichEventLocations,
   fetchKktixActivityEvents,
+  fetchTDXAccessToken,
   fetchCultureActivityEvents,
   fetchTourismEvents,
   normalizeTourismEvent,
@@ -1998,6 +2096,7 @@ module.exports = {
   getCityBboxParam,
   geocodeLocationWithMapbox,
   buildKktixResponseDiagnostic,
+  buildSourceFailureAlert,
   fetchDefaultSources,
   isGenericCmsNotice,
   isDuplicateEvent,

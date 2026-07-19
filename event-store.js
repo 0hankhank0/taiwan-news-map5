@@ -21,6 +21,9 @@ const EVENT_REFRESH_RUN_PREFIX = "events:refresh-run:";
 const EVENT_REFRESH_RUN_INDEX_KEY = "events:refresh-run-index";
 const OFFICIAL_EVENTS_KEY = "events:official";
 const EVENT_CANDIDATES_KEY = "events:candidates";
+// Leave headroom below Upstash's 10 MiB value limit for protocol overhead.
+const MAX_CANDIDATE_PAYLOAD_BYTES = 8 * 1024 * 1024;
+const KV_CANDIDATE_STATUSES = new Set(["pending", "pending_admin"]);
 const publishLocks = new Map();
 const MAX_REFRESH_RUN_DETAILS = 50;
 const REFRESH_RUN_DETAIL_TTL_SECONDS = 60 * 60 * 24 * 14;
@@ -316,7 +319,45 @@ async function getEventCandidates(options = {}) {
   if (options.status) items = items.filter((item) => item.status === options.status);
   return items;
 }
-async function saveEventCandidates(items) { await setCachedValue(EVENT_CANDIDATES_KEY, items.slice(0, 5000)); return items; }
+function compactCandidate(candidate = {}) {
+  const event = { ...(candidate.event || {}) };
+  // These are copies of data retained by the primary event/source stores and
+  // are the main cause of the oversized candidates value.
+  delete event.rawSourceData;
+  delete event.tourismEvent;
+  delete event.images;
+  return {
+    candidateId: candidate.candidateId,
+    source: candidate.source,
+    status: candidate.status,
+    publishedEventId: candidate.publishedEventId || null,
+    batchId: candidate.batchId || null,
+    event,
+    // Keep only a small provenance marker in KV; Supabase remains the full
+    // candidate record when EVENT_STORE_MODE=supabase.
+    rawSourceData: candidate.rawSourceData ? { retained: false } : null,
+    createdAt: candidate.createdAt,
+    updatedAt: candidate.updatedAt,
+  };
+}
+async function saveEventCandidates(items, options = {}) {
+  // KV is a lightweight moderation queue, not a published-event archive.
+  const localItems = (Array.isArray(items) ? items : []).slice(0, 5000);
+  const compact = localItems.filter((item) => KV_CANDIDATE_STATUSES.has(item?.status)).map(compactCandidate);
+  const bytes = Buffer.byteLength(JSON.stringify(compact), "utf8");
+  if (bytes > MAX_CANDIDATE_PAYLOAD_BYTES) {
+    const error = new Error(`Candidate payload exceeds safe KV limit (${bytes} bytes)`);
+    error.code = "KV_PAYLOAD_TOO_LARGE";
+    throw error;
+  }
+  // A configured KV is the durable candidate queue. Do not report success if
+  // its write failed merely because a transient local SQLite mirror accepted it.
+  const kvOk = await (options.setKvValue || setKvValue)(EVENT_CANDIDATES_KEY, compact);
+  const sqliteOk = setSqliteValue(EVENT_CANDIDATES_KEY, localItems);
+  if ((options.kvConfigured ?? Boolean(kv)) && !kvOk) { const error = new Error("Candidate KV write failed"); error.code = "KV_WRITE_FAILED"; throw error; }
+  if (!kvOk && !sqliteOk) { const error = new Error("Candidate persistence failed"); error.code = "CANDIDATE_WRITE_FAILED"; throw error; }
+  return compact;
+}
 async function createEventCandidates(items, meta = {}) {
   if (process.env.EVENT_STORE_MODE === "supabase") return require("./supabase-event-repository").createEventCandidates(items, meta);
   const now = new Date().toISOString();
@@ -368,7 +409,8 @@ async function publishEventCandidate(candidateIdValue, patch = {}, options = {})
   writePublishSnapshot(events, nextCandidates);
   // Mirrors are best-effort compatibility caches.  The atomic SQLite snapshot
   // above remains the source of truth if a mirror write fails.
-  await Promise.all([setKvValue(OFFICIAL_EVENTS_KEY, events), setKvValue(EVENT_CANDIDATES_KEY, nextCandidates)]);
+  await setKvValue(OFFICIAL_EVENTS_KEY, events);
+  await saveEventCandidates(nextCandidates);
   await setCachedEvents(events); await writeEventBuckets(events);
   return { candidate: nextCandidate, event };
  });
@@ -523,13 +565,15 @@ function refreshRunKey(runId) {
 }
 
 function sanitizeRefreshRunItem(item = {}) {
+  const locationValue = item.location || [item.city, item.district, item.address, item.venue].filter(Boolean).join(" ");
+  const location = typeof locationValue === "string" ? locationValue : [locationValue?.addressRegion, locationValue?.addressLocality, locationValue?.streetAddress, locationValue?.name].filter((part) => typeof part === "string").join(" ");
   return {
     title: String(item.title || "").slice(0, 240),
     source: String(item.source || item.sourceName || "unknown").slice(0, 120),
     url: String(item.url || item.sourceUrl || "").split("?")[0].slice(0, 500),
     fetchedAt: String(item.fetchedAt || item.publishedAt || item.createdAt || ""),
     category: String(item.category || ""),
-    location: String(item.location || [item.city, item.district, item.address, item.venue].filter(Boolean).join(" ")).slice(0, 240),
+    location: location.replace(/\[object Object\]/gi, "").replace(/\s+/g, " ").trim().slice(0, 240),
     processingResult: ["fetched", "normalized", "accepted", "filtered", "duplicate", "merged", "location_failed", "expired", "source_error"].includes(item.processingResult) ? item.processingResult : "fetched",
     processingReason: cleanRefreshLogError(item.processingReason) || "",
     eventId: String(item.eventId || item.id || "").slice(0, 180),
@@ -812,6 +856,8 @@ module.exports = {
   EVENT_REFRESH_RUN_INDEX_KEY,
   OFFICIAL_EVENTS_KEY,
   EVENT_CANDIDATES_KEY,
+  MAX_CANDIDATE_PAYLOAD_BYTES,
+  KV_CANDIDATE_STATUSES,
   MAX_REFRESH_LOG_ENTRIES,
   MAX_REFRESH_RUN_DETAILS,
   REFRESH_RUN_DETAIL_TTL_SECONDS,
@@ -830,6 +876,8 @@ module.exports = {
   updateOfficialEvent,
   getEventCandidates,
   createEventCandidates,
+  saveEventCandidates,
+  compactCandidate,
   publishEventCandidate,
   getEventCacheStatus,
   getCachedValue,
