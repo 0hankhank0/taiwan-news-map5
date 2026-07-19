@@ -147,6 +147,7 @@
             flex-shrink: 0;
         }
         .brand-title {
+            margin: 0;
             font-family: "Source Han Sans TC", "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
             font-size: 20px;
             font-weight: 700;
