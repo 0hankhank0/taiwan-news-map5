@@ -29,17 +29,19 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
         run: |
           node <<'NODE'
-          const dns = require('node:dns').promises;
-          const host = 'rtr.pbs.gov.tw';
-          async function resolve(family) {
-            try {
-              const addresses = family === 4 ? await dns.resolve4(host) : await dns.resolve6(host);
-              console.log(JSON.stringify({ check: 'dns', family, addresses }));
-            } catch (error) {
-              console.log(JSON.stringify({ check: 'dns', family, addresses: [], errorCode: error.code || null }));
+          void (async () => {
+            const dns = require('node:dns').promises;
+            const host = 'rtr.pbs.gov.tw';
+            async function resolve(family) {
+              try {
+                const addresses = family === 4 ? await dns.resolve4(host) : await dns.resolve6(host);
+                console.log(JSON.stringify({ check: 'dns', family, addresses }));
+              } catch (error) {
+                console.log(JSON.stringify({ check: 'dns', family, addresses: [], errorCode: error.code || null }));
+              }
             }
-          }
-          await resolve(4); await resolve(6);
+            await resolve(4); await resolve(6);
+          })();
           NODE
       - name: Diagnose curl IPv4 and IPv6
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
@@ -57,15 +59,17 @@ jobs:
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
         run: |
           node <<'NODE'
-          const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
-          const started = Date.now();
-          try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
-            response.body?.cancel();
-            console.log(JSON.stringify({ check: 'node_fetch_default', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
-          } catch (error) {
-            console.log(JSON.stringify({ check: 'node_fetch_default', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
-          }
+          void (async () => {
+            const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
+            const started = Date.now();
+            try {
+              const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
+              response.body?.cancel();
+              console.log(JSON.stringify({ check: 'node_fetch_default', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
+            } catch (error) {
+              console.log(JSON.stringify({ check: 'node_fetch_default', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
+            }
+          })();
           NODE
       - name: Diagnose Node IPv4-first fetch
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
@@ -73,15 +77,17 @@ jobs:
           NODE_OPTIONS: --dns-result-order=ipv4first
         run: |
           node <<'NODE'
-          const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
-          const started = Date.now();
-          try {
-            const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
-            response.body?.cancel();
-            console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
-          } catch (error) {
-            console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
-          }
+          void (async () => {
+            const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
+            const started = Date.now();
+            try {
+              const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
+              response.body?.cancel();
+              console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
+            } catch (error) {
+              console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
+            }
+          })();
           NODE
       - name: Sync PBS snapshot
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.diagnose_network != true }}
