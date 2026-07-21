@@ -1,0 +1,28 @@
+name: Probe PBS Cloud
+
+on:
+  push:
+    branches:
+      - diagnostic/pbs-cloud-probe
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Probe PBS endpoints (no application writes)
+        run: node scripts/probe-pbs-cloud.mjs
+      - name: Upload diagnostic artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pbs-cloud-probe
+          path: scripts/probe-output/pbs-cloud-probe.json
+          if-no-files-found: error
