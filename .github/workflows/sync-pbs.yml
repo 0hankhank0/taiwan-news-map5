@@ -49,8 +49,8 @@ jobs:
           URL='https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache'
           probe_curl() {
             family="$1"
-            metrics="$(curl "-$family" -L -sS -o /dev/null --connect-timeout 15 --max-time 25 -w 'http_code=%{http_code} remote_ip=%{remote_ip} time_namelookup=%{time_namelookup} time_connect=%{time_connect} time_appconnect=%{time_appconnect} time_total=%{time_total}' "$URL" 2>/dev/null)"
-            code=$?
+            code=0
+            metrics="$(curl "-$family" -L -sS -o /dev/null --connect-timeout 15 --max-time 25 -w 'http_code=%{http_code} remote_ip=%{remote_ip} time_namelookup=%{time_namelookup} time_connect=%{time_connect} time_appconnect=%{time_appconnect} time_total=%{time_total}' "$URL" 2>/dev/null)" || code=$?
             printf 'curl_ipv%s %s exit_code=%s\n' "$family" "$metrics" "$code"
           }
           probe_curl 4
