@@ -1,0 +1,15 @@
+"use strict";
+const assert = require("node:assert/strict");
+const { normalizePbsRoadRecord, isoTaipei } = require("../pbs-road-normalizer");
+const base = { number: "42", name: "\u570b\u90531\u865f", region: "Taipei", area_sn: "100", highway: "\u570b\u90531\u865f", roadtype: "\u9ad8\u901f\u516c\u8def", comment: "\u8eca\u798d\u4e8b\u6545", lastmodified: "2026-07-21 20:08:01" };
+const event = normalizePbsRoadRecord(base);
+assert.equal(event.id, "pbs:42");
+assert.equal(event.eventFingerprint, "pbs:42");
+assert.equal(event.source, "pbs");
+assert.equal(event.category, "accident");
+assert.ok(Number.isFinite(event.lat) && Number.isFinite(event.lng));
+assert.match(event.sourceUpdatedAt, /2026-07-21T12:08:01.000Z/);
+const fallback = normalizePbsRoadRecord({ ...base, number: "" });
+assert.match(fallback.id, /^pbs:[a-f0-9]{32}$/);
+assert.equal(isoTaipei("invalid"), null);
+console.log("PBS road normalizer tests passed");

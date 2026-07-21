@@ -33,6 +33,7 @@ const {
 } = require("./location-resolver");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 const { notifyRefreshAlert } = require("./refresh-alerts");
+const { getActivePbsEvents, getPbsSyncState } = require("./supabase-pbs-repository");
 
 const Parser = require("rss-parser");
 const os = require("os");
@@ -1771,7 +1772,10 @@ function findDuplicateForMerge(newEvent, existingEventsList) {
 }
 
 function mergeRefreshEvents(existingEvents, newEvents, now = Date.now()) {
-  const mergedEvents = [...(Array.isArray(existingEvents) ? existingEvents : [])];
+  // PBS is a snapshot-backed source: a successful current snapshot is
+  // authoritative, so stale PBS entries must not survive a refresh.
+  const hasPbsSnapshot = Array.isArray(newEvents) && newEvents.some((event) => event?.source === "pbs");
+  const mergedEvents = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => !hasPbsSnapshot || event?.source !== "pbs");
 
   for (const newEvent of (Array.isArray(newEvents) ? newEvents : [])) {
     if (!isDuplicateEvent(newEvent, mergedEvents)) {
@@ -1813,6 +1817,7 @@ function emptySources() {
     activityEvents: [],
     aiEvents: [],
     ruleBasedEvents: [],
+    pbsEvents: [],
   };
 }
 
@@ -1825,7 +1830,7 @@ async function runCollector(name, work, options = {}) {
   try {
     const items = await work();
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
-    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained) });
+    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null });
   } catch (error) {
     return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
   }
@@ -1889,6 +1894,16 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     if (sources.__collectorResults.tdxConstruction.status === "failed") sourceFailure("tdxConstruction", sources.__collectorResults.tdxConstruction.reason);
   }
 
+  if (includeTraffic) {
+    sources.__collectorResults.pbs = await runCollector("PBS", async () => {
+      const [events, syncState] = await Promise.all([getActivePbsEvents(), getPbsSyncState()]);
+      events.collector = { snapshotId: syncState?.lastSnapshotId || null, lastSuccessfulFetch: syncState?.lastSuccessfulFetch || null };
+      return events;
+    });
+    sources.pbsEvents = sources.__collectorResults.pbs.items;
+    if (sources.__collectorResults.pbs.status === "failed") sourceFailure("pbs", sources.__collectorResults.pbs.reason);
+  }
+
   if (includeNews) {
     sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
@@ -1923,6 +1938,7 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     rssItems: sources.rssItems.length,
     tdx: sources.tdxEvents.length,
     construction: sources.constructionEvents.length,
+    pbs: sources.pbsEvents.length,
     iCulture: sources.cultureActivityEvents.length,
     tourismEvents: sources.tourismEvents.length,
     activities: sources.activityEvents.length,
@@ -1959,6 +1975,7 @@ function sourceMatchesOfficialEvent(source, event = {}) {
   if (source === "tdxConstruction") return provider.includes("tdx") && event.category === "construction";
   if (source === "iculture") return provider.includes("iculture");
   if (source === "kktix") return provider.includes("kktix");
+  if (source === "pbs") return provider.includes("pbs");
   if (source === "tourismEvents") return provider.includes("tourism events");
   return false;
 }
@@ -1976,6 +1993,7 @@ function logSourceSummaries({ sources, sourceFailures, existingEvents, activeEve
     tdxConstruction: "constructionEvents",
     iculture: "cultureActivityEvents",
     kktix: "kktixActivityEvents",
+    pbs: "pbsEvents",
   };
   for (const [source, field] of Object.entries(sourceFields)) {
     const collector = sources.__collectorResults?.[source] || {};
@@ -2001,7 +2019,7 @@ function logSourceSummaries({ sources, sourceFailures, existingEvents, activeEve
 const REFRESH_SOURCE_FIELDS = Object.freeze([
   ["rss", "rssItems", "RSS 新聞"], ["tdxTraffic", "tdxEvents", "TDX 即時交通"],
   ["tdxConstruction", "constructionEvents", "TDX 施工資訊"], ["iculture", "cultureActivityEvents", "iCulture 活動"], ["tourismEvents", "tourismEvents", "觀光署活動"], ["kktix", "kktixActivityEvents", "KKTIX 活動"],
-  ["ai", "aiEvents", "AI 提取事件"], ["ruleBased", "ruleBasedEvents", "規則式提取事件"],
+  ["ai", "aiEvents", "AI 提取事件"], ["ruleBased", "ruleBasedEvents", "規則式提取事件"], ["pbs", "pbsEvents", "警廣 PBS"],
 ]);
 
 function refreshItemKey(item = {}) {
@@ -2042,12 +2060,12 @@ function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, 
     return [detailKey, { ...(collector || {}), status: collectorStatus, reason: collector?.reason || failure || null, count: sources[field].length, durationMs: collector?.durationMs || 0, error: collector?.error || failure, items }];
   }));
   const candidates = [
-    ...sources.tdxEvents, ...sources.constructionEvents, ...sources.activityEvents, ...sources.aiEvents, ...sources.ruleBasedEvents,
+    ...sources.tdxEvents, ...sources.constructionEvents, ...sources.pbsEvents, ...sources.activityEvents, ...sources.aiEvents, ...sources.ruleBasedEvents,
   ];
   const candidateKeys = new Set();
   let duplicateCount = 0;
   candidates.forEach((item) => { const key = refreshItemKey(item); if (key && candidateKeys.has(key)) duplicateCount += 1; else candidateKeys.add(key); });
-  const rawCount = sources.rssItems.length + sources.tdxEvents.length + sources.constructionEvents.length + sources.activityEvents.length;
+  const rawCount = sources.rssItems.length + sources.tdxEvents.length + sources.constructionEvents.length + sources.pbsEvents.length + sources.activityEvents.length;
   sourceDetails.location = {
     status: "success", count: geocodingStats.geocodingAttempts, durationMs: 0, error: null,
     items: finalEvents.filter((item) => item.locationQuality === "low" || item.locationPrecision === "unknown").slice(0, 100).map((item) => ({
@@ -2077,6 +2095,7 @@ async function runEventRefresh(options = {}) {
     const finalEvents = await enrichEventLocations(normalizeFinalEvents([
       ...sources.tdxEvents,
       ...sources.constructionEvents,
+      ...sources.pbsEvents,
       ...sources.activityEvents,
       ...sources.aiEvents,
       ...sources.ruleBasedEvents,

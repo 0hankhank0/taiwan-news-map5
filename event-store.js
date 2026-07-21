@@ -586,6 +586,8 @@ function sanitizeRefreshRunDetails(details = {}) {
     count: Math.max(0, Number(value.count) || 0),
     durationMs: Math.max(0, Number(value.durationMs) || 0),
     reason: cleanRefreshLogError(value.reason),
+    snapshotId: String(value.snapshotId || "").slice(0, 180) || null,
+    lastSuccessfulFetch: value.lastSuccessfulFetch ? String(value.lastSuccessfulFetch) : null,
     requestCount: Math.max(0, Number(value.requestCount) || 0), fetchedCount: Math.max(0, Number(value.fetchedCount ?? value.count) || 0),
     parsedCount: Math.max(0, Number(value.parsedCount ?? value.count) || 0), keptCount: Math.max(0, Number(value.keptCount ?? value.count) || 0),
     duplicateCount: Math.max(0, Number(value.duplicateCount) || 0), rejectedCount: Math.max(0, Number(value.rejectedCount) || 0),
@@ -605,7 +607,7 @@ function sanitizeRefreshRunDetails(details = {}) {
     sources: {
       rss: source(details.sources?.rss), tdxTraffic: source(details.sources?.tdxTraffic),
       tdxConstruction: source(details.sources?.tdxConstruction), kktix: source(details.sources?.kktix),
-      ai: source(details.sources?.ai), ruleBased: source(details.sources?.ruleBased), location: source(details.sources?.location),
+      ai: source(details.sources?.ai), ruleBased: source(details.sources?.ruleBased), pbs: source(details.sources?.pbs), location: source(details.sources?.location),
     },
     pipeline: {
       rawCount: Math.max(0, Number(pipeline.rawCount) || 0), normalizedCount: Math.max(0, Number(pipeline.normalizedCount) || 0),

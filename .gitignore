@@ -25,3 +25,8 @@ exports/tisdc-2026/
 exports/tisdc-2026-v2/*
 !exports/tisdc-2026-v2/assets/
 !exports/tisdc-2026-v2/assets/**
+.env*.tmp
+.probe-url.txt
+.new-preview-url.txt
+pbs-test*.json
+pbs-headers*.txt
