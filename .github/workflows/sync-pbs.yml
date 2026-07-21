@@ -3,6 +3,12 @@ on:
   schedule:
     - cron: "*/5 * * * *"
   workflow_dispatch:
+    inputs:
+      diagnose_network:
+        description: Diagnose PBS connectivity without syncing
+        required: false
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -16,8 +22,70 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 24, cache: npm }
-      - run: npm ci --omit=dev --ignore-scripts
-      - run: node scripts/sync-pbs-to-supabase.mjs
+      - name: Install sync dependencies
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.diagnose_network != true }}
+        run: npm ci --omit=dev --ignore-scripts
+      - name: Diagnose DNS resolution
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
+        run: |
+          node <<'NODE'
+          const dns = require('node:dns').promises;
+          const host = 'rtr.pbs.gov.tw';
+          async function resolve(family) {
+            try {
+              const addresses = family === 4 ? await dns.resolve4(host) : await dns.resolve6(host);
+              console.log(JSON.stringify({ check: 'dns', family, addresses }));
+            } catch (error) {
+              console.log(JSON.stringify({ check: 'dns', family, addresses: [], errorCode: error.code || null }));
+            }
+          }
+          await resolve(4); await resolve(6);
+          NODE
+      - name: Diagnose curl IPv4 and IPv6
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
+        run: |
+          URL='https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache'
+          probe_curl() {
+            family="$1"
+            metrics="$(curl "-$family" -L -sS -o /dev/null --connect-timeout 15 --max-time 25 -w 'http_code=%{http_code} remote_ip=%{remote_ip} time_namelookup=%{time_namelookup} time_connect=%{time_connect} time_appconnect=%{time_appconnect} time_total=%{time_total}' "$URL" 2>/dev/null)"
+            code=$?
+            printf 'curl_ipv%s %s exit_code=%s\n' "$family" "$metrics" "$code"
+          }
+          probe_curl 4
+          probe_curl 6
+      - name: Diagnose Node default fetch
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
+        run: |
+          node <<'NODE'
+          const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
+          const started = Date.now();
+          try {
+            const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
+            response.body?.cancel();
+            console.log(JSON.stringify({ check: 'node_fetch_default', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
+          } catch (error) {
+            console.log(JSON.stringify({ check: 'node_fetch_default', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
+          }
+          NODE
+      - name: Diagnose Node IPv4-first fetch
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.diagnose_network == true }}
+        env:
+          NODE_OPTIONS: --dns-result-order=ipv4first
+        run: |
+          node <<'NODE'
+          const url = 'https://rtr.pbs.gov.tw/pbsmgt/RoadAllServlet?ajaxAction=roadAllCache';
+          const started = Date.now();
+          try {
+            const response = await fetch(url, { signal: AbortSignal.timeout(20_000), redirect: 'follow' });
+            response.body?.cancel();
+            console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: response.status, durationMs: Date.now() - started, errorName: null, causeCode: null }));
+          } catch (error) {
+            console.log(JSON.stringify({ check: 'node_fetch_ipv4first', status: null, durationMs: Date.now() - started, errorName: error.name || null, causeCode: error.cause?.code || error.code || null }));
+          }
+          NODE
+      - name: Sync PBS snapshot
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.diagnose_network != true }}
+        run: node scripts/sync-pbs-to-supabase.mjs
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
