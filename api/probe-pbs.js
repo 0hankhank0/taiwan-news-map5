@@ -2,7 +2,7 @@
 const { runPbsCloudProbe } = require("../pbs-cloud-probe");
 
 function isAuthorized(req) {
-  const secret = String(process.env.CRON_SECRET || "").trim();
+  const secret = String(process.env.PBS_PROBE_SECRET || "").trim();
   return Boolean(secret) && String(req.headers?.authorization || "").trim() === `Bearer ${secret}`;
 }
 
