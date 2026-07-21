@@ -8,7 +8,7 @@
     "start": "node server.js",
     "scraper": "node scraper.js",
     "export:posters": "node exports/tisdc-2026-v2/export-posters.mjs",
-    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:admin-token-storage && npm run test:admin-refresh-log-ui && npm run test:submission && npm run test:submission-flow && npm run test:submission-audit-log && npm run test:reaction && npm run test:nearby-radius && npm run test:frontend-data && npm run test:alerts && npm run test:video-demo",
+    "test": "npm run test:content-filter && npm run test:event-text && npm run test:event-display && npm run test:alert-zones && npm run test:ai-context && npm run test:location && npm run test:event-refresh && npm run test:admin && npm run test:admin-token-storage && npm run test:admin-refresh-log-ui && npm run test:submission && npm run test:submission-flow && npm run test:submission-audit-log && npm run test:reaction && npm run test:nearby-radius && npm run test:frontend-data && npm run test:alerts && npm run test:pbs-road-parser && npm run test:pbs-github && npm run test:video-demo",
     "test:content-filter": "node tests/event-content-filter.test.js",
     "test:event-display": "node tests/event-display.test.js",
     "test:event-text": "node tests/event-text.test.mjs",
@@ -32,6 +32,8 @@
     "test:candidates": "node tests/event-candidate.test.js",
     "test:location-picker": "node tests/location-picker.test.mjs",
     "test:official-security": "node tests/official-events-security.test.js",
+    "test:pbs-road-parser": "node tests/pbs-road-parser.test.js",
+    "test:pbs-github": "node tests/pbs-github-probe.test.js",
     "test:collector-status": "node tests/collector-status.test.js"
   },
   "dependencies": {
