@@ -12,6 +12,29 @@ class PbsProbeError extends Error {
   }
 }
 
+const TIMEOUT_CODES = new Set(["UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT", "ETIMEDOUT"]);
+function safeMessage(value) {
+  return String(value || "PBS request failed")
+    .replace(/(authorization\s*[:=]\s*(?:bearer\s+)?)([^\s,;]+)/gi, "$1[redacted]")
+    .replace(/(\bbearer\s+)([^\s,;]+)/gi, "$1[redacted]")
+    .replace(/([?&](?:token|key|secret|signature)=)[^&\s]+/gi, "$1[redacted]")
+    .slice(0, 300);
+}
+function networkErrorDetails(error) {
+  const cause = error?.cause || {};
+  const causeCode = cause.code || error?.code || null;
+  const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError" || TIMEOUT_CODES.has(causeCode);
+  return {
+    stage: timedOut ? "timeout" : "network",
+    name: error?.name || "Error",
+    message: safeMessage(error?.message),
+    causeCode,
+    causeErrno: cause.errno ?? error?.errno ?? null,
+    causeSyscall: cause.syscall ?? error?.syscall ?? null,
+    causeHostname: cause.hostname ?? error?.hostname ?? null,
+  };
+}
+
 function recordSummary(records) {
   return records.slice(0, 2).map(({ number, name, region, area_sn, highway, roadtype, comment, lastmodified }) => ({
     number, name, region, area_sn, highway, roadtype,
@@ -49,7 +72,7 @@ async function runPbsGitHubProbe({ fetchImpl = fetch, timeoutMs = 20_000 } = {})
     report.durationMs = Date.now() - started;
 
     if (!response.ok) {
-      report.error = { stage: "http", message: `PBS HTTP ${response.status}` };
+      report.error = { stage: "http", name: "HttpError", message: `PBS HTTP ${response.status}`, causeCode: null, causeErrno: null, causeSyscall: null, causeHostname: null };
       throw new PbsProbeError(report.error.message, report);
     }
 
@@ -57,7 +80,7 @@ async function runPbsGitHubProbe({ fetchImpl = fetch, timeoutMs = 20_000 } = {})
     try {
       payload = JSON.parse(rawBody.toString("utf8"));
     } catch (error) {
-      report.error = { stage: "json", name: error.name, message: error.message };
+      report.error = { stage: "json", name: error.name, message: safeMessage(error.message), causeCode: null, causeErrno: null, causeSyscall: null, causeHostname: null };
       throw new PbsProbeError("PBS response is not valid JSON", report);
     }
 
@@ -66,27 +89,22 @@ async function runPbsGitHubProbe({ fetchImpl = fetch, timeoutMs = 20_000 } = {})
     report.formDataCount = parsed.records.length;
     report.sampleRecords = recordSummary(parsed.records);
     if (!parsed.ok) {
-      report.error = { stage: "schema", message: parsed.error };
+      report.error = { stage: "schema", name: "SchemaError", message: parsed.error, causeCode: null, causeErrno: null, causeSyscall: null, causeHostname: null };
       throw new PbsProbeError("PBS response schema is invalid", report);
     }
     if (parsed.records.length === 0) {
-      report.error = { stage: "records", message: "PBS formData is empty" };
+      report.error = { stage: "records", name: "RecordsError", message: "PBS formData is empty", causeCode: null, causeErrno: null, causeSyscall: null, causeHostname: null };
       throw new PbsProbeError("PBS response contains no road records", report);
     }
     return { report, rawBody };
   } catch (error) {
     if (report.durationMs === null) report.durationMs = Date.now() - started;
     if (!report.error) {
-      report.error = {
-        stage: error.name === "TimeoutError" || error.name === "AbortError" ? "timeout" : "network",
-        name: error.name || "Error",
-        message: error.message || String(error),
-        causeCode: error.cause?.code || null,
-      };
+      report.error = networkErrorDetails(error);
     }
     if (error instanceof PbsProbeError) throw error;
     throw new PbsProbeError("PBS request failed", report);
   }
 }
 
-module.exports = { ROAD_ALL_URL, PbsProbeError, recordSummary, runPbsGitHubProbe };
+module.exports = { ROAD_ALL_URL, PbsProbeError, networkErrorDetails, recordSummary, runPbsGitHubProbe, safeMessage };

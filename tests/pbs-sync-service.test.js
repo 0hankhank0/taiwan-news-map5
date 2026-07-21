@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { previousCountRatio, syncPbsToSupabase } = require("../pbs-sync-service");
+const { PbsProbeError } = require("../pbs-github-probe");
 
 const records = (count) => Array.from({ length: count }, (_, index) => ({ number: String(index + 1) }));
 const fetchRecords = (count) => async () => ({ records: records(count), report: { formDataCount: count } });
@@ -55,6 +56,10 @@ async function rejected(work, stage) { await assert.rejects(work, (error) => err
   const throwingRpcRepo = repository();
   throwingRpcRepo.replacePbsSnapshot = async () => { throw new Error("safe RPC failure"); };
   await assert.rejects(() => syncPbsToSupabase({ fetchPbsRoadEvents: fetchRecords(100), normalizePbsRoadRecords: () => normalized(100), repository: throwingRpcRepo }), /safe RPC failure/);
+
+  const fetchFailureRepo = repository();
+  await assert.rejects(() => syncPbsToSupabase({ fetchPbsRoadEvents: async () => { throw new PbsProbeError("PBS request failed", { error: { stage: "network", causeCode: "ECONNRESET" }, attempts: [{ attempt: 1 }] }); }, repository: fetchFailureRepo }), /PBS request failed/);
+  assert.equal(fetchFailureRepo.replaceCalls, 0);
 
   const migration = fs.readFileSync(path.join(__dirname, "..", "supabase", "migrations", "20260721_pbs_road_cache.sql"), "utf8");
   const emptyGuard = migration.indexOf("PBS snapshot must contain at least one event");
