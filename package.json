@@ -36,6 +36,7 @@
     "test:pbs-github": "node tests/pbs-github-probe.test.js",
     "test:pbs-road-client": "node tests/pbs-road-client.test.js",
     "test:pbs-cli-diagnostics": "node tests/pbs-cli-diagnostics.test.js",
+    "test:pbs-cloud-probe": "node tests/pbs-cloud-probe.test.js",
     "test:pbs-road-normalizer": "node tests/pbs-road-normalizer.test.js",
     "test:pbs-sync": "node tests/pbs-sync-service.test.js",
     "test:pbs-event-refresh": "node tests/pbs-event-refresh.test.js",
