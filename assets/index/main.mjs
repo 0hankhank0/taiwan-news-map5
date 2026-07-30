@@ -40,6 +40,11 @@ import {
     getStatsCategoryLabel,
     sortPopularOrRecentEvents
 } from "./modules/stats-view.mjs";
+import { isWithinTimeRange } from "./modules/time-range-filter.mjs";
+import { isVisibleEventLayer } from "./modules/event-layer.mjs";
+import { getLocationPresentation } from "./modules/location-presentation.mjs";
+import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mjs";
+import { getCardPreview } from "./modules/event-card-view.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -777,7 +782,8 @@ import {
         const eventIdAttr = escapeAttribute(ev.id || "");
         const sourceUrl = sanitizeExternalUrl(ev.url);
         const sourceUrlAttr = escapeAttribute(sourceUrl);
-        const timeStr = formatEventTime(ev);
+        const preview = getCardPreview(ev);
+        const timeStr = preview.relativeTime;
         const timeHtml = timeStr ? `<span class="popup-location-tag">${escapeHtml(timeStr)}</span>` : "";
         const reactionSlot = isMourningEvent(ev)
             ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${eventIdAttr}"></div>`
@@ -787,6 +793,7 @@ import {
         const reportCount = getEventReportCount(ev);
         const reportTag = reportCount ? `<span class="popup-location-tag">已有 ${reportCount} 筆回報</span>` : "";
         const alertZoneTags = makeAlertZoneBadges(ev, "popup-location-tag");
+        const locationNote = getLocationPresentation(ev);
         const impactHtml = makeEventImpactRow(ev);
         const detailsHtml = makeEventDetailRows(ev, "popup");
         const trustHtml = dataTrust.buildTrustRow(ev, { reportCount, compact: true });
@@ -809,6 +816,7 @@ import {
                     </div>
                 </div>
                 <div class="popup-summary">${escapeHtml(displayContent)}</div>
+                <div class="popup-location-note">${escapeHtml(locationNote.description)}</div>
                 ${submissionNotice}
                 ${impactHtml}
                 ${detailsHtml}
@@ -832,20 +840,22 @@ import {
         const eventIdAttr = escapeAttribute(ev.id || "");
         const sourceUrl = sanitizeExternalUrl(ev.url);
         const sourceUrlAttr = escapeAttribute(sourceUrl);
-        const timeStr = formatEventTime(ev);
+        const preview = getCardPreview(ev);
+        const timeStr = preview.relativeTime;
         const timeHtml = timeStr ? `<span class="time-tag">${escapeHtml(timeStr)}</span>` : "";
         const isMobile = isMobileViewport();
         const upcomingTag = isFutureActivity(ev) ? `<span class="time-tag upcoming-tag">未來活動</span>` : "";
-        const sourceLinksHtml = Array.isArray(ev.sources) ? ev.sources.map((source) => {
+        const sourceEntries = Array.isArray(ev.sources) ? ev.sources : (Array.isArray(ev.sourceTrace) ? ev.sourceTrace : []);
+        const sourceLinksHtml = sourceEntries.map((source) => {
             const url = sanitizeExternalUrl(source?.url || source?.sourceUrl);
             if (!url) return "";
-            const outlet = source?.outlet || source?.source || source?.sourceName || "來源";
+            const outlet = source?.outlet || source?.source || source?.sourceName || source?.name || "來源";
             const title = source?.title || source?.text || "";
             return `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer">${escapeHtml(outlet)}：${escapeHtml(title)}</a>`;
-        }).filter(Boolean).join("") : "";
+        }).filter(Boolean).join("");
         const sourcesHtml = sourceLinksHtml ? `
             <button type="button" class="card-sources-toggle" data-action="toggle-sources">
-                <i class="fa-solid fa-newspaper"></i> ${ev.sources.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
+                <i class="fa-solid fa-newspaper"></i> ${sourceEntries.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
             </button>
             <div class="card-sources-list">
                 ${sourceLinksHtml}
@@ -858,9 +868,7 @@ import {
         const reportCount = getEventReportCount(ev);
         const reportTag = reportCount ? `<span class="time-tag report-count-tag">已有 ${reportCount} 筆回報</span>` : "";
         const alertZoneTags = makeAlertZoneBadges(ev, "time-tag");
-        const impactHtml = isMobile ? "" : makeEventImpactRow(ev);
-        const detailsHtml = makeEventDetailRows(ev, isMobile ? "mobile-card" : "card");
-        const trustHtml = dataTrust.buildTrustRow(ev, { reportCount, compact: isMobile });
+        const impactHtml = !isMobile && ["traffic", "accident", "disaster"].includes(inferEventGroupCategory(ev)) ? makeEventImpactRow(ev) : "";
         const submissionNotice = ev.source === "user_submission"
             ? `<div class="submission-notice">${escapeHtml(ev.publicationNotice || "\u4f7f\u7528\u8005\u6295\u7a3f\uff5c\u5c1a\u672a\u7d93\u5b98\u65b9\u8b49\u5be6")}</div>` : "";
 
@@ -877,22 +885,21 @@ import {
                     ${alertZoneTags}
                 </div>
                 <div class="card-v2-title">${escapeHtml(displayTitle)}</div>
-                <div class="card-v2-content">${escapeHtml(displayContent)}</div>
+                <div class="card-v2-content">${escapeHtml(preview.summary || displayContent)}</div>
                 ${submissionNotice}
-                ${trustHtml}
                 ${impactHtml}
-                ${detailsHtml}
             </div>
             <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
             ${reactionSlot}
             <div class="card-v2-extra card-footer">
-                ${sourcesHtml}
+                <span class="card-source-summary">${escapeHtml(preview.sourceSummary)}</span>${sourcesHtml}
                 <div class="card-actions">
                     <div class="card-action-group">
+                        <button type="button" class="card-action-btn" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
                         <button type="button" class="card-action-btn report" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${eventIdAttr}">
                             <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
                         </button>
-                        ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>原文</a>` : ""}
+                        ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>查看事件</a>` : ""}
                     </div>
                 </div>
             </div>`;
@@ -991,6 +998,11 @@ import {
     let reportSummaryByEvent = {};
     let activeCategory = "all";
     let searchKeyword = "";
+    let activeTimeRange = "24h";
+    let showUpcomingEvents = false;
+    let appliedMapBounds = null;
+    let mapBoundsDirty = false;
+    let suppressMapBoundsPrompt = false;
     let isTaiwanMode = true;
     let twGeoJSON = null;
     let activePopup = null;
@@ -1065,6 +1077,12 @@ import {
     map.on('style.load', () => {
         setMapLanguageToChinese();
         updateNearbyRadiusLayer();
+    });
+
+    map.on("moveend", () => {
+        if (suppressMapBoundsPrompt) return;
+        mapBoundsDirty = true;
+        document.getElementById("search-map-area-btn")?.removeAttribute("hidden");
     });
 
     map.on('error', (e) => {
@@ -1266,7 +1284,9 @@ import {
     function normalizeText(v){ return safeText(v).trim(); }
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function flyToLatLng(latlng, zoom, duration=800){
+        suppressMapBoundsPrompt = true;
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
+        window.setTimeout(() => { suppressMapBoundsPrompt = false; }, Math.max(0, Number(duration) || 0) + 120);
     }
     function closeActivePopup(){
         if(activePopup){
@@ -1922,11 +1942,9 @@ import {
         const commuteCategories = new Set(["traffic", "accident", "disaster"]);
         const filtered = parsedEvents.filter(ev=>{
             if (!shouldShowRealtimeEvent(ev)) return false;
-            const lat=Number(ev.lat), lng=Number(ev.lng);
-            
-            // 座標無效或不在台灣直接排除
-            if(!Number.isFinite(lat)||!Number.isFinite(lng)) return false;
-            if(!isValidTaiwanCoord(lat, lng)) return false;
+            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(ev, { showUpcoming: showUpcomingEvents })) return false;
+            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !(showUpcomingEvents && isFutureActivity(ev))) return false;
+            if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) return false;
 
             const mappedCategory = inferEventGroupCategory(ev);
             if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) return false;
@@ -2199,7 +2217,8 @@ import {
 
         forEachEventSafely(events, (ev, index) => {
             const shouldRenderMarker = index < markerLimit || ev.submissionId === requestedSubmissionId;
-            const canRenderMarker = shouldRenderMarker && shouldRenderLocationMarker(ev);
+            const locationPresentation = getLocationPresentation(ev);
+            const canRenderMarker = shouldRenderMarker && locationPresentation.marker && (locationPresentation.mode === "city_area" || shouldRenderLocationMarker(ev));
             const shouldRenderCard = index < cardLimit;
             if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
@@ -2257,7 +2276,7 @@ import {
                 markerEl.style.cursor = "pointer";
                 markerEl.dataset.eventId = String(ev.id || "");
                 if (ev.source === "user_submission") markerEl.classList.add("submission-marker");
-                if (getLocationDisplayMode(ev) === "estimated") markerEl.classList.add("marker-location-estimated");
+                markerEl.classList.add(`marker-location-${locationPresentation.mode}`);
 
                 if (!isMobile) {
                     const tooltip = new mapboxgl.Popup({
@@ -2291,6 +2310,17 @@ import {
             card.style.setProperty("--card-color", catVisual.color);
             card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
 
+            card.querySelector('[data-action="focus-event"]')?.addEventListener("click", (event) => {
+                event.stopPropagation();
+                if (popup && locationPresentation.flyTo) {
+                    flyToLatLng(latlng, ev.source === "TDX CMS" ? 14 : 13, 800);
+                    popup.addTo(map);
+                    if (window.innerWidth < 768) newsSidebar.classList.add("drawer-collapsed");
+                } else {
+                    setStatus("此事件位置待確認，無法在地圖上精準定位");
+                }
+            });
+
             card.addEventListener("click",e=>{
                 if(e.target instanceof HTMLElement&&(e.target.tagName==="A"||e.target.tagName==="BUTTON"||e.target.closest("button"))) return;
                 trackEvent("event_card_open", {
@@ -2300,11 +2330,10 @@ import {
                     deviceLayout: window.innerWidth < 768 ? "mobile" : "desktop"
                 });
                 closeActivePopup();
-                if (popup) {
+                if (popup && locationPresentation.flyTo) {
                     flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
                     popup.addTo(map);
                 } else {
-                    flyToLatLng(latlng, 9, 800);
                     setStatus("此事件定位待確認，未顯示精準地圖標記");
                 }
                 if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
@@ -2335,7 +2364,7 @@ import {
         if (isMobile && events.length > cardLimit) {
             const notice = document.createElement("div");
             notice.className = "mobile-render-limit";
-            notice.textContent = `Showing ${cardLimit} of ${events.length}. Use search, city, or category filters to narrow the list.`;
+            notice.textContent = `目前顯示 ${cardLimit}／${events.length} 筆；可使用搜尋、城市或分類縮小範圍。`;
             eventList.appendChild(notice);
         }
 
@@ -3545,14 +3574,14 @@ import {
     });
     document.addEventListener("visibilitychange", () => eventDataManager.onVisibilityChange());
     window.addEventListener("pagehide", () => eventDataManager.stop(), { once: true });
-    document.getElementById("btn-tw").addEventListener("click",()=>switchMode(true));
-    document.getElementById("btn-global").addEventListener("click",()=>switchMode(false));
-    document.getElementById("btn-tw-mobile").addEventListener("click",()=>switchMode(true));
-    document.getElementById("btn-global-mobile").addEventListener("click",()=>switchMode(false));
-    document.getElementById("btn-dark").addEventListener("click",()=>switchTheme("dark"));
-    document.getElementById("btn-light").addEventListener("click",()=>switchTheme("light"));
-    document.getElementById("btn-dark-mobile").addEventListener("click",()=>switchTheme("dark"));
-    document.getElementById("btn-light-mobile").addEventListener("click",()=>switchTheme("light"));
+    document.getElementById("btn-tw")?.addEventListener("click",()=>switchMode(true));
+    document.getElementById("btn-global")?.addEventListener("click",()=>switchMode(false));
+    document.getElementById("btn-tw-mobile")?.addEventListener("click",()=>switchMode(true));
+    document.getElementById("btn-global-mobile")?.addEventListener("click",()=>switchMode(false));
+    document.getElementById("btn-dark")?.addEventListener("click",()=>switchTheme("dark"));
+    document.getElementById("btn-light")?.addEventListener("click",()=>switchTheme("light"));
+    document.getElementById("btn-dark-mobile")?.addEventListener("click",()=>switchTheme("dark"));
+    document.getElementById("btn-light-mobile")?.addEventListener("click",()=>switchTheme("light"));
     document.getElementById("drawer-handle").addEventListener("click",toggleDrawer);
     document.getElementById("report-cancel-btn").addEventListener("click",closeReportModal);
     document.getElementById("report-submit-btn").addEventListener("click",submitReportWithReview);
@@ -3583,7 +3612,7 @@ import {
         applyMapMode("online");
         closeBetaModal();
     });
-    document.getElementById("settings-btn").addEventListener("click", () => {
+    document.getElementById("settings-btn")?.addEventListener("click", () => {
         renderAlertZoneSettings();
         settingsModal.classList.add("visible");
     });
@@ -3591,12 +3620,38 @@ import {
         renderAlertZoneSettings();
         settingsModal.classList.add("visible");
     });
-    document.getElementById("settings-close-btn").addEventListener("click", () => {
+    document.getElementById("settings-close-btn")?.addEventListener("click", () => {
         settingsModal.classList.remove("visible");
     });
-    document.getElementById("map-mode-select").addEventListener("change", (e) => {
+    document.getElementById("map-mode-select")?.addEventListener("change", (e) => {
+        if (document.body.classList.contains("stats-mode")) switchMode(true);
         applyMapMode(e.target.value);
+        settingsModal.classList.remove("visible");
     });
+    ["time-range", "time-range-mobile"].forEach((id) => document.getElementById(id)?.addEventListener("change", (event) => {
+        activeTimeRange = event.target.value;
+        ["time-range", "time-range-mobile"].forEach((peer) => { const input = document.getElementById(peer); if (input) input.value = activeTimeRange; });
+        renderEvents();
+    }));
+    document.getElementById("upcoming-toggle-mobile")?.addEventListener("change", (event) => { showUpcomingEvents = event.target.checked; renderEvents(); });
+    document.getElementById("search-map-area-btn")?.addEventListener("click", () => {
+        appliedMapBounds = normalizeBounds(map.getBounds());
+        mapBoundsDirty = false;
+        document.getElementById("search-map-area-btn")?.setAttribute("hidden", "");
+        document.getElementById("clear-map-area-btn")?.removeAttribute("hidden");
+        renderEvents();
+    });
+    document.getElementById("clear-map-area-btn")?.addEventListener("click", () => {
+        appliedMapBounds = null;
+        document.getElementById("clear-map-area-btn")?.setAttribute("hidden", "");
+        renderEvents();
+    });
+    const mapHelp = document.getElementById("map-help-card");
+    if (localStorage.getItem("map_help_dismissed") === "true") mapHelp?.setAttribute("hidden", "");
+    document.getElementById("map-help-close")?.addEventListener("click", () => { localStorage.setItem("map_help_dismissed", "true"); mapHelp?.setAttribute("hidden", ""); });
+    document.getElementById("settings-stats-btn")?.addEventListener("click", () => { switchMode(false); settingsModal.classList.remove("visible"); });
+    document.getElementById("settings-refresh-btn")?.addEventListener("click", () => eventDataManager.refresh({ manual: true }));
+    document.getElementById("settings-theme-btn")?.addEventListener("click", () => switchTheme(document.body.classList.contains("light-mode") ? "dark" : "light"));
 
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
@@ -3617,6 +3672,9 @@ import {
         populateCityFilters();
         removeMapOverlays();
         initMobileFilterCollapse();
+        if (isMobileViewport() && !document.body.classList.contains("stats-mode")) {
+            newsSidebar.classList.add("drawer-collapsed");
+        }
         checkBetaModal();
         applyMapMode(currentMapMode); // 套用快取的模式
         updateNearbyControls();
