@@ -91,6 +91,12 @@ const cron = require("../api/cron");
   const req = { url: "/api/cron?mode=traffic", headers: { host: "example.test" }, body: {} };
   Object.defineProperty(req, "query", { get() { throw new Error("legacy req.query getter was read"); } });
   assert.equal(cron.getMode(req), "traffic");
+  assert.equal(cron.getMode({ url: "/api/cron?mode=news", headers: { host: "example.test" }, body: {} }), "news");
+  // `all` is deliberately invalid: the handler receives news, so no traffic
+  // collector can be reached through the public cron endpoint.
+  assert.equal(cron.getMode({ url: "/api/cron?mode=all", headers: { host: "example.test" }, body: {} }), "news");
+  assert.equal(cron.getMode({ url: "/api/cron?mode=unexpected", headers: { host: "example.test" }, body: {} }), "news");
+  assert.equal(cron.getMode({ url: "/api/cron", headers: { host: "example.test" }, body: {} }), "news");
 
   // Cold start: no iCulture in-memory cache, upstream failure, but the
   // canonical store merge still retains the existing official activity.

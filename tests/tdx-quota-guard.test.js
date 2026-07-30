@@ -1,4 +1,5 @@
 const assert = require("assert");
+const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
@@ -6,6 +7,7 @@ delete process.env.KV_REST_API_URL;
 delete process.env.KV_REST_API_TOKEN;
 process.env.EVENT_DB_PATH = path.join(os.tmpdir(), `taiwan-news-tdx-guard-${Date.now()}.sqlite`);
 process.env.DISABLE_LOCAL_EVENT_CACHE = "0";
+process.env.EVENT_COORDINATION_BACKEND = "sqlite";
 
 const store = require("../event-store");
 const refresh = require("../event-refresh");
@@ -25,6 +27,7 @@ const refresh = require("../event-refresh");
   assert.equal(await store.getCachedCounter(counterKey), 220);
   assert.deepEqual(await store.reserveCachedCounter(counterKey, 2, { budget: 220, ex: 60 }), { allowed: false, used: 220 });
   assert.equal(await store.getCachedCounter(counterKey), 220, "rejected reservations never increment the counter");
+  assert.equal(store.canUseLocalCoordinationFallback(), true, "tests explicitly select the SQLite coordination backend");
 
   const locks = refresh.TDX_FETCH_LOCK_KEYS;
   assert.notEqual(locks.live, locks.static);
@@ -101,6 +104,47 @@ const refresh = require("../event-refresh");
   assert.equal(fetchCalls, 0);
   assert.equal(await store.getCachedValue("tdx:live_cms_events"), undefined);
   global.fetch = originalFetch;
+
+  // Production must fail closed: Redis coordination errors cannot fall back
+  // to instance-local SQLite or issue a token/data request. Durable TDX cache
+  // remains usable, while existing official/non-TDX events remain untouched.
+  await store.setCachedValue("tdx:live_cms_events", { events: [{ id: "prod-live", source: "TDX CMS", category: "traffic", title: "cached", city: "Taipei", lat: 25.03, lng: 121.56, expiresAt: Date.now() + 60000 }] }, { ex: 60 });
+  await store.setCachedValue("tdx:construction_events", { events: [{ id: "prod-construction", source: "TDX CMS", category: "construction", title: "cached work", city: "Taipei", lat: 25.03, lng: 121.56, expiresAt: Date.now() + 60000 }] }, { ex: 60 });
+  const savedNodeEnv = process.env.NODE_ENV; const savedVercel = process.env.VERCEL; const savedBackend = process.env.EVENT_COORDINATION_BACKEND;
+  const savedProductionClientId = process.env.TDX_CLIENT_ID; const savedProductionClientSecret = process.env.TDX_CLIENT_SECRET;
+  process.env.NODE_ENV = "production"; process.env.VERCEL = "1"; process.env.EVENT_COORDINATION_BACKEND = "redis";
+  store.__test.setKvClient({ async get() { throw new Error("redis://secret@example unavailable"); }, async set() { throw new Error("redis unavailable"); }, async eval() { throw new Error("redis unavailable"); } });
+  assert.equal(store.canUseLocalCoordinationFallback(), false);
+  const productionReservation = await store.reserveCachedCounter(`tdx:production:${Date.now()}`, 1, { budget: 220, ex: 60 });
+  assert.deepEqual(productionReservation, { allowed: false, used: 0, reason: "coordination_unavailable", backend: "redis" });
+  process.env.TDX_CLIENT_ID = "test-client"; process.env.TDX_CLIENT_SECRET = "test-secret";
+  let productionFetches = 0;
+  global.fetch = async () => { productionFetches += 1; throw new Error("TDX must not be called"); };
+  await assert.rejects(() => refresh.fetchTDXAccessToken(Date.now()), /coordination_unavailable/);
+  const productionSources = await refresh.fetchDefaultSources("traffic", Date.now(), { tdxDelayMs: 0 });
+  assert.equal(productionFetches, 0, "production coordination outage issues zero TDX requests");
+  assert.equal(productionSources.__collectorResults.tdxTraffic.reason, "TDX coordination_unavailable: token service unavailable");
+  assert.equal(productionSources.__collectorResults.tdxTraffic.retainedSource, "persistent_cache");
+  assert.equal(productionSources.tdxEvents[0].id, "prod-live");
+  const productionRefresh = await refresh.runEventRefresh({ mode: "traffic", write: false, existingEvents: [{ id: "official-live", source: "TDX CMS", category: "traffic", title: "official", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 60000 }, { id: "manual", source: "manual", category: "other", title: "manual", city: "Taipei", lat: 25.04, lng: 121.52, expiresAt: Date.now() + 60000 }], sourceData: productionSources, skipExternalGeocoding: true });
+  assert.equal(productionRefresh.events.some((event) => event.id === "official-live"), true, "coordination failure retains official TDX events");
+  assert.equal(productionRefresh.events.some((event) => event.id === "manual"), true, "coordination failure retains non-TDX events");
+  assert.equal(productionRefresh.tdxBudget.available, false);
+  assert.equal(productionRefresh.tdxLayers.live.outcome, "coordination_unavailable");
+  assert.equal(JSON.stringify(productionRefresh).includes("redis://secret"), false, "Redis connection details are not exposed");
+  const trafficWorkflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "refresh-traffic.yml"), "utf8");
+  assert.match(trafficWorkflow, /payload\.status === "partial_success" && count >= 0/, "traffic workflow accepts retained partial success");
+  global.fetch = originalFetch;
+  store.__test.resetKvClient();
+  if (savedNodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = savedNodeEnv;
+  if (savedVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = savedVercel;
+  if (savedBackend === undefined) delete process.env.EVENT_COORDINATION_BACKEND; else process.env.EVENT_COORDINATION_BACKEND = savedBackend;
+  if (savedProductionClientId === undefined) delete process.env.TDX_CLIENT_ID; else process.env.TDX_CLIENT_ID = savedProductionClientId;
+  if (savedProductionClientSecret === undefined) delete process.env.TDX_CLIENT_SECRET; else process.env.TDX_CLIENT_SECRET = savedProductionClientSecret;
+
+  await store.setCachedValue(refresh.getTaipeiTdxBudgetKey(), 204, { ex: 60 });
+  const nearLimit = await refresh.runEventRefresh({ mode: "traffic", write: false, sourceData: {}, existingEvents: [] });
+  assert.equal(nearLimit.tdxBudget.warning, "budget_near_limit");
   if (originalBudget === undefined) delete process.env.TDX_DAILY_REQUEST_BUDGET;
   else process.env.TDX_DAILY_REQUEST_BUDGET = originalBudget;
 

@@ -2,7 +2,7 @@ const {
   getCachedEvents,
   getOfficialEvents,
   getCachedValue,
-  trySetCachedValue,
+  tryAcquireCoordinationLock,
   deleteCachedValueIfOwner,
   reserveCachedCounter,
   getCachedCounter,
@@ -253,6 +253,16 @@ let tdxConstructionCache = { expiresAt: 0, events: [] };
 let tdxStaticCmsCache = { expiresAt: 0, bySource: new Map() };
 let tdxLiveCmsCache = { expiresAt: 0, events: [] };
 
+async function getRetainedTdxLayerEvents(kind) {
+  const cacheKey = kind === "construction" ? TDX_CONSTRUCTION_CACHE_KEY : TDX_LIVE_CACHE_KEY;
+  const persisted = await getCachedValue(cacheKey);
+  const persistedEvents = Array.isArray(persisted?.events) ? persisted.events : persisted;
+  if (Array.isArray(persistedEvents)) return { events: persistedEvents, source: "persistent_cache" };
+  const memoryEvents = kind === "construction" ? tdxConstructionCache.events : tdxLiveCmsCache.events;
+  if (Array.isArray(memoryEvents) && memoryEvents.length > 0) return { events: memoryEvents, source: "memory_cache" };
+  return { events: [], source: "official_events" };
+}
+
 function mapStaticCacheToRows(bySource) {
   return Array.from(bySource.entries()).map(([key, records]) => [key, Array.from(records.entries())]);
 }
@@ -333,8 +343,8 @@ async function fetchTDXAccessToken(startedAt) {
   try {
     const reservation = await reserveTdxRequest();
     if (reservation.blocked) {
-      const error = new Error("quota_guard");
-      error.code = "quota_guard";
+      const error = new Error(reservation.reason || "quota_guard");
+      error.code = reservation.reason || "quota_guard";
       error.quota = reservation;
       throw error;
     }
@@ -374,7 +384,7 @@ function getTdxStatusOverride() {
 
 function getTdxAvailabilityMessage(error) {
   const override = getTdxStatusOverride();
-  const status = override || (error?.code === "quota_guard" ? "quota_exhausted" : (["quota_exhausted", "authorization_failed", "provider_unavailable"].includes(error?.code) ? error.code : "provider_unavailable"));
+  const status = override || (error?.code === "quota_guard" ? "quota_exhausted" : (["coordination_unavailable", "quota_exhausted", "authorization_failed", "provider_unavailable"].includes(error?.code) ? error.code : "provider_unavailable"));
   return `TDX ${status}: token service unavailable`;
 }
 
@@ -537,8 +547,8 @@ function normalizeCmsConstructionRecord(item, source) {
 async function fetchTdxJson(url, headers, startedAt) {
   const reservation = await reserveTdxRequest();
   if (reservation.blocked) {
-    const error = new Error("quota_guard");
-    error.code = "quota_guard";
+    const error = new Error(reservation.reason || "quota_guard");
+    error.code = reservation.reason || "quota_guard";
     error.quota = reservation;
     throw error;
   }
@@ -568,10 +578,10 @@ async function loadStaticCmsCache(accessToken, startedAt) {
   }
 
   const lock = await acquireTdxFetchLock("static", now);
-  if (!lock) {
+  if (!lock?.ownerToken) {
     const retainedMap = rowsToStaticCacheMap(await getCachedValue(TDX_STATIC_CACHE_KEY));
     if (retainedMap.size > 0) return attachStaticCollector(retainedMap, { outcome: "lock_skipped", source: "persistent_cache", retainedCount: retainedMap.size });
-    const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+    const error = new Error(lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"); error.code = lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"; throw error;
   }
   const refreshedMap = rowsToStaticCacheMap(await getCachedValue(TDX_STATIC_CACHE_KEY));
   if (refreshedMap.size > 0) { await releaseTdxFetchLock(lock); return attachStaticCollector(refreshedMap, { outcome: "cache_hit", source: "persistent_cache", retainedCount: refreshedMap.size }); }
@@ -637,15 +647,16 @@ async function reserveTdxRequest() {
   const reservation = await reserveCachedCounter(getTaipeiTdxBudgetKey(), 1, { budget, ex: secondsUntilTaipeiBudgetExpiry() });
   const used = reservation?.used || 0;
   const blocked = !reservation?.allowed;
-  const info = { limit: budget, used, remaining: Math.max(0, budget - used), allowed: !blocked, blocked, cacheRetained: false };
+  const reason = reservation?.reason || null;
+  const info = { limit: budget, used, remaining: Math.max(0, budget - used), allowed: !blocked, blocked, reason, backend: reservation?.backend || "sqlite", available: reason !== "coordination_unavailable", warning: !blocked && budget - used <= 16 ? "budget_near_limit" : null, cacheRetained: false };
   console.info("[cron] TDX request budget", info);
   return info;
 }
 
 async function acquireTdxFetchLock(kind, now = Date.now()) {
   const ownerToken = randomUUID();
-  const acquired = await trySetCachedValue(TDX_FETCH_LOCK_KEYS[kind], { ownerToken, acquiredAt: new Date(now).toISOString(), kind }, { ex: TDX_FETCH_LOCK_TTLS[kind] });
-  return acquired ? { kind, ownerToken } : null;
+  const result = await tryAcquireCoordinationLock(TDX_FETCH_LOCK_KEYS[kind], { ownerToken, acquiredAt: new Date(now).toISOString(), kind }, { ex: TDX_FETCH_LOCK_TTLS[kind] });
+  return result.acquired ? { kind, ownerToken } : { kind, reason: result.reason || "locked", unavailable: result.reason === "coordination_unavailable" };
 }
 
 async function releaseTdxFetchLock(lock) {
@@ -683,11 +694,11 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     }
 
     const lock = await acquireTdxFetchLock("live", now);
-    if (!lock) {
+    if (!lock?.ownerToken) {
       const retained = await getCachedValue(TDX_LIVE_CACHE_KEY);
       const events = Array.isArray(retained?.events) ? retained.events : retained;
       if (Array.isArray(events)) return cachedTdxResult(events, "tdx_fetch_locked_cache_retained");
-      const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+      const error = new Error(lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"); error.code = lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"; throw error;
     }
     const refreshedLive = await getCachedValue(TDX_LIVE_CACHE_KEY);
     const refreshedLiveEvents = Array.isArray(refreshedLive?.events) ? refreshedLive.events : refreshedLive;
@@ -769,11 +780,11 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     }
 
     const lock = await acquireTdxFetchLock("construction", now);
-    if (!lock) {
+    if (!lock?.ownerToken) {
       const retained = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
       const events = Array.isArray(retained?.events) ? retained.events : retained;
       if (Array.isArray(events)) return cachedTdxResult(events, "tdx_fetch_locked_cache_retained");
-      const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+      const error = new Error(lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"); error.code = lock?.unavailable ? "coordination_unavailable" : "tdx_fetch_locked_no_cache"; throw error;
     }
     const refreshedConstruction = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
     const refreshedConstructionEvents = Array.isArray(refreshedConstruction?.events) ? refreshedConstruction.events : refreshedConstruction;
@@ -2046,12 +2057,12 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   }
 
   if (includeTraffic && tdxAvailabilityError) {
-    const [liveCache, constructionCache] = await Promise.all([getCachedValue(TDX_LIVE_CACHE_KEY), getCachedValue(TDX_CONSTRUCTION_CACHE_KEY)]);
-    sources.tdxEvents = Array.isArray(liveCache?.events) ? liveCache.events : (Array.isArray(liveCache) ? liveCache : []);
-    sources.constructionEvents = Array.isArray(constructionCache?.events) ? constructionCache.events : (Array.isArray(constructionCache) ? constructionCache : []);
-    const detail = collectorResult("warning", tdxAvailabilityError, Date.now(), sources.tdxEvents, { error: tdxAvailabilityError, cacheRetained: true });
+    const [liveRetained, constructionRetained] = await Promise.all([getRetainedTdxLayerEvents("live"), getRetainedTdxLayerEvents("construction")]);
+    sources.tdxEvents = liveRetained.events;
+    sources.constructionEvents = constructionRetained.events;
+    const detail = collectorResult("warning", tdxAvailabilityError, Date.now(), sources.tdxEvents, { error: tdxAvailabilityError, cacheRetained: true, retainedSource: liveRetained.source });
     sources.__collectorResults.tdxTraffic = detail;
-    sources.__collectorResults.tdxConstruction = { ...detail, items: sources.constructionEvents, fetchedCount: sources.constructionEvents.length, parsedCount: sources.constructionEvents.length, keptCount: sources.constructionEvents.length };
+    sources.__collectorResults.tdxConstruction = { ...detail, items: sources.constructionEvents, fetchedCount: sources.constructionEvents.length, parsedCount: sources.constructionEvents.length, keptCount: sources.constructionEvents.length, retainedSource: constructionRetained.source };
     const failureCode = failureCodeFromReason(tdxAvailabilityError);
     logSourceFallback({ source: "tdxTraffic", fallbackType: "persistent_cache", retainedCount: sources.tdxEvents.length, failureCode, runId: options.runId });
     logSourceFallback({ source: "tdxConstruction", fallbackType: "persistent_cache", retainedCount: sources.constructionEvents.length, failureCode, runId: options.runId });
@@ -2123,24 +2134,26 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
 function tdxLayerObservation(detail = {}, fallback = {}) {
   const reason = String(detail.reason || detail.error || "").toLowerCase();
   const outcome = detail.status === "success" ? "success"
+    : reason.includes("coordination_unavailable") ? "coordination_unavailable"
     : reason.includes("locked") ? "lock_skipped"
     : reason.includes("quota") ? "quota_exhausted"
     : reason.includes("authorization") || /http (401|403)/.test(reason) ? "authorization_failed"
     : reason.includes("timeout") ? "timeout"
     : detail.cacheRetained ? "cache_hit" : "provider_error";
-  return { outcome, source: detail.cacheRetained ? "persistent_cache" : (fallback.source || "tdx"), retainedCount: Math.max(0, Number(detail.keptCount ?? detail.count ?? fallback.retainedCount) || 0) };
+  return { outcome, source: detail.retainedSource || (detail.cacheRetained ? "persistent_cache" : (fallback.source || "tdx")), retainedCount: Math.max(0, Number(detail.keptCount ?? detail.count ?? fallback.retainedCount) || 0) };
 }
 
 async function getTdxObservability(sources) {
   const limit = Math.max(0, Number(process.env.TDX_DAILY_REQUEST_BUDGET || TDX_DAILY_REQUEST_BUDGET) || 0);
-  const used = await getCachedCounter(getTaipeiTdxBudgetKey());
   const live = tdxLayerObservation(sources.__collectorResults?.tdxTraffic);
   const construction = tdxLayerObservation(sources.__collectorResults?.tdxConstruction);
+  const coordinationUnavailable = [live, construction].some((layer) => layer.outcome === "coordination_unavailable");
+  const used = coordinationUnavailable ? 0 : await getCachedCounter(getTaipeiTdxBudgetKey());
   const staticDetail = sources.__collectorResults?.tdxTraffic?.staticLayer || {};
   const static = staticDetail.outcome
     ? { outcome: staticDetail.outcome, source: staticDetail.source || "tdx", retainedCount: Math.max(0, Number(staticDetail.retainedCount) || 0) }
     : { outcome: "cache_hit", source: "not_required", retainedCount: 0 };
-  return { tdxBudget: { limit, used, remaining: Math.max(0, limit - used) }, tdxLayers: { live, static, construction } };
+  return { tdxBudget: { limit, used, remaining: Math.max(0, limit - used), available: !coordinationUnavailable, backend: "redis", reason: coordinationUnavailable ? "coordination_unavailable" : null, warning: !coordinationUnavailable && limit - used <= 16 ? "budget_near_limit" : null }, tdxLayers: { live, static, construction } };
 }
 
 function buildSourceFailureAlert(sourceFailures = {}) {

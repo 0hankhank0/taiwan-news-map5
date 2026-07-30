@@ -78,6 +78,19 @@ function shouldSkipLocalCache() {
   return process.env.DISABLE_LOCAL_EVENT_CACHE === "1";
 }
 
+// Coordination protects a provider-wide quota and must therefore be shared
+// between Vercel instances.  Local/test runs can opt into SQLite explicitly.
+function canUseLocalCoordinationFallback() {
+  const backend = String(process.env.EVENT_COORDINATION_BACKEND || "").trim().toLowerCase();
+  if (backend === "sqlite") return true;
+  if (backend === "redis") return false;
+  return process.env.NODE_ENV !== "production" && !process.env.VERCEL;
+}
+
+function coordinationUnavailable() {
+  return { allowed: false, used: 0, reason: "coordination_unavailable", backend: "redis" };
+}
+
 function decodeCachedValue(value) {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
@@ -95,7 +108,7 @@ async function getKvValue(key) {
     const value = await kv.get(key);
     return value === null ? undefined : decodeCachedValue(value);
   } catch (error) {
-    console.warn(`[event-store] KV get failed for ${key}:`, error.message);
+    console.warn(`[event-store] KV get failed for ${key}`);
     return undefined;
   }
 }
@@ -106,7 +119,7 @@ async function setKvValue(key, value, options = {}) {
     await kv.set(key, value, options);
     return true;
   } catch (error) {
-    console.warn(`[event-store] KV set failed for ${key}:`, error.message);
+    console.warn(`[event-store] KV set failed for ${key}`);
     return false;
   }
 }
@@ -117,7 +130,7 @@ async function trySetKvValue(key, value, options = {}) {
     const result = await kv.set(key, value, { ...options, nx: true });
     return result === "OK" || result === "ok" || result === true;
   } catch (error) {
-    console.warn(`[event-store] KV nx set failed for ${key}:`, error.message);
+    console.warn(`[event-store] KV nx set failed for ${key}`);
     return undefined;
   }
 }
@@ -128,7 +141,7 @@ async function deleteKvValue(key) {
     await kv.del(key);
     return true;
   } catch (error) {
-    console.warn(`[event-store] KV delete failed for ${key}:`, error.message);
+    console.warn(`[event-store] KV delete failed for ${key}`);
     return false;
   }
 }
@@ -285,7 +298,7 @@ async function deleteCachedValueIfOwner(key, ownerToken) {
       if (Number(result) === 1) { deleteSqliteValue(key); return true; }
       return false;
     } catch (error) {
-      console.warn(`[event-store] KV owner delete failed for ${key}:`, error.message);
+      console.warn(`[event-store] KV owner delete failed for ${key}`);
     }
   }
   if (shouldSkipLocalCache()) return false;
@@ -351,7 +364,7 @@ async function incrementCachedCounter(key, amount = 1, options = {}) {
       setSqliteValue(key, value, options);
       return value;
     } catch (error) {
-      console.warn(`[event-store] KV counter increment failed for ${key}:`, error.message);
+      console.warn(`[event-store] KV counter increment failed for ${key}`);
     }
   }
   return incrementSqliteCounter(key, increment, options);
@@ -380,12 +393,28 @@ async function reserveCachedCounter(key, amount = 1, options = {}) {
     try {
       const script = "local current=tonumber(redis.call('GET',KEYS[1]) or '0'); local requested=tonumber(ARGV[1]); local budget=tonumber(ARGV[2]); if current+requested>budget then return {0,current} end; local next=current+requested; redis.call('SET',KEYS[1],next); if current==0 and tonumber(ARGV[3])>0 then redis.call('EXPIRE',KEYS[1],ARGV[3]) end; return {1,next}";
       const result = await kv.eval(script, [key], [String(requested), String(budget), String(Math.max(0, Math.floor(Number(options.ex) || 0)))]);
-      const [allowed, used] = Array.isArray(result) ? result : [0, 0];
+      if (!Array.isArray(result) || result.length < 2 || ![0, 1].includes(Number(result[0])) || !Number.isFinite(Number(result[1]))) {
+        if (!canUseLocalCoordinationFallback()) return coordinationUnavailable();
+        throw new Error("KV counter reservation returned invalid result");
+      }
+      const [allowed, used] = result;
       if (Number(allowed) === 1) setSqliteValue(key, Number(used), options);
       return { allowed: Number(allowed) === 1, used: Number(used) || 0 };
-    } catch (error) { console.warn(`[event-store] KV counter reservation failed for ${key}:`, error.message); }
+    } catch (error) {
+      console.warn(`[event-store] KV counter reservation failed for ${key}`);
+      if (!canUseLocalCoordinationFallback()) return coordinationUnavailable();
+    }
   }
+  if (!canUseLocalCoordinationFallback()) return coordinationUnavailable();
   return reserveSqliteCounter(key, requested, { ...options, budget });
+}
+
+async function tryAcquireCoordinationLock(key, value, options = {}) {
+  const kvResult = await trySetKvValue(key, value, options);
+  if (kvResult === true) return { acquired: true, backend: "redis" };
+  if (kvResult === false) return { acquired: false, backend: "redis", reason: "locked" };
+  if (!canUseLocalCoordinationFallback()) return { acquired: false, backend: "redis", reason: "coordination_unavailable" };
+  return { acquired: trySetSqliteValue(key, value, options), backend: "sqlite" };
 }
 
 async function getCachedCounter(key) {
@@ -752,10 +781,14 @@ function sanitizeRefreshRunDetails(details = {}) {
       limit: Math.max(0, Number(details.tdxBudget?.limit) || 0),
       used: Math.max(0, Number(details.tdxBudget?.used) || 0),
       remaining: Math.max(0, Number(details.tdxBudget?.remaining) || 0),
+      available: details.tdxBudget?.available !== false,
+      backend: details.tdxBudget?.backend === "redis" ? "redis" : "sqlite",
+      reason: details.tdxBudget?.reason === "coordination_unavailable" ? "coordination_unavailable" : null,
+      warning: details.tdxBudget?.warning === "budget_near_limit" ? "budget_near_limit" : null,
     },
     tdxLayers: Object.fromEntries(["live", "static", "construction"].map((name) => {
       const layer = details.tdxLayers?.[name] || {};
-      return [name, { outcome: ["success", "cache_hit", "lock_skipped", "quota_exhausted", "authorization_failed", "timeout", "provider_error"].includes(layer.outcome) ? layer.outcome : "provider_error", source: String(layer.source || "").slice(0, 80), retainedCount: Math.max(0, Number(layer.retainedCount) || 0) }];
+      return [name, { outcome: ["success", "cache_hit", "lock_skipped", "quota_exhausted", "authorization_failed", "timeout", "provider_error", "coordination_unavailable"].includes(layer.outcome) ? layer.outcome : "provider_error", source: String(layer.source || "").slice(0, 80), retainedCount: Math.max(0, Number(layer.retainedCount) || 0) }];
     })),
     sources: {
       rss: source(details.sources?.rss), tdxTraffic: source(details.sources?.tdxTraffic),
@@ -1041,6 +1074,8 @@ module.exports = {
   getEventCacheStatus,
   getCachedValue,
   trySetCachedValue,
+  tryAcquireCoordinationLock,
+  canUseLocalCoordinationFallback,
   getEventBucketGroups,
   getRefreshStatus,
   getRefreshLog,
