@@ -1,0 +1,36 @@
+name: Refresh Traffic Events
+
+on:
+  schedule:
+    - cron: "11 * * * *"
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    concurrency:
+      group: cron-traffic
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Call traffic cron endpoint
+        env:
+          APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+          APP_BASE_URL_SECRET: ${{ secrets.APP_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          BASE_URL="${APP_BASE_URL:-$APP_BASE_URL_SECRET}"
+          if [ -z "$BASE_URL" ]; then echo "::error::Set APP_BASE_URL as a repository variable or secret."; exit 1; fi
+          if [ -z "$CRON_SECRET" ]; then echo "::error::Set CRON_SECRET as a repository secret."; exit 1; fi
+          response="$(curl -fsS -X POST "${BASE_URL%/}/api/cron?mode=traffic" -H "Authorization: Bearer $CRON_SECRET" -H "Content-Type: application/json")"
+          CRON_RESPONSE="$response" node <<'NODE'
+          let payload;
+          try { payload = JSON.parse(process.env.CRON_RESPONSE || "{}"); }
+          catch { console.error("::error::Cron response was not valid JSON."); process.exit(1); }
+          const count = Number(payload.count ?? payload.sourceCounts?.active ?? 0);
+          const summary = { success: payload.success, status: payload.status, skippedByLock: Boolean(payload.skippedByLock), mode: payload.mode, count, errorSourceCount: Math.max(0, Number(payload.errorSourceCount) || 0), tdxBudget: payload.tdxBudget || null, tdxLayers: payload.tdxLayers || null };
+          console.log(`[cron-summary] ${JSON.stringify(summary)}`);
+          if (payload.skippedByLock || (payload.status === "partial_success" && count >= 0)) process.exit(0);
+          if (payload.success !== true) { console.error("::error::Traffic cron endpoint did not report success."); process.exit(1); }
+          NODE

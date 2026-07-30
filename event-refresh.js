@@ -2,6 +2,10 @@ const {
   getCachedEvents,
   getOfficialEvents,
   getCachedValue,
+  trySetCachedValue,
+  deleteCachedValueIfOwner,
+  reserveCachedCounter,
+  getCachedCounter,
   setCachedEvents,
   setOfficialEvents,
   createEventCandidates,
@@ -40,6 +44,7 @@ const os = require("os");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
+const { randomUUID } = require("crypto");
 
 // ?? ??????????????????????
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -97,13 +102,18 @@ const MAX_NEWS_FOR_AI = Number(process.env.MAX_NEWS_FOR_AI || DEFAULT_AI_CONTEXT
 const AI_ARTICLE_CONTEXT_TIMEOUT_MS = Number(process.env.AI_ARTICLE_CONTEXT_TIMEOUT_MS || DEFAULT_ARTICLE_TIMEOUT_MS);
 const SOFT_DEADLINE_MS = 7000;
 const TDX_PUBLIC_SOURCE_LIMIT = 2;
-const TDX_STATIC_CACHE_MS = 1000 * 60 * Number(process.env.TDX_STATIC_CACHE_MINUTES || 360);
-const TDX_LIVE_CACHE_MS = 1000 * 60 * Number(process.env.TDX_LIVE_CACHE_MINUTES || 30);
-const TDX_CONSTRUCTION_CACHE_MS = 1000 * 60 * Number(process.env.TDX_CONSTRUCTION_CACHE_MINUTES || 360);
+const TDX_STATIC_CACHE_MS = 1000 * 60 * Number(process.env.TDX_STATIC_CACHE_MINUTES || 1440);
+const TDX_LIVE_CACHE_MS = 1000 * 60 * Number(process.env.TDX_LIVE_CACHE_MINUTES || 55);
+const TDX_CONSTRUCTION_CACHE_MS = 1000 * 60 * Number(process.env.TDX_CONSTRUCTION_CACHE_MINUTES || 720);
 const TDX_BACKOFF_MS = 1000 * 60 * Number(process.env.TDX_BACKOFF_MINUTES || 60);
 const TDX_STATIC_CACHE_KEY = "tdx:static_cms";
 const TDX_LIVE_CACHE_KEY = "tdx:live_cms_events";
 const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
+const TDX_FETCH_LOCK_KEYS = Object.freeze({ live: "tdx:lock:live", static: "tdx:lock:static", construction: "tdx:lock:construction" });
+const TDX_FETCH_LOCK_TTLS = Object.freeze({ live: 55 * 60, static: 23 * 60 * 60, construction: 11 * 60 * 60 });
+const TDX_DAILY_REQUEST_BUDGET = Number(process.env.TDX_DAILY_REQUEST_BUDGET || 220);
+const TDX_FAILURE_BACKOFF_MS = 15 * 60 * 1000;
+const TDX_PARTIAL_BACKOFF_MS = 30 * 60 * 1000;
 const GEOCODING_CACHE_PREFIX = "geocode:v2:";
 const GEOCODING_CACHE_TTL_SECONDS = 60 * 60 * 24 * 30;
 const MAX_GEOCODING_PER_CRON = Number(process.env.MAX_GEOCODING_PER_CRON || 20);
@@ -321,6 +331,13 @@ async function fetchTDXAccessToken(startedAt) {
   }
   let response;
   try {
+    const reservation = await reserveTdxRequest();
+    if (reservation.blocked) {
+      const error = new Error("quota_guard");
+      error.code = "quota_guard";
+      error.quota = reservation;
+      throw error;
+    }
     response = await fetchResponse(
     "https://tdx.transportdata.tw/auth/realms/TDXConnect/protocol/openid-connect/token",
     {
@@ -357,7 +374,7 @@ function getTdxStatusOverride() {
 
 function getTdxAvailabilityMessage(error) {
   const override = getTdxStatusOverride();
-  const status = override || (["quota_exhausted", "authorization_failed", "provider_unavailable"].includes(error?.code) ? error.code : "provider_unavailable");
+  const status = override || (error?.code === "quota_guard" ? "quota_exhausted" : (["quota_exhausted", "authorization_failed", "provider_unavailable"].includes(error?.code) ? error.code : "provider_unavailable"));
   return `TDX ${status}: token service unavailable`;
 }
 
@@ -518,40 +535,65 @@ function normalizeCmsConstructionRecord(item, source) {
   };
 }
 async function fetchTdxJson(url, headers, startedAt) {
-  const response = await fetchResponse(url, {
-    headers,
-    timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
-  });
-  return response.json();
+  const reservation = await reserveTdxRequest();
+  if (reservation.blocked) {
+    const error = new Error("quota_guard");
+    error.code = "quota_guard";
+    error.quota = reservation;
+    throw error;
+  }
+  try {
+    const response = await fetchResponse(url, {
+      headers,
+      timeout: Math.max(800, Math.min(TDX_TIMEOUT_MS, getRemainingTime(startedAt) - 150)),
+    });
+    return response.json();
+  } catch (error) {
+    error.tdxRequestIssued = true;
+    throw error;
+  }
 }
 
 // ?? ????? for...of ???????????
 async function loadStaticCmsCache(accessToken, startedAt) {
   const now = Date.now();
-  if (now < getBackoffUntil("staticCms")) return tdxStaticCmsCache.bySource;
-  if (now < tdxStaticCmsCache.expiresAt && tdxStaticCmsCache.bySource.size > 0) return tdxStaticCmsCache.bySource;
+  if (now < getBackoffUntil("staticCms")) return attachStaticCollector(tdxStaticCmsCache.bySource, { outcome: "cache_hit", source: "memory_cache", retainedCount: tdxStaticCmsCache.bySource.size });
+  if (now < tdxStaticCmsCache.expiresAt && tdxStaticCmsCache.bySource.size > 0) return attachStaticCollector(tdxStaticCmsCache.bySource, { outcome: "cache_hit", source: "memory_cache", retainedCount: tdxStaticCmsCache.bySource.size });
 
   const persistedRows = await getCachedValue(TDX_STATIC_CACHE_KEY);
   const persistedMap = rowsToStaticCacheMap(persistedRows);
   if (persistedMap.size > 0) {
     tdxStaticCmsCache = { bySource: persistedMap, expiresAt: now + TDX_STATIC_CACHE_MS };
-    return persistedMap;
+    return attachStaticCollector(persistedMap, { outcome: "cache_hit", source: "persistent_cache", retainedCount: persistedMap.size });
   }
 
+  const lock = await acquireTdxFetchLock("static", now);
+  if (!lock) {
+    const retainedMap = rowsToStaticCacheMap(await getCachedValue(TDX_STATIC_CACHE_KEY));
+    if (retainedMap.size > 0) return attachStaticCollector(retainedMap, { outcome: "lock_skipped", source: "persistent_cache", retainedCount: retainedMap.size });
+    const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+  }
+  const refreshedMap = rowsToStaticCacheMap(await getCachedValue(TDX_STATIC_CACHE_KEY));
+  if (refreshedMap.size > 0) { await releaseTdxFetchLock(lock); return attachStaticCollector(refreshedMap, { outcome: "cache_hit", source: "persistent_cache", retainedCount: refreshedMap.size }); }
+  let requestIssued = false;
   const headers = getTdxHeaders(accessToken);
   const bySource = new Map();
   const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
-  let sawRateLimit = false;
+  let sawRateLimit = false; let successes = 0;
 
   for (const source of sourcesToFetch) {
     if (getRemainingTime(startedAt) < 800) break;
     try {
       const url = buildTdxCmsUrl(source, false);
       const data = await fetchTdxJson(url, headers, startedAt);
+      requestIssued = true;
       const rawRecords = extractArrayFromTdxPayload(data);
       const records = rawRecords.map((item) => normalizeCmsStaticRecord(item, source)).filter(Boolean);
       bySource.set(`${source.type}:${source.path}`, new Map(records.map((item) => [item.cmsId, item])));
+      successes += 1;
     } catch (error) {
+      if (error.tdxRequestIssued) requestIssued = true;
+      if (error.code === "quota_guard") break;
       const status = error.response?.status;
       if (status === 429) sawRateLimit = true;
       console.warn(`[cron] TDX static CMS failed for ${source.type}/${source.path}:`, status ? `HTTP ${status}` : error.message);
@@ -560,11 +602,68 @@ async function loadStaticCmsCache(accessToken, startedAt) {
     await delay(500); // ??? 0.5 ??
   }
 
+  if (!requestIssued) {
+    await releaseTdxFetchLock(lock);
+    const error = new Error("quota_guard"); error.code = "quota_guard"; throw error;
+  }
+  if (sourcesToFetch.length && successes === 0) {
+    await releaseTdxFetchLock(lock); setBackoffUntil("staticCms", now + TDX_FAILURE_BACKOFF_MS);
+    throw new Error("All TDX static CMS subrequests failed");
+  }
+  if (successes < sourcesToFetch.length) setBackoffUntil("staticCms", now + TDX_PARTIAL_BACKOFF_MS);
   if (sawRateLimit) setBackoffUntil("staticCms", now + TDX_BACKOFF_MS);
 
   tdxStaticCmsCache = { bySource, expiresAt: now + TDX_STATIC_CACHE_MS };
   await setCachedValue(TDX_STATIC_CACHE_KEY, mapStaticCacheToRows(bySource), { ex: Math.floor(TDX_STATIC_CACHE_MS / 1000) });
-  return bySource;
+  await releaseTdxFetchLock(lock);
+  return attachStaticCollector(bySource, { outcome: successes === sourcesToFetch.length ? "success" : "provider_error", source: "tdx", retainedCount: bySource.size });
+}
+
+function getTaipeiTdxBudgetKey(now = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(now));
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `tdx:request-budget:${values.year}-${values.month}-${values.day}`;
+}
+
+function secondsUntilTaipeiBudgetExpiry(now = Date.now()) {
+  // Taipei has no DST. Keep the completed daily counter for one extra hour.
+  const taipei = new Date(now + 8 * 60 * 60 * 1000);
+  const nextMidnightTaipei = Date.UTC(taipei.getUTCFullYear(), taipei.getUTCMonth(), taipei.getUTCDate() + 1) - 8 * 60 * 60 * 1000;
+  return Math.max(1, Math.ceil((nextMidnightTaipei + 60 * 60 * 1000 - now) / 1000));
+}
+
+async function reserveTdxRequest() {
+  const budget = Math.max(0, Number(process.env.TDX_DAILY_REQUEST_BUDGET || TDX_DAILY_REQUEST_BUDGET) || 0);
+  const reservation = await reserveCachedCounter(getTaipeiTdxBudgetKey(), 1, { budget, ex: secondsUntilTaipeiBudgetExpiry() });
+  const used = reservation?.used || 0;
+  const blocked = !reservation?.allowed;
+  const info = { limit: budget, used, remaining: Math.max(0, budget - used), allowed: !blocked, blocked, cacheRetained: false };
+  console.info("[cron] TDX request budget", info);
+  return info;
+}
+
+async function acquireTdxFetchLock(kind, now = Date.now()) {
+  const ownerToken = randomUUID();
+  const acquired = await trySetCachedValue(TDX_FETCH_LOCK_KEYS[kind], { ownerToken, acquiredAt: new Date(now).toISOString(), kind }, { ex: TDX_FETCH_LOCK_TTLS[kind] });
+  return acquired ? { kind, ownerToken } : null;
+}
+
+async function releaseTdxFetchLock(lock) {
+  return lock ? deleteCachedValueIfOwner(TDX_FETCH_LOCK_KEYS[lock.kind], lock.ownerToken) : false;
+}
+
+function attachTdxCollector(items, detail) {
+  Object.defineProperty(items, "collector", { value: detail, configurable: true });
+  return items;
+}
+
+function cachedTdxResult(items, reason) {
+  return attachTdxCollector(items, { status: "warning", reason, cacheRetained: true, subrequests: [], successfulSubrequestCount: 0, failedSubrequestCount: 0 });
+}
+
+function attachStaticCollector(cache, detail) {
+  Object.defineProperty(cache, "collector", { value: detail, configurable: true });
+  return cache;
 }
 
 // ?? ????? for...of ???????????????????
@@ -573,19 +672,35 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
     if (getRemainingTime(startedAt) < 1200) return [];
 
     const now = Date.now();
-    if (now < getBackoffUntil("liveCms")) return tdxLiveCmsCache.events;
-    if (now < tdxLiveCmsCache.expiresAt && tdxLiveCmsCache.events.length > 0) return tdxLiveCmsCache.events;
+    if (now < getBackoffUntil("liveCms")) return cachedTdxResult(tdxLiveCmsCache.events, "cache_hit");
+    if (now < tdxLiveCmsCache.expiresAt && tdxLiveCmsCache.events.length > 0) return cachedTdxResult(tdxLiveCmsCache.events, "cache_hit");
 
     const persistedLive = await getCachedValue(TDX_LIVE_CACHE_KEY);
     const persistedLiveEvents = Array.isArray(persistedLive?.events) ? persistedLive.events : persistedLive;
     if (Array.isArray(persistedLiveEvents)) {
       tdxLiveCmsCache = { events: persistedLiveEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
-      return persistedLiveEvents;
+      return cachedTdxResult(persistedLiveEvents, "cache_hit");
     }
 
+    const lock = await acquireTdxFetchLock("live", now);
+    if (!lock) {
+      const retained = await getCachedValue(TDX_LIVE_CACHE_KEY);
+      const events = Array.isArray(retained?.events) ? retained.events : retained;
+      if (Array.isArray(events)) return cachedTdxResult(events, "tdx_fetch_locked_cache_retained");
+      const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+    }
+    const refreshedLive = await getCachedValue(TDX_LIVE_CACHE_KEY);
+    const refreshedLiveEvents = Array.isArray(refreshedLive?.events) ? refreshedLive.events : refreshedLive;
+    if (Array.isArray(refreshedLiveEvents)) { await releaseTdxFetchLock(lock); return refreshedLiveEvents; }
     let accessToken = preloadedToken;
     const headers = getTdxHeaders(accessToken);
-    const staticCache = await loadStaticCmsCache(accessToken, startedAt);
+    let staticCache;
+    try {
+      staticCache = await loadStaticCmsCache(accessToken, startedAt);
+    } catch (error) {
+      await releaseTdxFetchLock(lock);
+      throw error;
+    }
     const sourcesToFetch = getSelectedTdxSources(Boolean(accessToken));
     let sawRateLimit = false;
     const trafficEvents = []; const subrequests = []; let successes = 0;
@@ -600,19 +715,36 @@ async function fetchTDXTrafficEvents(startedAt, preloadedToken = "") {
         const records = rawRecords.map((item) => normalizeCmsLiveRecord(item, source, staticLookup)).filter(Boolean);
         trafficEvents.push(...records); successes += 1; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"success", httpStatus:200, durationMs:Date.now()-requestStarted, fetchedCount:rawRecords.length, errorCode:null, errorMessage:null });
       } catch (error) {
-        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) throw new Error(`TDX authorization failed (HTTP ${status})`);
+        if (error.code === "quota_guard") {
+          const retained = await getCachedValue(TDX_LIVE_CACHE_KEY); const events = Array.isArray(retained?.events) ? retained.events : retained;
+          if (Array.isArray(events)) { await releaseTdxFetchLock(lock); return cachedTdxResult(events, "quota_guard"); }
+          await releaseTdxFetchLock(lock);
+          throw error;
+        }
+        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) { await releaseTdxFetchLock(lock); throw new Error(`TDX authorization failed (HTTP ${status})`); }
         if (status === 429) sawRateLimit = true;
         console.warn(`[cron] TDX live CMS failed for ${source.type}/${source.path}:`, status ? `HTTP ${status}` : error.message);
       }
       await delay(500); // ??? 0.5 ??
     }
 
-    if (sourcesToFetch.length && successes === 0) throw new Error("All TDX traffic subrequests failed");
-    const filteredEvents = trafficEvents.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)); Object.defineProperty(filteredEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes}});
-    if (sawRateLimit) setBackoffUntil("liveCms", now + TDX_BACKOFF_MS);
+    if (sourcesToFetch.length && successes === 0) { await releaseTdxFetchLock(lock); setBackoffUntil("liveCms", now + TDX_FAILURE_BACKOFF_MS); throw new Error("All TDX traffic subrequests failed"); }
+    const filteredEvents = trafficEvents.filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)); Object.defineProperty(filteredEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes,staticLayer: staticCache.collector || null}});
+    if (successes < sourcesToFetch.length) {
+      setBackoffUntil("liveCms", now + TDX_PARTIAL_BACKOFF_MS);
+      // A live cache is a complete snapshot. Never replace one with a partial
+      // fetch; return the durable snapshot if another instance wrote it.
+      const retained = await getCachedValue(TDX_LIVE_CACHE_KEY);
+      const retainedEvents = Array.isArray(retained?.events) ? retained.events : retained;
+      if (Array.isArray(retainedEvents)) { await releaseTdxFetchLock(lock); return cachedTdxResult(retainedEvents, "partial_cache_retained"); }
+      await releaseTdxFetchLock(lock);
+      return filteredEvents;
+    }
+    else if (sawRateLimit) setBackoffUntil("liveCms", now + TDX_BACKOFF_MS);
 
     tdxLiveCmsCache = { events: filteredEvents, expiresAt: now + TDX_LIVE_CACHE_MS };
     await setCachedValue(TDX_LIVE_CACHE_KEY, { events: filteredEvents, fetchedAt: now }, { ex: Math.floor(TDX_LIVE_CACHE_MS / 1000) });
+    await releaseTdxFetchLock(lock);
     return filteredEvents;
   } catch (error) {
     console.error("[cron] TDX fetch failed:", error.message);
@@ -626,15 +758,26 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
     if (getRemainingTime(startedAt) < 1000) return [];
 
     const now = Date.now();
-    if (now < getBackoffUntil("construction")) return tdxConstructionCache.events;
-    if (now < tdxConstructionCache.expiresAt && tdxConstructionCache.events.length > 0) return tdxConstructionCache.events;
+    if (now < getBackoffUntil("construction")) return cachedTdxResult(tdxConstructionCache.events, "cache_hit");
+    if (now < tdxConstructionCache.expiresAt && tdxConstructionCache.events.length > 0) return cachedTdxResult(tdxConstructionCache.events, "cache_hit");
 
     const persistedConstruction = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
     const persistedConstructionEvents = Array.isArray(persistedConstruction?.events) ? persistedConstruction.events : persistedConstruction;
     if (Array.isArray(persistedConstructionEvents)) {
       tdxConstructionCache = { events: persistedConstructionEvents, expiresAt: now + TDX_CONSTRUCTION_CACHE_MS };
-      return persistedConstructionEvents;
+      return cachedTdxResult(persistedConstructionEvents, "cache_hit");
     }
+
+    const lock = await acquireTdxFetchLock("construction", now);
+    if (!lock) {
+      const retained = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
+      const events = Array.isArray(retained?.events) ? retained.events : retained;
+      if (Array.isArray(events)) return cachedTdxResult(events, "tdx_fetch_locked_cache_retained");
+      const error = new Error("tdx_fetch_locked_no_cache"); error.code = "tdx_fetch_locked_no_cache"; throw error;
+    }
+    const refreshedConstruction = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY);
+    const refreshedConstructionEvents = Array.isArray(refreshedConstruction?.events) ? refreshedConstruction.events : refreshedConstruction;
+    if (Array.isArray(refreshedConstructionEvents)) { await releaseTdxFetchLock(lock); return refreshedConstructionEvents; }
 
     const headers = getTdxHeaders(accessToken);
     let sawRateLimit = false;
@@ -650,18 +793,26 @@ async function fetchTDXConstructionEvents(accessToken, startedAt) {
         const records = rawRecords.map((item) => normalizeCmsConstructionRecord(item, source)).filter(Boolean);
         constructionEvents.push(...records); successes += 1; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"success", httpStatus:200, durationMs:Date.now()-requestStarted, fetchedCount:rawRecords.length, errorCode:null, errorMessage:null });
       } catch (error) {
-        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) throw new Error(`TDX authorization failed (HTTP ${status})`);
+        if (error.code === "quota_guard") {
+          const retained = await getCachedValue(TDX_CONSTRUCTION_CACHE_KEY); const events = Array.isArray(retained?.events) ? retained.events : retained;
+          if (Array.isArray(events)) { await releaseTdxFetchLock(lock); return cachedTdxResult(events, "quota_guard"); }
+          await releaseTdxFetchLock(lock);
+          throw error;
+        }
+        const status = error.response?.status; subrequests.push({ endpoint:`${source.type}/${source.path}`, status:"failed", httpStatus:Number(status)||null, durationMs:0, fetchedCount:0, errorCode:status?`HTTP_${status}`:"REQUEST_ERROR", errorMessage:cleanRefreshLogError(error.message) }); if ([401,403].includes(Number(status))) { await releaseTdxFetchLock(lock); throw new Error(`TDX authorization failed (HTTP ${status})`); }
         if (status === 429) sawRateLimit = true;
         console.warn(`[cron] TDX construction failed for ${source.type}/${source.path}:`, status ? `HTTP ${status}` : error.message);
       }
       await delay(500); // ??? 0.5 ??
     }
 
-    if (sourcesToFetch.length && successes === 0) throw new Error("All TDX construction subrequests failed"); Object.defineProperty(constructionEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes}});
-    if (sawRateLimit) setBackoffUntil("construction", now + TDX_BACKOFF_MS);
+    if (sourcesToFetch.length && successes === 0) { await releaseTdxFetchLock(lock); setBackoffUntil("construction", now + TDX_FAILURE_BACKOFF_MS); throw new Error("All TDX construction subrequests failed"); } Object.defineProperty(constructionEvents,"collector",{value:{status:subrequests.some(x=>x.status==="failed")?"warning":"success",subrequests,successfulSubrequestCount:successes,failedSubrequestCount:subrequests.length-successes}});
+    if (successes < sourcesToFetch.length) setBackoffUntil("construction", now + TDX_PARTIAL_BACKOFF_MS);
+    else if (sawRateLimit) setBackoffUntil("construction", now + TDX_BACKOFF_MS);
 
     tdxConstructionCache = { events: constructionEvents, expiresAt: now + TDX_CONSTRUCTION_CACHE_MS };
     await setCachedValue(TDX_CONSTRUCTION_CACHE_KEY, { events: constructionEvents, fetchedAt: now }, { ex: Math.floor(TDX_CONSTRUCTION_CACHE_MS / 1000) });
+    await releaseTdxFetchLock(lock);
     return constructionEvents;
   } catch (error) {
     console.error("[cron] TDX construction fetch failed:", error.message);
@@ -1806,6 +1957,29 @@ function mergeRefreshEvents(existingEvents, newEvents, now = Date.now()) {
   return mergedEvents.map(enrichCronEvent).filter((event) => isFreshEvent(event, now));
 }
 
+function sourceWasFullyRefreshed(sources, name) {
+  return sources.__collectorResults?.[name]?.status === "success";
+}
+
+function shouldReplaceExistingEvent(event, mode, sources) {
+  const provider = `${event?.source || ""} ${event?.sourceName || ""}`.toLowerCase();
+  if (mode === "traffic") {
+    if (!provider.includes("tdx")) return false;
+    return event.category === "construction" ? sourceWasFullyRefreshed(sources, "tdxConstruction") : sourceWasFullyRefreshed(sources, "tdxTraffic");
+  }
+  if (mode !== "news") return false;
+  if (provider.includes("pbs")) return sourceWasFullyRefreshed(sources, "pbs");
+  if (provider.includes("iculture")) return sourceWasFullyRefreshed(sources, "iculture");
+  if (provider.includes("kktix")) return sourceWasFullyRefreshed(sources, "kktix");
+  if (provider.includes("tourism events")) return sourceWasFullyRefreshed(sources, "tourismEvents");
+  return (provider.includes("rss") || provider.includes("azure") || provider.includes("ai")) && sourceWasFullyRefreshed(sources, "rss") && sourceWasFullyRefreshed(sources, "ai");
+}
+
+function mergeRefreshBuckets(existingEvents, newEvents, mode, sources, now = Date.now()) {
+  const retained = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => !shouldReplaceExistingEvent(event, mode, sources));
+  return mergeRefreshEvents(retained, newEvents, now);
+}
+
 function emptySources() {
   return {
     rssItems: [],
@@ -1830,7 +2004,7 @@ async function runCollector(name, work, options = {}) {
   try {
     const items = await work();
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
-    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null });
+    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null, staticLayer: detail.staticLayer || null });
   } catch (error) {
     return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
   }
@@ -1894,16 +2068,6 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     if (sources.__collectorResults.tdxConstruction.status === "failed") sourceFailure("tdxConstruction", sources.__collectorResults.tdxConstruction.reason);
   }
 
-  if (includeTraffic) {
-    sources.__collectorResults.pbs = await runCollector("PBS", async () => {
-      const [events, syncState] = await Promise.all([getActivePbsEvents(), getPbsSyncState()]);
-      events.collector = { snapshotId: syncState?.lastSnapshotId || null, lastSuccessfulFetch: syncState?.lastSuccessfulFetch || null };
-      return events;
-    });
-    sources.pbsEvents = sources.__collectorResults.pbs.items;
-    if (sources.__collectorResults.pbs.status === "failed") sourceFailure("pbs", sources.__collectorResults.pbs.reason);
-  }
-
   if (includeNews) {
     sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
@@ -1920,6 +2084,13 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     sources.kktixActivityEvents = sources.__collectorResults.kktix.items;
     sources.activityEvents = [...sources.cultureActivityEvents, ...sources.tourismEvents, ...sources.kktixActivityEvents];
     if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
+    sources.__collectorResults.pbs = await runCollector("PBS", async () => {
+      const [events, syncState] = await Promise.all([getActivePbsEvents(), getPbsSyncState()]);
+      events.collector = { snapshotId: syncState?.lastSnapshotId || null, lastSuccessfulFetch: syncState?.lastSuccessfulFetch || null };
+      return events;
+    });
+    sources.pbsEvents = sources.__collectorResults.pbs.items;
+    if (sources.__collectorResults.pbs.status === "failed") sourceFailure("pbs", sources.__collectorResults.pbs.reason);
   }
 
   return sources;
@@ -1947,6 +2118,29 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     normalized: finalEvents.length,
     active: activeEvents.length,
   };
+}
+
+function tdxLayerObservation(detail = {}, fallback = {}) {
+  const reason = String(detail.reason || detail.error || "").toLowerCase();
+  const outcome = detail.status === "success" ? "success"
+    : reason.includes("locked") ? "lock_skipped"
+    : reason.includes("quota") ? "quota_exhausted"
+    : reason.includes("authorization") || /http (401|403)/.test(reason) ? "authorization_failed"
+    : reason.includes("timeout") ? "timeout"
+    : detail.cacheRetained ? "cache_hit" : "provider_error";
+  return { outcome, source: detail.cacheRetained ? "persistent_cache" : (fallback.source || "tdx"), retainedCount: Math.max(0, Number(detail.keptCount ?? detail.count ?? fallback.retainedCount) || 0) };
+}
+
+async function getTdxObservability(sources) {
+  const limit = Math.max(0, Number(process.env.TDX_DAILY_REQUEST_BUDGET || TDX_DAILY_REQUEST_BUDGET) || 0);
+  const used = await getCachedCounter(getTaipeiTdxBudgetKey());
+  const live = tdxLayerObservation(sources.__collectorResults?.tdxTraffic);
+  const construction = tdxLayerObservation(sources.__collectorResults?.tdxConstruction);
+  const staticDetail = sources.__collectorResults?.tdxTraffic?.staticLayer || {};
+  const static = staticDetail.outcome
+    ? { outcome: staticDetail.outcome, source: staticDetail.source || "tdx", retainedCount: Math.max(0, Number(staticDetail.retainedCount) || 0) }
+    : { outcome: "cache_hit", source: "not_required", retainedCount: 0 };
+  return { tdxBudget: { limit, used, remaining: Math.max(0, limit - used) }, tdxLayers: { live, static, construction } };
 }
 
 function buildSourceFailureAlert(sourceFailures = {}) {
@@ -2041,7 +2235,7 @@ function toRefreshItem(item, source, finalByKey, outcome = {}) {
   };
 }
 
-function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten, sourceFailures }) {
+function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten, sourceFailures, tdxBudget, tdxLayers }) {
   const finalByKey = new Map(finalEvents.map((item) => [refreshItemKey(item), item]));
   const existingByKey = new Set(activeEvents.map(refreshItemKey));
   const seenCandidates = new Set();
@@ -2078,13 +2272,15 @@ function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, 
     pipeline: { rawCount, normalizedCount: candidates.length, filteredCount: Math.max(0, candidates.length - finalEvents.length - duplicateCount), duplicateCount, finalCount: finalEvents.length },
     finalEvents: finalEvents.map((item) => ({ ...toRefreshItem(item, item.sourceName || item.source || "最終事件", finalByKey, { result: "accepted", reason: "已寫入地圖事件快取" }), processingResult: "accepted", processingReason: "已寫入地圖事件快取", eventId: item.id || "" })),
     activeEventCount: activeEvents.length,
+    tdxBudget,
+    tdxLayers,
   };
 }
 
 async function runEventRefresh(options = {}) {
   const startedAt = Number(options.startedAt) || Date.now();
   const now = Number(options.now) || Date.now();
-  const mode = ["news", "traffic", "all"].includes(options.mode) ? options.mode : "all";
+  const mode = ["news", "traffic"].includes(options.mode) ? options.mode : "news";
   const runId = String(options.runId || `refresh-${startedAt}-${Math.random().toString(36).slice(2, 8)}`);
   const trigger = ["scheduled", "manual", "unknown"].includes(options.trigger) ? options.trigger : "unknown";
 
@@ -2106,7 +2302,7 @@ async function runEventRefresh(options = {}) {
     const existingEvents = Array.isArray(options.existingEvents)
       ? options.existingEvents
       : await getOfficialEvents();
-    const activeEvents = mergeRefreshEvents(existingEvents, finalEvents, now);
+    const activeEvents = mergeRefreshBuckets(existingEvents, finalEvents, mode, sources, now);
     const cacheTtlSeconds = resolveEventCacheTtlSeconds(options.cacheTtlSeconds ?? process.env.EVENT_CACHE_TTL_SECONDS);
     const cacheOptions = { ex: cacheTtlSeconds };
     let buckets = { traffic: 0, news: 0, activities: 0 };
@@ -2127,7 +2323,8 @@ async function runEventRefresh(options = {}) {
     const errorSourceCount = Object.keys(sourceFailures).length;
     const status = errorSourceCount ? "partial_success" : "success";
     const completedAt = new Date().toISOString();
-    const details = buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten: options.write !== false, sourceFailures });
+    const tdxObservability = await getTdxObservability(sources);
+    const details = buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten: options.write !== false, sourceFailures, ...tdxObservability });
     const result = {
       success: status === "success",
       status,
@@ -2142,6 +2339,7 @@ async function runEventRefresh(options = {}) {
       geocodingHits: geocodingStats.geocodingHits,
       rawCount: details.pipeline.rawCount,
       errorSourceCount,
+      ...tdxObservability,
       events: activeEvents,
     };
 
@@ -2197,6 +2395,15 @@ module.exports = {
   enrichEventLocations,
   fetchKktixActivityEvents,
   fetchTDXAccessToken,
+  fetchTdxJson,
+  loadStaticCmsCache,
+  getBackoffUntil,
+  setBackoffUntil,
+  fetchTDXTrafficEvents,
+  fetchTDXConstructionEvents,
+  getTaipeiTdxBudgetKey,
+  secondsUntilTaipeiBudgetExpiry,
+  TDX_FETCH_LOCK_KEYS,
   fetchCultureActivityEvents,
   fetchTourismEvents,
   normalizeTourismEvent,

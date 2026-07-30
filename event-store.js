@@ -44,7 +44,7 @@ function createKvClient() {
   return new Redis({ url, token });
 }
 
-const kv = createKvClient();
+let kv = createKvClient();
 let sqliteDb = null;
 
 function getSqlitePath() {
@@ -206,8 +206,31 @@ function setSqliteValue(key, value, options = {}) {
 
 function trySetSqliteValue(key, value, options = {}) {
   if (shouldSkipLocalCache()) return false;
-  if (getSqliteValue(key) !== undefined) return false;
-  return setSqliteValue(key, value, options);
+  try {
+    const db = getSqliteDb();
+    const expiresAt = options.ex ? Date.now() + Number(options.ex) * 1000 : null;
+    // Expiry cleanup and INSERT are one IMMEDIATE transaction, so an expired
+    // lock cannot become a permanent local deadlock and concurrent callers
+    // still observe a single owner.
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const now = Date.now();
+      db.prepare("DELETE FROM cache_entries WHERE key = ? AND expires_at IS NOT NULL AND expires_at <= ?").run(key, now);
+      const result = db.prepare(`
+        INSERT INTO cache_entries (key, value, updated_at, expires_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(key) DO NOTHING
+      `).run(key, JSON.stringify(value), now, expiresAt);
+      db.exec("COMMIT");
+      return Number(result.changes) === 1;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } catch (error) {
+    console.warn(`[event-store] SQLite nx set failed for ${key}:`, error.message);
+    return false;
+  }
 }
 
 function deleteSqliteValue(key) {
@@ -252,6 +275,127 @@ async function deleteCachedValue(key) {
   const kvOk = await deleteKvValue(key);
   const sqliteOk = deleteSqliteValue(key);
   return kvOk || sqliteOk;
+}
+
+async function deleteCachedValueIfOwner(key, ownerToken) {
+  if (!ownerToken) return false;
+  if (kv) {
+    try {
+      const result = await kv.eval("local value=redis.call('GET',KEYS[1]); if not value then return 0 end; local ok,data=pcall(cjson.decode,value); if ok and data.ownerToken==ARGV[1] then return redis.call('DEL',KEYS[1]) end; return 0", [key], [ownerToken]);
+      if (Number(result) === 1) { deleteSqliteValue(key); return true; }
+      return false;
+    } catch (error) {
+      console.warn(`[event-store] KV owner delete failed for ${key}:`, error.message);
+    }
+  }
+  if (shouldSkipLocalCache()) return false;
+  try {
+    const db = getSqliteDb();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = db.prepare("SELECT value, expires_at FROM cache_entries WHERE key = ?").get(key);
+      const value = row && (!row.expires_at || row.expires_at > Date.now()) ? decodeCachedValue(JSON.parse(row.value)) : null;
+      const deleted = value?.ownerToken === ownerToken ? db.prepare("DELETE FROM cache_entries WHERE key = ?").run(key).changes : 0;
+      db.exec("COMMIT");
+      return Number(deleted) === 1;
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+  } catch (error) {
+    console.warn(`[event-store] SQLite owner delete failed for ${key}:`, error.message);
+    return false;
+  }
+}
+
+function getSqliteCounter(key) {
+  const value = getSqliteValue(key);
+  const count = Number(value);
+  return Number.isFinite(count) ? count : 0;
+}
+
+function incrementSqliteCounter(key, amount, options = {}) {
+  if (shouldSkipLocalCache()) return null;
+  try {
+    const db = getSqliteDb();
+    const now = Date.now();
+    const ttlSeconds = Math.max(0, Number(options.ex) || 0);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = db.prepare("SELECT value, expires_at FROM cache_entries WHERE key = ?").get(key);
+      const expired = row?.expires_at && row.expires_at <= now;
+      const current = !row || expired ? 0 : Math.max(0, Number(decodeCachedValue(JSON.parse(row.value))) || 0);
+      const next = current + amount;
+      const expiresAt = !row || expired ? (ttlSeconds ? now + ttlSeconds * 1000 : null) : row.expires_at;
+      db.prepare(`INSERT INTO cache_entries (key, value, updated_at, expires_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at, expires_at = excluded.expires_at`
+      ).run(key, JSON.stringify(next), now, expiresAt);
+      db.exec("COMMIT");
+      return next;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } catch (error) {
+    console.warn(`[event-store] SQLite counter increment failed for ${key}:`, error.message);
+    return null;
+  }
+}
+
+async function incrementCachedCounter(key, amount = 1, options = {}) {
+  const increment = Math.max(1, Math.floor(Number(amount) || 1));
+  if (kv) {
+    try {
+      const value = Number(await kv.incrby(key, increment));
+      // An INCRBY result equal to the increment means this call created the
+      // counter.  Set its expiry once; a second concurrent caller must not
+      // extend the daily window.
+      if (value === increment && options.ex) await kv.expire(key, Math.max(1, Math.floor(Number(options.ex))));
+      setSqliteValue(key, value, options);
+      return value;
+    } catch (error) {
+      console.warn(`[event-store] KV counter increment failed for ${key}:`, error.message);
+    }
+  }
+  return incrementSqliteCounter(key, increment, options);
+}
+
+function reserveSqliteCounter(key, amount, options = {}) {
+  if (shouldSkipLocalCache()) return null;
+  try {
+    const db = getSqliteDb(); const now = Date.now(); const budget = Math.max(0, Number(options.budget) || 0);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const row = db.prepare("SELECT value, expires_at FROM cache_entries WHERE key = ?").get(key);
+      const expired = row?.expires_at && row.expires_at <= now;
+      const used = !row || expired ? 0 : Math.max(0, Number(decodeCachedValue(JSON.parse(row.value))) || 0);
+      if (used + amount > budget) { db.exec("COMMIT"); return { allowed: false, used }; }
+      const expiresAt = !row || expired ? (options.ex ? now + Number(options.ex) * 1000 : null) : row.expires_at;
+      db.prepare("INSERT INTO cache_entries (key,value,updated_at,expires_at) VALUES (?,?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at,expires_at=excluded.expires_at").run(key, JSON.stringify(used + amount), now, expiresAt);
+      db.exec("COMMIT"); return { allowed: true, used: used + amount };
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+  } catch (error) { console.warn(`[event-store] SQLite counter reservation failed for ${key}:`, error.message); return null; }
+}
+
+async function reserveCachedCounter(key, amount = 1, options = {}) {
+  const requested = Math.max(1, Math.floor(Number(amount) || 1)); const budget = Math.max(0, Math.floor(Number(options.budget) || 0));
+  if (kv) {
+    try {
+      const script = "local current=tonumber(redis.call('GET',KEYS[1]) or '0'); local requested=tonumber(ARGV[1]); local budget=tonumber(ARGV[2]); if current+requested>budget then return {0,current} end; local next=current+requested; redis.call('SET',KEYS[1],next); if current==0 and tonumber(ARGV[3])>0 then redis.call('EXPIRE',KEYS[1],ARGV[3]) end; return {1,next}";
+      const result = await kv.eval(script, [key], [String(requested), String(budget), String(Math.max(0, Math.floor(Number(options.ex) || 0)))]);
+      const [allowed, used] = Array.isArray(result) ? result : [0, 0];
+      if (Number(allowed) === 1) setSqliteValue(key, Number(used), options);
+      return { allowed: Number(allowed) === 1, used: Number(used) || 0 };
+    } catch (error) { console.warn(`[event-store] KV counter reservation failed for ${key}:`, error.message); }
+  }
+  return reserveSqliteCounter(key, requested, { ...options, budget });
+}
+
+async function getCachedCounter(key) {
+  const kvValue = await getKvValue(key);
+  if (kvValue !== undefined) {
+    const count = Math.max(0, Number(kvValue) || 0);
+    setSqliteValue(key, count);
+    return count;
+  }
+  return getSqliteCounter(key);
 }
 
 async function getCachedEvents() {
@@ -536,7 +680,7 @@ function normalizeRefreshLogEntry(entry = {}) {
   return {
     runId: String(entry.runId || ""),
     trigger: ["scheduled", "manual", "unknown"].includes(entry.trigger) ? entry.trigger : "unknown",
-    mode: ["all", "news", "traffic"].includes(entry.mode) ? entry.mode : "all",
+    mode: ["news", "traffic"].includes(entry.mode) ? entry.mode : "news",
     status: ["success", "partial_success", "error", "skipped", "running"].includes(entry.status) ? entry.status : "error",
     startedAt,
     completedAt,
@@ -600,10 +744,19 @@ function sanitizeRefreshRunDetails(details = {}) {
   return {
     runId: String(details.runId || ""), startedAt: String(details.startedAt || ""), completedAt: String(details.completedAt || ""),
     status: ["success", "partial_success", "error", "skipped"].includes(details.status) ? details.status : "error",
-    mode: ["all", "news", "traffic"].includes(details.mode) ? details.mode : "all",
+    mode: ["news", "traffic"].includes(details.mode) ? details.mode : "news",
     trigger: ["scheduled", "manual", "unknown"].includes(details.trigger) ? details.trigger : "unknown",
     cacheWritten: Boolean(details.cacheWritten),
     error: cleanRefreshLogError(details.error),
+    tdxBudget: {
+      limit: Math.max(0, Number(details.tdxBudget?.limit) || 0),
+      used: Math.max(0, Number(details.tdxBudget?.used) || 0),
+      remaining: Math.max(0, Number(details.tdxBudget?.remaining) || 0),
+    },
+    tdxLayers: Object.fromEntries(["live", "static", "construction"].map((name) => {
+      const layer = details.tdxLayers?.[name] || {};
+      return [name, { outcome: ["success", "cache_hit", "lock_skipped", "quota_exhausted", "authorization_failed", "timeout", "provider_error"].includes(layer.outcome) ? layer.outcome : "provider_error", source: String(layer.source || "").slice(0, 80), retainedCount: Math.max(0, Number(layer.retainedCount) || 0) }];
+    })),
     sources: {
       rss: source(details.sources?.rss), tdxTraffic: source(details.sources?.tdxTraffic),
       tdxConstruction: source(details.sources?.tdxConstruction), kktix: source(details.sources?.kktix),
@@ -870,6 +1023,10 @@ module.exports = {
   appendRefreshLog,
   clearEventCaches,
   deleteCachedValue,
+  deleteCachedValueIfOwner,
+  incrementCachedCounter,
+  reserveCachedCounter,
+  getCachedCounter,
   getCronLockStatus,
   getCachedEvents,
   getOfficialEvents,
@@ -883,6 +1040,7 @@ module.exports = {
   publishEventCandidate,
   getEventCacheStatus,
   getCachedValue,
+  trySetCachedValue,
   getEventBucketGroups,
   getRefreshStatus,
   getRefreshLog,
@@ -895,4 +1053,8 @@ module.exports = {
   cleanRefreshLogError,
   updateCachedEvent,
   writeEventBuckets,
+  __test: {
+    setKvClient(client) { kv = client; },
+    resetKvClient() { kv = createKvClient(); },
+  },
 };

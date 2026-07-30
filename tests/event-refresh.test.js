@@ -513,7 +513,7 @@ async function call(handler, req) {
   assert.deepEqual(await getCronLockStatus(), { locked: false });
 
   for (let index = 0; index < 51; index += 1) {
-    await saveRefreshRunDetail({ runId: `retention-${index}`, startedAt: new Date(now + index * 1000).toISOString(), completedAt: new Date(now + index * 1000).toISOString(), status: "success", mode: "all", sources: {}, pipeline: {}, finalEvents: [] });
+    await saveRefreshRunDetail({ runId: `retention-${index}`, startedAt: new Date(now + index * 1000).toISOString(), completedAt: new Date(now + index * 1000).toISOString(), status: "success", mode: "news", sources: {}, pipeline: {}, finalEvents: [] });
   }
   assert.equal(await getRefreshRunDetail("retention-0"), null);
   assert.equal((await getRefreshRunDetail("retention-50")).runId, "retention-50");
