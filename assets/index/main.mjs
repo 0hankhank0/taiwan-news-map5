@@ -854,7 +854,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             return `<a href="${escapeAttribute(url)}" target="_blank" rel="noreferrer">${escapeHtml(outlet)}：${escapeHtml(title)}</a>`;
         }).filter(Boolean).join("");
         const sourcesHtml = sourceLinksHtml ? `
-            <button type="button" class="card-sources-toggle" data-action="toggle-sources">
+            <button type="button" class="card-sources-toggle" data-action="toggle-sources" aria-expanded="false">
                 <i class="fa-solid fa-newspaper"></i> ${sourceEntries.length} 家報導 <i class="fa-solid fa-chevron-down"></i>
             </button>
             <div class="card-sources-list">
@@ -877,6 +877,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             <div class="card-v2-left">
                 <div class="card-v2-meta">
                     <span class="city-tag">${LOC_PIN_SVG}${escapeHtml(city)}</span>
+                    <span class="card-source-meta">來源：${escapeHtml(preview.sourceSummary)}</span>
                     ${makeLocationPrecisionTag(ev, "time-tag")}
                     ${makeCatBadgeV2(ev.category)}
                     ${upcomingTag}
@@ -889,18 +890,18 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                 ${submissionNotice}
                 ${impactHtml}
             </div>
-            <div class="card-v2-right">${makeSrcBadgeV2(ev.source)}</div>
             ${reactionSlot}
             <div class="card-v2-extra card-footer">
-                <span class="card-source-summary">${escapeHtml(preview.sourceSummary)}</span>${sourcesHtml}
-                <div class="card-actions">
+                ${sourcesHtml}
+                <div class="card-actions" aria-label="事件操作">
+                    <button type="button" class="card-action-btn card-action-btn--primary" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
                     <div class="card-action-group">
-                        <button type="button" class="card-action-btn" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
-                        <button type="button" class="card-action-btn report" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${eventIdAttr}">
-                            <span style="display:inline-flex;width:11px;height:11px;align-items:center;margin-right:3px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg></span>回報
-                        </button>
-                        ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn link"><i class="fa-solid fa-arrow-up-right-from-square" style="margin-right:3px;font-size:10px"></i>查看事件</a>` : ""}
+                        ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn card-action-btn--link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>查看原文</a>` : ""}
+                        <button type="button" class="card-action-btn card-action-btn--more" data-action="toggle-card-more" aria-expanded="false" aria-label="更多事件操作">更多<i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                     </div>
+                </div>
+                <div class="card-more-actions" hidden>
+                    <button type="button" class="card-action-btn report" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}" data-event-id="${eventIdAttr}">回報資料錯誤</button>
                 </div>
             </div>`;
     }
@@ -3550,7 +3551,17 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         "toggle-sources"(event, target) {
             event.preventDefault();
             event.stopPropagation();
-            target.nextElementSibling?.classList.toggle("visible");
+            const expanded = !target.nextElementSibling?.classList.contains("visible");
+            target.nextElementSibling?.classList.toggle("visible", expanded);
+            target.setAttribute("aria-expanded", String(expanded));
+        },
+        "toggle-card-more"(event, target) {
+            event.preventDefault();
+            event.stopPropagation();
+            const menu = target.closest(".card-footer")?.querySelector(".card-more-actions");
+            const expanded = menu?.hasAttribute("hidden");
+            if (menu) menu.toggleAttribute("hidden", !expanded);
+            target.setAttribute("aria-expanded", String(Boolean(expanded)));
         },
         react(event, target) {
             const payload = readReactionPayload(target);
