@@ -16,7 +16,7 @@ async function writeAll(items) {
 }
 async function createSubmission(input) {
   const now = new Date().toISOString();
-  const submission = { ...input, submissionId: id("sub"), status: "pending_ai", approvalMethod: null, riskLevel: "medium", aiReviewResult: null, createdAt: now, updatedAt: now, publishedAt: null };
+  const submission = { ...input, submissionId: id("sub"), status: "pending_admin", approvalMethod: null, riskLevel: "medium", aiReviewResult: null, createdAt: now, updatedAt: now, publishedAt: null };
   await writeAll([submission, ...(await readAll())]);
   return submission;
 }
