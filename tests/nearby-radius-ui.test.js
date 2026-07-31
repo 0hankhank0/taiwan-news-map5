@@ -65,15 +65,28 @@ function distanceMeters(a, b) {
     const ring3 = first.source.data.features[0].geometry.coordinates[0];
     assert.ok(Math.abs(distanceMeters([121.565, 25.033], ring3[18]) - 3000) < 2, "3 km ring uses geographic meters");
 
+    await page.click("#settings-btn");
+    await page.waitForSelector("#settings-modal.visible");
+    assert.equal(await page.locator("#nearby-radius-desktop").isVisible(), true, "desktop nearby radius control is visible in settings");
+    assert.notEqual(
+      await page.evaluate(() => document.getElementById("nearby-radius-desktop") === document.getElementById("alert-zone-radius")),
+      true,
+      "nearby radius and alert-zone radius use distinct controls"
+    );
+    assert.equal(await page.inputValue("#alert-zone-radius"), "3000", "alert-zone radius starts independently at 3 km");
     await page.selectOption("#nearby-radius-desktop", "5000");
     const desktopUpdate = await page.waitForFunction(() => window.__mapboxTestMap.getSource("nearby-radius").data.features[0]?.properties?.radiusMeters === 5000).then(handle => handle.jsonValue());
     assert.equal(desktopUpdate, true);
+    assert.equal(await page.inputValue("#alert-zone-radius"), "3000", "desktop nearby radius does not modify alert-zone radius");
     assert.equal(await page.evaluate(() => Object.keys(window.__mapboxTestMap.sources).filter(id => id === "nearby-radius").length), 1, "radius changes reuse one source");
 
+    await page.click("#settings-close-btn");
+    await page.waitForFunction(() => !document.getElementById("settings-modal").classList.contains("visible"));
     await page.setViewportSize({ width: 390, height: 844 });
     await page.selectOption("#nearby-radius-mobile", "10000");
     await page.waitForFunction(() => window.__mapboxTestMap.getSource("nearby-radius").data.features[0]?.properties?.radiusMeters === 10000);
     assert.equal(await page.inputValue("#nearby-radius-desktop"), "10000", "mobile and desktop selectors stay synchronized");
+    assert.equal(await page.inputValue("#alert-zone-radius"), "3000", "mobile nearby radius does not modify alert-zone radius");
 
     await page.click("#nearby-toggle-mobile");
     await page.waitForFunction(() => window.__mapboxTestMap.getSource("nearby-radius").data.features.length === 0);
