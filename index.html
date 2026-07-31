@@ -112,6 +112,15 @@
                     <option value="online">TW Online 主題</option>
                 </select>
             </div>
+            <div class="form-group">
+                <label class="form-label" for="nearby-radius-desktop">附近事件範圍</label>
+                <select id="nearby-radius-desktop" class="form-control">
+                    <option value="1000">1 km</option>
+                    <option value="3000" selected>3 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
             <div class="settings-section">
                 <div class="settings-section-title">更多功能</div>
                 <div class="settings-section-copy">不影響首頁閱讀的工具集中在這裡。</div>
@@ -221,12 +230,6 @@
         <button id="nearby-toggle-desktop" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
-        <select id="nearby-radius-desktop" class="nearby-radius-select" aria-label="附近距離">
-            <option value="1000">1 km</option>
-            <option value="3000">3 km</option>
-            <option value="5000">5 km</option>
-            <option value="10000">10 km</option>
-        </select>
         <button id="settings-btn" class="mode-btn" aria-label="更多功能" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-ellipsis"></i> 更多</button>
     </div>
 </header>
