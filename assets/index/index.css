@@ -784,6 +784,43 @@
         .card-action-btn:hover { opacity: 0.75; }
         .card-action-btn.report { color: var(--red); }
         .card-action-btn.link { color: var(--accent); }
+        .card-source-meta {
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 650;
+            letter-spacing: .02em;
+        }
+        .card-actions { align-items: stretch; }
+        .card-action-group { margin-left: auto; gap: 6px; }
+        .card-action-btn--primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 0 12px;
+            border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+            border-radius: 9px;
+            background: var(--accent);
+            color: #fff;
+            box-shadow: 0 7px 16px rgba(79, 140, 255, .18);
+        }
+        .card-action-btn--link,
+        .card-action-btn--more {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 36px;
+            padding: 0 9px;
+            border: 1px solid rgba(138, 155, 184, .22);
+            border-radius: 9px;
+            color: var(--text-secondary);
+            background: rgba(7, 12, 22, .35);
+            gap: 5px;
+        }
+        .card-action-btn--link { color: var(--accent); }
+        .card-more-actions { display: flex; justify-content: flex-end; }
+        .card-more-actions[hidden] { display: none; }
+        .card-more-actions .report { min-height: 32px; padding: 0 8px; color: var(--red); }
 
         /* ── BADGE / CHIP ────────────────────────────────────── */
         .cat-badge {
@@ -2942,6 +2979,14 @@ body::after {
 }
 
 @media (max-width: 767px) {
+    .card-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+    .card-action-group { min-width: 0; margin-left: 0; }
+    .card-action-btn--primary { min-height: 44px; width: 100%; }
+    .card-action-btn--link,
+    .card-action-btn--more { min-height: 44px; padding: 0 10px; }
+    .card-action-btn--link { max-width: 104px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .card-more-actions { justify-content: stretch; }
+    .card-more-actions .report { min-height: 44px; width: 100%; text-align: left; justify-content: flex-start; }
     #news-sidebar {
         /* The fixed filter controls own the space above the sheet.  `dvh`
            follows Android Chrome as its address bar expands and collapses. */
@@ -3626,6 +3671,30 @@ body.video-demo-mode #report-success .video-demo-report-note {
 
 body.video-demo-mode .video-demo-range > span {
     display: none !important;
+}
+
+/* News-map focus: keep controls compact and let the map lead. */
+.map-help-card { position:absolute; z-index:120; top:16px; left:16px; max-width:300px; padding:10px 12px; border:1px solid rgba(138,155,184,.28); border-radius:12px; background:rgba(9,16,28,.92); color:var(--text-secondary); font-size:12px; line-height:1.5; box-shadow:0 10px 28px rgba(0,0,0,.22); }
+.map-help-card button { float:right; margin:-3px -3px 0 10px; border:0; color:var(--text-muted); background:transparent; font-size:20px; cursor:pointer; }
+.map-area-actions { position:absolute; z-index:120; top:16px; right:66px; display:flex; gap:8px; }
+.map-area-actions button { min-height:36px; padding:0 12px; border:1px solid rgba(138,155,184,.3); border-radius:9px; color:var(--text-primary); background:rgba(9,16,28,.92); font:600 12px var(--font-body); cursor:pointer; }
+.map-area-actions button:hover { border-color:var(--accent); color:var(--accent); }
+.card-source-summary { display:block; margin-bottom:8px; color:var(--text-muted); font-size:11px; }
+.popup-location-note { margin:8px 0; color:var(--text-muted); font-size:11px; line-height:1.5; }
+.marker-location-estimated .map-pin-svg { opacity:.65; filter:drop-shadow(0 0 0 rgba(0,0,0,0)); }
+.marker-location-estimated .map-pin-inner { border:2px dashed rgba(255,255,255,.95); }
+.marker-location-city_area { opacity:.58; transform:scale(1.2); }
+.marker-location-city_area .map-pin-inner { border:2px dashed rgba(255,255,255,.85); }
+#app-header .header-center { min-width:0; flex:1; }
+#event-search { min-width:220px; flex:1 1 240px; }
+@media (max-width:767px) {
+  #news-sidebar.drawer-collapsed { transform:translateY(calc(82vh - 96px)); }
+  .map-help-card { top:128px; left:12px; max-width:calc(100vw - 24px); }
+  .map-area-actions { top:184px; right:12px; }
+  .mobile-row2 { overflow-x:auto; scrollbar-width:none; }
+  .mobile-row2 .mobile-city-select { min-width:126px; }
+  .mobile-pill { min-width:106px; white-space:nowrap; }
+  .map-area-actions button { min-height:40px; }
 }
  .submission-focus-notice {
   position: fixed;

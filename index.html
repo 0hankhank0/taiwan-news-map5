@@ -13,8 +13,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script defer src="/_vercel/insights/script.js"></script>
-    <title>島嶼脈搏 | 台灣事件地圖</title>
-    <meta name="description" content="用地圖看見台灣正在發生的交通、災害與公共事件。出門前快速確認塞車、事故、施工、災情與活動管制，並標示更新時間、資料來源與建議行動。">
+    <title>島嶼脈搏｜台灣新聞事件地圖｜看見今天的新聞發生在哪裡</title>
+    <meta name="description" content="將分散的新聞整理成地圖事件，快速理解事件位置、時間與發展。">
     <meta name="keywords" content="台灣地圖, 交通事故, 即時路況, TDX, 災情即時, 塞車地圖, AI 地圖, 道路施工, 警廣路況, 台灣車禍, 即時新聞地圖, 塞車, 車禍, 道路封閉, 國道路況, 省道路況, 高速公路, 交通資訊, 台北塞車, 台中塞車, 高雄塞車, 出門前, 路況查詢">
     <meta name="author" content="台灣新聞事件地圖">
     <meta name="robots" content="index, follow">
@@ -23,8 +23,8 @@
     <meta name="google-site-verification" content="TSf_qxT0E0bM68SRH_aWAkwa9GXlPoPwX73l-9VKbJM" />
 
     <!-- Open Graph -->
-    <meta property="og:title" content="島嶼脈搏 | 台灣事件地圖">
-    <meta property="og:description" content="用地圖看見台灣正在發生的交通、災害與公共事件。出門前快速判斷哪些事件會影響通行與生活。">
+    <meta property="og:title" content="島嶼脈搏｜台灣新聞事件地圖">
+    <meta property="og:description" content="將分散的新聞整理成地圖事件，快速理解事件位置、時間與發展。">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://taiwan-news-map.vercel.app/">
     <meta property="og:image" content="https://taiwan-news-map.vercel.app/og-image.jpg">
@@ -35,8 +35,8 @@
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="島嶼脈搏 | 台灣事件地圖">
-    <meta name="twitter:description" content="交通、災害、活動與公共事件，用地圖快速判斷是否影響出門與生活。">
+    <meta name="twitter:title" content="島嶼脈搏｜台灣新聞事件地圖">
+    <meta name="twitter:description" content="看見今天的新聞發生在哪裡。">
     <meta name="twitter:image" content="https://taiwan-news-map.vercel.app/og-image.jpg">
 
     <!-- Schema.org 結構化資料 -->
@@ -47,7 +47,7 @@
       "name": "島嶼脈搏",
       "url": "https://taiwan-news-map.vercel.app/",
       "description": "用地圖看見台灣正在發生的交通、災害與公共事件，提供資料來源、更新時間與行動建議。",
-      "applicationCategory": "TravelApplication",
+      "applicationCategory": "WebApplication",
       "operatingSystem": "Web",
       "offers": { "@type": "Offer", "price": "0" },
       "inLanguage": "zh-TW",
@@ -106,12 +106,26 @@
                 <div class="modal-title">設定</div>
             </div>
             <div class="form-group">
-                <label class="form-label">顯示模式</label>
+                <label class="form-label">地圖主題</label>
                 <select id="map-mode-select" class="form-control">
-                    <option value="normal">一般模式</option>
-                    <option value="commute">出門前模式</option>
-                    <option value="online">🎮 TW Online</option>
+                    <option value="normal">新聞事件地圖</option>
+                    <option value="online">TW Online 主題</option>
                 </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="nearby-radius-desktop">附近事件範圍</label>
+                <select id="nearby-radius-desktop" class="form-control">
+                    <option value="1000">1 km</option>
+                    <option value="3000" selected>3 km</option>
+                    <option value="5000">5 km</option>
+                    <option value="10000">10 km</option>
+                </select>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-title">更多功能</div>
+                <div class="settings-section-copy">不影響首頁閱讀的工具集中在這裡。</div>
+                <p><a href="/submit-event.html" class="card-action-btn">回報現場事件</a> <button id="settings-stats-btn" type="button" class="card-action-btn">統計</button> <button id="settings-refresh-btn" type="button" class="card-action-btn">重新整理</button></p>
+                <p><button id="settings-theme-btn" type="button" class="card-action-btn">切換深淺色</button> <button data-action="donate" data-donate-amount="100" class="card-action-btn">支持維護</button></p>
             </div>
             <div class="settings-section" aria-labelledby="alert-zone-settings-title">
                 <div class="settings-section-title" id="alert-zone-settings-title">個人化警戒區</div>
@@ -157,12 +171,11 @@
         <div class="beta-title">台灣新聞事件地圖</div>
         <div class="beta-subtitle">BETA · 測試版</div>
         <p class="beta-desc">
-            將新聞與交通事件整理成地圖上的事件點，<br>方便快速查看哪裡正在發生事。<br>
+            看見今天的新聞發生在哪裡。<br>將分散的新聞整理成地圖事件，快速理解事件位置、時間與發展。<br>
             目前仍是測試版，如果你發現資料有誤，<br>可以直接用內建回報功能通知我。
         </p>
         <div class="modal-actions" style="flex-direction: column; gap: 12px;">
-            <button id="mode-normal-btn" class="btn btn-ghost" style="width: 100%;">一般模式</button>
-            <button id="mode-online-btn" class="btn btn-primary" style="width: 100%;">🎮 TW Online</button>
+            <button id="mode-normal-btn" class="btn btn-primary" style="width: 100%;">開啟新聞地圖</button>
         </div>
     </div>
 </div>
@@ -170,15 +183,12 @@
 <!-- ══ MOBILE TOPBAR ══════════════════════════════════════ -->
 <div id="mobile-topbar">
     <div class="mobile-row1">
-        <input id="event-search-mobile" type="text" placeholder="搜尋標題、城市..." class="mobile-search" />
-        <button data-action="donate" data-donate-amount="100" class="donate-btn" style="flex-shrink:0; font-size:11px; padding:8px 12px;">⛽ 加油</button>
-        <a class="mobile-submit-event-btn" href="/submit-event.html" aria-label="新增事件">
-            <i class="fa-solid fa-plus"></i>
-            <span>新增事件</span>
-        </a>
+        <input id="event-search-mobile" type="text" placeholder="搜尋新聞、地點或關鍵字" class="mobile-search" />
+        <button id="settings-btn-mobile" class="mobile-icon-btn" aria-label="更多功能"><i class="fa-solid fa-ellipsis"></i></button>
     </div>
     <div class="mobile-row2">
-        <select id="city-filter-mobile" class="mobile-city-select"></select>
+        <select id="time-range-mobile" class="mobile-city-select" aria-label="新聞時間範圍"><option value="6h">最近 6 小時</option><option value="24h" selected>最近 24 小時</option><option value="3d">最近 3 天</option><option value="7d">最近 7 天</option></select>
+        <select id="city-filter-mobile" class="mobile-city-select" aria-label="城市篩選"></select>
         <button id="nearby-toggle-mobile" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
@@ -188,23 +198,7 @@
             <option value="5000">5 km</option>
             <option value="10000">10 km</option>
         </select>
-        <div class="mobile-pill">
-            <button id="btn-tw-mobile" class="mode-btn active">台灣</button>
-            <button id="btn-global-mobile" class="mode-btn">統計</button>
-        </div>
-        <div class="theme-toggle" style="margin-left: 5px;">
-            <button id="btn-dark-mobile" class="mode-btn active">🌙</button>
-            <button id="btn-light-mobile" class="mode-btn">☀️</button>
-        </div>
-        <button id="settings-btn-mobile" class="mobile-icon-btn" aria-label="設定">
-            <i class="fa-solid fa-gear"></i>
-        </button>
-        <div class="mobile-refresh-controls">
-            <span id="event-refresh-state-mobile" role="status" aria-live="polite"></span>
-            <button id="manual-refresh-btn-mobile" type="button" class="mobile-icon-btn" aria-label="Refresh events">
-                <i class="fa-solid fa-rotate"></i>
-            </button>
-        </div>
+        <label class="mobile-pill"><input id="upcoming-toggle-mobile" type="checkbox"> 未來活動</label>
     </div>
 </div>
 
@@ -214,8 +208,8 @@
         <div class="brand-icon brand-image-shell" style="background:none;box-shadow:none;padding:2px;"><img src="/brand-logo.jpg" alt="島嶼脈搏" style="width:100%;height:100%;object-fit:contain;border-radius:8px;" onerror="this.style.display='none';this.parentElement.classList.add('image-fallback');"></div>
         <div>
             <h1 class="brand-title">島嶼脈搏</h1>
-            <div class="brand-sub">台灣事件地圖</div>
-            <div class="brand-note">用地圖看見台灣正在發生的交通、災害與公共事件。</div>
+            <div class="brand-sub">台灣新聞事件地圖</div>
+            <div class="brand-note">看見今天的新聞發生在哪裡</div>
         </div>
     </div>
 
@@ -224,38 +218,19 @@
             <span id="server-status"></span>
             <span id="player-count"></span>
         </div>
-        <select id="city-filter" class="styled-select"></select>
-        <div class="mode-toggle">
-            <button id="btn-tw" class="mode-btn active">台灣模式</button>
-            <button id="btn-global" class="mode-btn">統計</button>
-        </div>
-        <div class="theme-toggle">
-            <button id="btn-dark" class="mode-btn active">🌙 深色</button>
-            <button id="btn-light" class="mode-btn">☀️ 淺色</button>
-        </div>
+        <input id="event-search" type="search" placeholder="搜尋新聞、地點或關鍵字" class="styled-select" aria-label="搜尋新聞">
+        <select id="time-range" class="styled-select" aria-label="新聞時間範圍"><option value="6h">最近 6 小時</option><option value="24h" selected>最近 24 小時</option><option value="3d">最近 3 天</option><option value="7d">最近 7 天</option></select>
+        <select id="city-filter" class="styled-select" aria-label="城市篩選"></select>
     </div>
 
     <div class="header-right">
         <div class="event-refresh-controls">
-            <span id="status-text">準備載入...</span>
-            <span id="event-refresh-state" role="status" aria-live="polite"></span>
-            <button id="manual-refresh-btn" type="button" class="btn btn-ghost">重新整理</button>
+            <span id="status-text">正在載入新聞地圖…</span>
         </div>
-        <a class="submit-event-btn submit-event-btn--desktop" href="/submit-event.html">
-            <i class="fa-solid fa-plus"></i>
-            <span>新增事件</span>
-        </a>
         <button id="nearby-toggle-desktop" class="mobile-icon-btn" aria-label="使用定位查看附近事件">
             <i class="fa-solid fa-location-crosshairs"></i>
         </button>
-        <select id="nearby-radius-desktop" class="nearby-radius-select" aria-label="附近距離">
-            <option value="1000">1 km</option>
-            <option value="3000">3 km</option>
-            <option value="5000">5 km</option>
-            <option value="10000">10 km</option>
-        </select>
-        <button id="settings-btn" class="mode-btn" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-gear"></i></button>
-        <button data-action="donate" data-donate-amount="100" class="donate-btn">支持維護</button>
+        <button id="settings-btn" class="mode-btn" aria-label="更多功能" style="margin-right: 5px; padding: 7px 10px;"><i class="fa-solid fa-ellipsis"></i> 更多</button>
     </div>
 </header>
 
@@ -272,7 +247,7 @@
                 <div class="sidebar-title">事件清單</div>
                 <div class="count-pill" id="mobile-count">0 筆</div>
             </div>
-            <div class="sidebar-kpis">
+            <div class="sidebar-kpis" hidden>
                 <div class="sidebar-kpi">
                     <div class="sidebar-kpi-label">目前事件</div>
                     <div class="sidebar-kpi-value" id="sidebar-summary-count">0</div>
@@ -293,7 +268,7 @@
                 </div>
                 <button id="alert-zone-filter-toggle" class="alert-zone-filter-toggle" type="button" aria-pressed="false">只看命中</button>
             </div>
-            <div class="toolbar-caption">Event Categories</div>
+            <div class="toolbar-caption">新聞分類</div>
             <div id="category-filters"></div>
         </div>
 
@@ -350,8 +325,8 @@
           <div id="category-bars"></div>
         </article>
         <article class="stats-panel stats-reaction-panel">
-          <div class="stats-panel-heading"><span>社群回應</span><small>全站累積</small></div>
-          <div class="stats-reaction-totals"><span>祈福 <strong id="stat-muyu">—</strong></span><span>點燈 <strong id="stat-candle">—</strong></span></div>
+          <div class="stats-panel-heading"><span>資料定位品質</span><small>事件位置的可信程度</small></div>
+          <p class="stats-empty">精確、約略與位置待確認的事件會在地圖與清單中清楚區分。</p>
         </article>
       </section>
       <section class="stats-kpi-grid stats-kpi-grid--summary" aria-label="摘要資訊">
@@ -366,30 +341,8 @@
     <!-- MAP -->
     <section id="map-stage">
         <div id="map"></div>
-        <div class="map-hero">
-            <div class="map-hero-label">島嶼脈搏｜台灣事件地圖</div>
-            <div class="map-hero-title">出門前與日常生活用的公共事件雷達。</div>
-            <div class="map-hero-copy">用地圖看見台灣正在發生的交通、災害與公共事件，快速判斷哪些路段、區域或活動會影響你。</div>
-            <div class="map-hero-grid">
-                <div class="map-hero-stat">
-                    <span class="map-hero-stat-label">Events</span>
-                    <div class="map-hero-stat-value" id="hero-event-count">0</div>
-                </div>
-                <div class="map-hero-stat">
-                    <span class="map-hero-stat-label">Categories</span>
-                    <div class="map-hero-stat-value" id="hero-category-count">0</div>
-                </div>
-                <div class="map-hero-stat">
-                    <span class="map-hero-stat-label">Mode</span>
-                    <div class="map-hero-stat-value" id="hero-mode-copy">台灣</div>
-                </div>
-            </div>
-        </div>
-        <div class="map-orbital-card">
-            <div class="map-orbital-caption">Daily Check</div>
-            <div class="map-orbital-title">先判斷影響，再閱讀細節。</div>
-            <div class="map-orbital-copy" id="hero-status-copy">事件卡會優先標示資料來源、更新時間、狀態與建議行動；沒有資料時會說明原因。</div>
-        </div>
+        <aside id="map-help-card" class="map-help-card" role="status">點擊地圖事件，查看新聞發生位置與摘要。<button id="map-help-close" type="button" aria-label="關閉提示">×</button></aside>
+        <div class="map-area-actions"><button id="search-map-area-btn" type="button" hidden>搜尋這個地圖區域</button><button id="clear-map-area-btn" type="button" hidden>清除地圖範圍</button></div>
     </section>
 </main>
 
