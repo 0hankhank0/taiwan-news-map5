@@ -50,11 +50,21 @@ function distanceMeters(a, b) {
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, geolocation: { latitude: 25.033, longitude: 121.565 }, permissions: ["geolocation"] });
     const page = await context.newPage();
+    const pageErrors = [], consoleErrors = [], failedResponses = [];
+    page.on("pageerror", error => pageErrors.push(error.message));
+    page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+    page.on("response", response => { if (response.status() >= 400) failedResponses.push(`${response.status()} ${response.url()}`); });
     await page.addInitScript(() => localStorage.setItem("beta_accepted", "true"));
+    await page.route("**/_vercel/insights/script.js", route => route.fulfill({ contentType: "application/javascript", body: "" }));
     await page.route("https://api.mapbox.com/mapbox-gl-js/**/mapbox-gl.js", route => route.fulfill({ contentType: "application/javascript", body: MAPBOX_STUB }));
     await page.route("https://api.mapbox.com/mapbox-gl-js/**/mapbox-gl.css", route => route.fulfill({ contentType: "text/css", body: "" }));
     await page.route(/https:\/\/(fonts|cdnjs)\./, route => route.fulfill({ contentType: "text/css", body: "" }));
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+    assert.equal(await page.locator("#nearby-radius-desktop").count(), 1, "desktop radius selector is attached exactly once");
+    assert.equal(await page.locator("#nearby-radius-desktop").isVisible(), true, "desktop radius selector is visible at the desktop viewport");
+    assert.deepEqual(pageErrors, [], `page errors: ${pageErrors.join(" | ")}`);
+    assert.deepEqual(consoleErrors, [], `console errors: ${consoleErrors.join(" | ")}`);
+    assert.deepEqual(failedResponses, [], `HTTP failures: ${failedResponses.join(" | ")}`);
     await page.click("#nearby-toggle-desktop");
     await page.waitForFunction(() => Boolean(window.__mapboxTestMap?.getSource("nearby-radius")));
     const first = await page.evaluate(() => {

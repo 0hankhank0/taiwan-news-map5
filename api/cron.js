@@ -37,8 +37,9 @@ function getMode(req) {
   // Test/local adapters may provide a plain data property. Reading its
   // descriptor is safe; it deliberately refuses an accessor getter.
   const queryValue = Object.getOwnPropertyDescriptor(req, "query")?.value;
-  const mode = String(queryMode || queryValue?.mode || req.body?.mode || "all").trim();
-  return ["news", "traffic", "all"].includes(mode) ? mode : "all";
+  const mode = String(queryMode || queryValue?.mode || req.body?.mode || "news").trim();
+  // Unknown/manual values use the safe news-only compatibility default.
+  return ["news", "traffic"].includes(mode) ? mode : "news";
 }
 
 module.exports = async (req, res) => {

@@ -26,6 +26,7 @@
     "test:reaction": "node tests/reaction-api.test.js",
     "test:video-demo": "node tests/video-demo.test.js",
     "test:nearby-radius": "node tests/nearby-radius.test.mjs && node tests/nearby-radius-ui.test.js",
+    "test:nearby-radius-ui": "node tests/nearby-radius-ui.test.js",
     "test:stats-mobile-layout": "node tests/stats-mobile-layout.test.js",
     "test:frontend-data": "node tests/event-data-manager.test.mjs",
     "test:alerts": "node tests/refresh-alerts.test.js",
@@ -39,7 +40,11 @@
     "test:pbs-road-normalizer": "node tests/pbs-road-normalizer.test.js",
     "test:pbs-sync": "node tests/pbs-sync-service.test.js",
     "test:pbs-event-refresh": "node tests/pbs-event-refresh.test.js",
-    "test:collector-status": "node tests/collector-status.test.js"
+    "test:collector-status": "node tests/collector-status.test.js",
+    "test:tdx-quota-guard": "node tests/tdx-quota-guard.test.js"
+    ,"test:news-map-modules": "node tests/news-map-modules.test.mjs"
+    ,"test:homepage-news-focus": "node tests/homepage-news-focus.test.js"
+    ,"test:news-map-ui": "node tests/news-map-ui.e2e.test.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

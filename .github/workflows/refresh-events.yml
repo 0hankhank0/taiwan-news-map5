@@ -2,21 +2,14 @@ name: Refresh Events
 
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "*/15 * * * *"
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "Refresh mode"
-        required: false
-        default: "all"
-        type: choice
-        options:
-          - all
-          - news
-          - traffic
 
 jobs:
   refresh:
+    concurrency:
+      group: cron-news
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -25,7 +18,6 @@ jobs:
           APP_BASE_URL: ${{ vars.APP_BASE_URL }}
           APP_BASE_URL_SECRET: ${{ secrets.APP_BASE_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          MODE: ${{ inputs.mode || 'all' }}
         run: |
           set -euo pipefail
           BASE_URL="${APP_BASE_URL:-$APP_BASE_URL_SECRET}"
@@ -38,7 +30,7 @@ jobs:
             exit 1
           fi
           BASE_URL="${BASE_URL%/}"
-          response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=$MODE" \
+          response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=news" \
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json")"
           CRON_RESPONSE="$response" node <<'NODE'
@@ -80,10 +72,6 @@ jobs:
           }
           if (payload.success === false) {
             console.error("::error::Cron endpoint did not report success.");
-            process.exit(1);
-          }
-          if (process.env.MODE === "all" && count <= 0) {
-            console.error("::error::Cron returned zero active events for mode=all.");
             process.exit(1);
           }
           if (payload.success !== true) {
