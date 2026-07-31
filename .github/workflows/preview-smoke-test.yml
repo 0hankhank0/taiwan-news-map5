@@ -1,0 +1,242 @@
+name: Preview Smoke Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: Preview deployment URL (https://*.vercel.app only)
+        required: true
+        type: string
+      expected_commit:
+        description: Expected Preview commit SHA
+        required: true
+        default: a512bac12b3fc541c3d74adcaf9ffc4228da6cb4
+        type: string
+      confirm_preview_isolated:
+        description: I confirm this Preview has isolated Supabase and Redis namespaces
+        required: true
+        default: false
+        type: boolean
+      run_news:
+        description: Run one news refresh after the read-only baseline check
+        required: true
+        default: false
+        type: boolean
+      run_traffic:
+        description: Run one traffic refresh after the read-only baseline check
+        required: true
+        default: false
+
+jobs:
+  smoke-test:
+    # A second manual dispatch waits rather than overlapping a stateful refresh.
+    concurrency:
+      group: preview-smoke-${{ inputs.preview_url }}
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PREVIEW_URL: ${{ inputs.preview_url }}
+      EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+      CONFIRM_PREVIEW_ISOLATED: ${{ inputs.confirm_preview_isolated }}
+      RUN_NEWS: ${{ inputs.run_news }}
+      RUN_TRAFFIC: ${{ inputs.run_traffic }}
+      # These are used only to reject a target that matches the configured production URL.
+      APP_BASE_URL: ${{ vars.APP_BASE_URL }}
+      APP_BASE_URL_SECRET: ${{ secrets.APP_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+    steps:
+      - name: Validate target, isolation confirmation, and required secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CONFIRM_PREVIEW_ISOLATED}" != "true" ]; then
+            echo "::error::Preview isolation must be explicitly confirmed before any cron request."
+            exit 1
+          fi
+          if [ -z "${CRON_SECRET:-}" ] || [ -z "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]; then
+            echo "::error::Required smoke-test secret is unavailable."
+            exit 1
+          fi
+          PREVIEW_URL="$PREVIEW_URL" EXPECTED_COMMIT="$EXPECTED_COMMIT" APP_BASE_URL="$APP_BASE_URL" APP_BASE_URL_SECRET="$APP_BASE_URL_SECRET" node <<'NODE'
+          const input = String(process.env.PREVIEW_URL || "").trim();
+          const expectedCommit = String(process.env.EXPECTED_COMMIT || "").trim();
+          const production = String(process.env.APP_BASE_URL || process.env.APP_BASE_URL_SECRET || "").trim();
+          let preview;
+          try { preview = new URL(input); }
+          catch { console.error("::error::Preview URL is invalid."); process.exit(1); }
+          // URL parsing normalizes case and rejects malformed host syntax before
+          // this exact host-label check. Do not use a substring/endsWith allowlist.
+          const hostname = preview.hostname.toLowerCase();
+          const validPreview = preview.protocol === "https:"
+            && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\.vercel\.app$/.test(hostname)
+            && preview.pathname === "/"
+            && !preview.search
+            && !preview.hash
+            && !preview.username
+            && !preview.password;
+          if (!validPreview) {
+            console.error("::error::Preview URL must be an https://*.vercel.app origin.");
+            process.exit(1);
+          }
+          if (!/^[0-9a-f]{7,40}$/i.test(expectedCommit)) {
+            console.error("::error::Expected commit must be a SHA.");
+            process.exit(1);
+          }
+          if (production) {
+            try {
+              if (new URL(production).origin === preview.origin) {
+                console.error("::error::Preview URL must not match the configured production URL.");
+                process.exit(1);
+              }
+            } catch { console.error("::error::Configured production URL is invalid."); process.exit(1); }
+          }
+          NODE
+
+      - name: Run protected Preview smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          (async () => {
+            const preview = new URL(String(process.env.PREVIEW_URL || "").trim()).origin;
+            const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+            const secretValues = [process.env.CRON_SECRET, process.env.VERCEL_AUTOMATION_BYPASS_SECRET]
+              .filter((value) => typeof value === "string" && value.length > 0);
+
+          function writeSummary(lines) {
+            if (summaryPath) fs.appendFileSync(summaryPath, `${lines.join("\n")}\n`);
+          }
+          function fail(message) {
+            console.error(`::error::${message}`);
+            process.exit(1);
+          }
+          function hasSensitiveKey(value) {
+            if (!value || typeof value !== "object") return false;
+            return Object.entries(value).some(([key, child]) => /token|secret|authorization|password/i.test(key) || hasSensitiveKey(child));
+          }
+          function hasSecretValue(value) {
+            const serialized = JSON.stringify(value);
+            return secretValues.some((secret) => serialized.includes(secret));
+          }
+          async function requestJson(path, { method = "GET", cron = false } = {}) {
+            let response;
+            try {
+              response = await fetch(`${preview}${path}`, {
+                method,
+                redirect: "manual",
+                headers: {
+                  "x-vercel-protection-bypass": process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+                  ...(cron ? { Authorization: `Bearer ${process.env.CRON_SECRET}`, "Content-Type": "application/json" } : {}),
+                },
+              });
+            } catch { fail(`Preview request failed for ${path}.`); }
+            const contentType = String(response.headers.get("content-type") || "");
+            if (response.status === 302 || !contentType.toLowerCase().includes("application/json")) {
+              fail(`Preview request did not return JSON for ${path} (HTTP ${response.status}).`);
+            }
+            let body;
+            try { body = await response.json(); }
+            catch { fail(`Preview response was not valid JSON for ${path}.`); }
+            if (!response.ok) fail(`Preview request failed for ${path} (HTTP ${response.status}).`);
+            return { status: response.status, contentType, body };
+          }
+          function eventSummary(events) {
+            if (!Array.isArray(events)) fail("Events endpoint did not return an event array.");
+            const counts = { total: events.length, news: 0, tdx: 0, pbs: 0, manual: 0, submission: 0, other: 0 };
+            for (const event of events) {
+              const source = `${event?.source || ""} ${event?.sourceName || ""}`.toLowerCase();
+              if (source.includes("tdx")) counts.tdx += 1;
+              else if (source.includes("pbs")) counts.pbs += 1;
+              else if (source.includes("manual")) counts.manual += 1;
+              else if (source.includes("user_submission") || source.includes("user submission")) counts.submission += 1;
+              else if (source.includes("rss") || source.includes("news")) counts.news += 1;
+              else counts.other += 1;
+            }
+            return counts;
+          }
+          function assertRetained(before, after, buckets, label) {
+            for (const bucket of buckets) {
+              if (before[bucket] > 0 && after[bucket] === 0) fail(`${label} refresh cleared the ${bucket} bucket.`);
+            }
+          }
+          function assertNoCredentialLeak(body) {
+            if (hasSensitiveKey(body) || hasSecretValue(body)) fail("Smoke-test response contained a credential-shaped field.");
+          }
+          function cronSummary(mode, response) {
+            const body = response.body;
+            assertNoCredentialLeak(body);
+            if (body?.mode !== mode) fail(`Cron response mode was not ${mode}.`);
+            const partial = body?.partial === true || body?.status === "partial_success";
+            const ok = body?.ok === true || body?.success === true;
+            if (!ok && !partial) fail(`Cron response did not report ${mode} success.`);
+            return { ok, partial, body };
+          }
+          function safeLayer(layer) {
+            return {
+              outcome: String(layer?.outcome || ""),
+              source: String(layer?.source || ""),
+              retainedCount: Math.max(0, Number(layer?.retainedCount) || 0),
+            };
+          }
+
+            const baselineResponse = await requestJson("/api/events");
+            const baseline = eventSummary(baselineResponse.body);
+            writeSummary([
+              "## Preview smoke test",
+              "- commit_verification: unavailable",
+              `- expected_commit: ${String(process.env.EXPECTED_COMMIT || "")}`,
+              `- events: HTTP ${baselineResponse.status}; Content-Type: ${baselineResponse.contentType}`,
+              `- baseline: \`${JSON.stringify(baseline)}\``,
+            ]);
+            console.log(`[preview-smoke] events status=${baselineResponse.status} content_type=${baselineResponse.contentType}`);
+            console.log(`[preview-smoke] baseline=${JSON.stringify(baseline)}`);
+
+            let latest = baseline;
+            if (process.env.RUN_NEWS === "true") {
+            const response = await requestJson("/api/cron?mode=news", { method: "POST", cron: true });
+            const result = cronSummary("news", response);
+            const after = eventSummary((await requestJson("/api/events")).body);
+            assertRetained(latest, after, ["tdx", "pbs", "manual", "submission"], "News");
+            writeSummary([`- news: HTTP ${response.status}; ok=${result.ok}; partial=${result.partial}; events=${JSON.stringify(after)}`]);
+            console.log(`[preview-smoke] news status=${response.status} ok=${result.ok} partial=${result.partial}`);
+            latest = after;
+            }
+
+            if (process.env.RUN_TRAFFIC === "true") {
+            const response = await requestJson("/api/cron?mode=traffic", { method: "POST", cron: true });
+            const result = cronSummary("traffic", response);
+            const budget = result.body?.tdxBudget;
+            const layers = result.body?.tdxLayers;
+            if (!budget || !layers || !layers.live || !layers.static || !layers.construction) {
+              fail("Traffic response did not include TDX budget and all layer summaries.");
+            }
+            if (budget.backend === "sqlite") fail("Vercel Preview used SQLite coordination.");
+            if (budget.available === false && budget.reason !== "coordination_unavailable") {
+              fail("Unavailable TDX coordination did not report coordination_unavailable.");
+            }
+            const safeBudget = {
+              available: Boolean(budget.available), backend: String(budget.backend || ""),
+              limit: Number(budget.limit) || 0, used: Number(budget.used) || 0,
+              remaining: Number(budget.remaining) || 0, warning: budget.warning || null,
+            };
+            const safeLayers = { live: safeLayer(layers.live), static: safeLayer(layers.static), construction: safeLayer(layers.construction) };
+            const after = eventSummary((await requestJson("/api/events")).body);
+            assertRetained(latest, after, ["news", "pbs", "manual", "submission"], "Traffic");
+            if (latest.tdx > 0 && after.tdx === 0) fail("Traffic refresh cleared existing TDX events.");
+            writeSummary([
+              `- traffic: HTTP ${response.status}; ok=${result.ok}; partial=${result.partial}; events=${JSON.stringify(after)}`,
+              `- tdxBudget: \`${JSON.stringify(safeBudget)}\``,
+              `- tdxLayers: \`${JSON.stringify(safeLayers)}\``,
+            ]);
+            console.log(`[preview-smoke] traffic status=${response.status} ok=${result.ok} partial=${result.partial}`);
+            console.log(`[preview-smoke] tdxBudget=${JSON.stringify(safeBudget)} tdxLayers=${JSON.stringify(safeLayers)}`);
+            }
+          })().catch(() => {
+            console.error("::error::Preview smoke test failed unexpectedly.");
+            process.exit(1);
+          });
+          NODE
