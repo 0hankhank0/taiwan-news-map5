@@ -41,7 +41,7 @@ import {
     sortPopularOrRecentEvents
 } from "./modules/stats-view.mjs";
 import { isWithinTimeRange } from "./modules/time-range-filter.mjs";
-import { isVisibleEventLayer } from "./modules/event-layer.mjs";
+import { getActivityLifecycle, isFutureActivity, isVisibleEventLayer } from "./modules/event-layer.mjs";
 import { getLocationPresentation } from "./modules/location-presentation.mjs";
 import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mjs";
 import { getCardPreview } from "./modules/event-card-view.mjs";
@@ -460,28 +460,6 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         return start || end || "";
     }
 
-    function parseFutureActivityDate(ev) {
-        const raw = ev.startsAt || ev.startAt || "";
-        const direct = raw ? new Date(raw) : null;
-        if (direct && !Number.isNaN(direct.getTime())) return direct;
-        const text = getEventText(ev);
-        const match = text.match(/(\d{1,2})\s*月\s*(\d{1,2})\s*(?:日|號)/);
-        if (!match) return null;
-        const now = new Date();
-        const candidate = new Date(now.getFullYear(), Number(match[1]) - 1, Number(match[2]), 0, 0, 0);
-        if (candidate.getTime() + 24 * 60 * 60 * 1000 < now.getTime()) {
-            candidate.setFullYear(candidate.getFullYear() + 1);
-        }
-        return candidate;
-    }
-
-    function isFutureActivity(ev) {
-        if (typeof eventDisplay.isFutureActivity === "function") return eventDisplay.isFutureActivity(ev);
-        if (inferEventGroupCategory(ev) !== "activity") return false;
-        const d = parseFutureActivityDate(ev);
-        return Boolean(d && d.getTime() > Date.now() + 6 * 60 * 60 * 1000);
-    }
-
     function getEventSortWeight(ev) {
         if (isFutureActivity(ev)) return 20;
         const category = inferEventGroupCategory(ev);
@@ -512,7 +490,18 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             .join(" ");
     }
 
+    function getEventActivityLifecycle(ev) {
+        return getActivityLifecycle({ ...ev, groupCategory: inferEventGroupCategory(ev) });
+    }
+
+    function getActivityLifecycleLabel(ev) {
+        const state = getEventActivityLifecycle(ev).state;
+        return ({ upcoming: "未來活動", ongoing: "進行中", recently_ended: "剛結束" })[state] || "";
+    }
+
     function getEventStatusLabel(ev) {
+        const activityLabel = getActivityLifecycleLabel(ev);
+        if (activityLabel) return activityLabel;
         if (typeof eventDisplay.getEventStatusLabel === "function") return eventDisplay.getEventStatusLabel(ev);
         const text = getEventText(ev);
         const raw = normalizeText(ev.status || "").toLowerCase();
@@ -785,6 +774,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const preview = getCardPreview(ev);
         const timeStr = preview.relativeTime;
         const timeHtml = timeStr ? `<span class="popup-location-tag">${escapeHtml(timeStr)}</span>` : "";
+        const activityTag = getActivityLifecycleLabel(ev) ? `<span class="popup-location-tag">${getActivityLifecycleLabel(ev)}</span>` : "";
         const reactionSlot = isMourningEvent(ev)
             ? `<div class="popup-reactions-wrap reaction-container" data-event-id="${eventIdAttr}"></div>`
             : "";
@@ -808,6 +798,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                             ${makeCatBadgeV2(ev.category)}
                             <span class="popup-location-tag">${escapeHtml(city)}</span>
                             ${makeLocationPrecisionTag(ev, "popup-location-tag")}
+                            ${activityTag}
                             ${timeHtml}
                             ${reportTag}
                             ${alertZoneTags}
@@ -844,7 +835,8 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const timeStr = preview.relativeTime;
         const timeHtml = timeStr ? `<span class="time-tag">${escapeHtml(timeStr)}</span>` : "";
         const isMobile = isMobileViewport();
-        const upcomingTag = isFutureActivity(ev) ? `<span class="time-tag upcoming-tag">未來活動</span>` : "";
+        const activityLabel = getActivityLifecycleLabel(ev);
+        const activityTag = activityLabel ? `<span class="time-tag upcoming-tag">${activityLabel}</span>` : "";
         const sourceEntries = Array.isArray(ev.sources) ? ev.sources : (Array.isArray(ev.sourceTrace) ? ev.sourceTrace : []);
         const sourceLinksHtml = sourceEntries.map((source) => {
             const url = sanitizeExternalUrl(source?.url || source?.sourceUrl);
@@ -880,7 +872,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                     <span class="card-source-meta">來源：${escapeHtml(preview.sourceSummary)}</span>
                     ${makeLocationPrecisionTag(ev, "time-tag")}
                     ${makeCatBadgeV2(ev.category)}
-                    ${upcomingTag}
+                    ${activityTag}
                     ${timeHtml}
                     ${reportTag}
                     ${alertZoneTags}
@@ -1943,11 +1935,17 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const commuteCategories = new Set(["traffic", "accident", "disaster"]);
         const filtered = parsedEvents.filter(ev=>{
             if (!shouldShowRealtimeEvent(ev)) return false;
-            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(ev, { showUpcoming: showUpcomingEvents })) return false;
-            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !(showUpcomingEvents && isFutureActivity(ev))) return false;
+            const mappedCategory = inferEventGroupCategory(ev);
+            const lifecycleEvent = { ...ev, groupCategory: mappedCategory };
+            const lifecycle = getActivityLifecycle(lifecycleEvent);
+            const lifecycleOverridesTimeRange = lifecycle.isActivity && (
+                lifecycle.state === "upcoming" ||
+                (["ongoing", "recently_ended"].includes(lifecycle.state) && (lifecycle.start !== null || lifecycle.end !== null))
+            );
+            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(lifecycleEvent, { showUpcoming: showUpcomingEvents })) return false;
+            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) return false;
             if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) return false;
 
-            const mappedCategory = inferEventGroupCategory(ev);
             if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) return false;
             if(activeCategory!=="all" && mappedCategory!==activeCategory) return false;
             if(cityFilter!=="all"){
