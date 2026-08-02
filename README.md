@@ -1,156 +1,85 @@
-# 島嶼脈搏 / 台灣新聞事件地圖
+# 新聞事件地圖
 
-看見今天的新聞發生在哪裡。島嶼脈搏把分散的新聞、即時影響與活動整理成地圖事件，讓使用者快速理解事件位置、時間與發展；交通、災害與活動都是新聞事件地圖的一部分。
+這是一個以地圖呈現台灣新聞事件、官方公告與交通影響的新聞事件地圖。它不是緊急服務或官方交通指揮系統；重要資訊應以主管機關公告為準。
 
-此服務不是官方警報系統。資料可能有延遲或錯誤，所有人工修正與回報都應視為 beta 覆核流程。
+## 投稿與審核
 
-## Project Structure
+`/submit-event.html` 用於提交具有公共影響的新聞線索、官方公告或目擊資訊，不是一般生活事件投稿頁。所有新線索都固定以 `pending_admin` 進入審核流程。AI 只分析風險、可信度、缺漏和垃圾內容，不會決定是否發布；必須由管理員人工核准後才會公開。
 
-- `index.html`: 主頁 HTML、SEO metadata、CDN imports、前端資產入口。
-- `assets/index/main.js`: 前端相容入口，動態載入 ES module 主程式。
-- `assets/index/main.mjs`: Mapbox 地圖、事件渲染、篩選、附近模式、回報、贊助與主流程協調。
-- `assets/index/modules/`: 前端 ES modules，包含資料信任面板、事件委派、地圖 token、回報、反應與個人化警戒區輔助工具。
-- `assets/index/index.css`: 主頁、卡片、地圖 marker、popup、modal、RWD 樣式。
-- `assets/index/data-trust.js`: 舊相容入口；實際資料信任面板由 `assets/index/modules/data-trust.mjs` 管理。
-- `brand-logo.jpg`: 正式 Logo 圖檔。
-- `event-display.js`: 前後端共用事件顯示純函式，包含分類、狀態、定位品質、覆核與顯示標籤。
-- `api/`: Vercel Serverless Functions。Hobby plan 上限是 12 個 function，目前維持 11 個。
-- `event-store.js`: 事件快取、KV/SQLite fallback、人工覆核更新。
-- `event-normalizer.js`: API 輸出正規化、去重、beta 可信度欄位。
-- `location-resolver.js`: 地點解析、城市範圍、已知地標、定位可信度。
-- `report-store.js`: 使用者回報儲存、回報狀態與公開統計。
-- `scraper.js`: GitHub Actions 使用的新聞/交通抓取器。
-- `.github/workflows/`: 排程抓取新聞與交通資料。
-- `tests/`: Node 測試，涵蓋定位與 admin API。
+## 活動生命週期
 
-## Public Pages
+活動辨識支援活動、展覽、市集、演唱會、賽事、路跑、表演、節慶、講座與工作坊，以及相對應英文關鍵字與分類。沒有時區的日期和日期時間一律依台灣 UTC+8 解析。
 
-- `/`: 新聞事件地圖主頁；預設顯示最近 24 小時的新聞事件與即時影響，未來活動需主動開啟。
+- 僅顯示未來 30 天內的活動；超過 30 天永遠隱藏。
+- 只有開始時間時，預設持續 24 小時；只有結束時間時，開始時間回推 24 小時。
+- 活動期間標示「進行中」，結束後 6 小時標示「剛結束」並保留顯示。
+- 超過結束時間 6 小時、排程無效、缺少開始時間的 upcoming/scheduled，或為 cancelled、expired、resolved、cleared 等終止狀態時一律隱藏。
+- 未來活動必須由使用者開啟「未來活動」；進行中與剛結束活動不受一般新聞 6h／24h／3d／7d 篩選誤傷。
 
-## Admin Pages
+## API function inventory
 
-所有後台都使用 `REPORT_ADMIN_TOKEN`。
+`api/` 必須維持少於 12 個 `.js` 入口；rewrite route 是同一個入口的路由別名，不能當成獨立 Serverless Function。合併後文件列出的 9 個入口如下：
 
-- `/admin-reports.html`: 使用者回報審核。
-- `/admin-events.html`: 事件管理，可修座標、分類、狀態、合併事件、加管理備註。
-- `/admin-health.html`: beta 監控頁，顯示事件數、來源分布、快取狀態、待處理回報與整合設定是否存在。
+- `api/config.js`
+- `api/events.js`
+- `api/cron.js`
+- `api/admin.js`
+- `api/submission.js`
+- `api/report.js`
+- `api/reaction.js`
+- `api/reactions-total.js`
+- `api/create-payment.js`
 
-## API Inventory
+合併路由：
 
-Vercel Hobby plan 不能超過 12 個 Serverless Functions。不要把 helper 放進 `api/`，否則也會被算成 function。
+```text
+api/events.js
+- /api/events
+- /api/integrations/events/status
 
-Current functions:
+api/admin.js
+- /api/admin-events
+- /api/health
+- /api/refresh-log
+- /api/reports
+- /api/reports/:reportId
 
-- `/api/config.js`: Mapbox public token bootstrap.
-- `/api/events`: 事件清單 API。
-- `/api/cron`: Vercel cron/manual trigger 用資料抓取 API。
-- `/api/admin-events`: 後台事件管理 API。
-- `/api/health`: 後台監控 API。
-- `/api/report`: 使用者事件回報 API。
-- `/api/reports`: 後台回報列表與更新 API。
-- `/api/reports/[reportId]`: 單筆回報 route wrapper。
-- `/api/reaction`: 事件反應 API。
-- `/api/reactions/total`: 反應總數 API。
-- `/api/create-payment`: 綠界支持維護付款入口。
-
-Shared helpers must stay outside `api/`:
-
-- `admin-auth.js`
-- `event-normalizer.js`
-- `event-store.js`
-- `location-resolver.js`
-- `report-store.js`
-- `reaction-store.js`
-
-## Environment Variables
-
-Core:
-
-- `KV_REST_API_URL`
-- `KV_REST_API_TOKEN`
-- `REPORT_ADMIN_TOKEN`
-- `CRON_SECRET`
-- `MAPBOX_PUBLIC_TOKEN`
-
-Optional/enrichment:
-
-- `MAPBOX_GEOCODING_TOKEN`
-- `GEOAPIFY_API_KEY`
-- `TDX_CLIENT_ID`
-- `TDX_CLIENT_SECRET`
-- `OPENAI_API_KEY`
-- `AZURE_OPENAI_API_KEY`
-- `AZURE_OPENAI_ENDPOINT`
-- `AZURE_OPENAI_DEPLOYMENT`
-- `DISCORD_WEBHOOK_URL`
-
-Payments:
-
-- `ECPAY_MERCHANT_ID`
-- `ECPAY_HASH_KEY`
-- `ECPAY_HASH_IV`
-
-Local-only:
-
-- `EVENT_DB_PATH`
-- `DISABLE_LOCAL_EVENT_CACHE`
-- `MAX_GEOCODING_PER_CRON`
-- `MAPBOX_GEOCODING_PERMANENT` (`1` 時才會把 Mapbox geocoding 結果寫入長期快取)
-
-## Commands
-
-```bash
-npm install
-npm start
-npm run test:content-filter
-npm run test:event-display
-npm run test:alert-zones
-npm run test:ai-context
-npm run test:location
-npm run test:admin
+api/submission.js
+- /api/submissions
+- /api/submission-reports
+- /api/submission-audit-log
 ```
 
-`npm start` runs `server.js` locally. Local data may be empty unless KV env vars or a local SQLite cache are available.
+## API 使用方式
 
-## Deployment Notes
+公開 API：
 
-### Event integrations and submissions
+- `GET /api/config`：讀取前端公開設定。
+- `GET /api/events`：事件清單；可帶事件篩選 query 參數。`GET /api/integrations/events/status`：整合來源同步狀態。
+- `POST /api/submissions`：提交公共影響線索（body 為線索、來源與位置資料）；`GET /api/submissions?status=approved&limit=n`：讀取公開核准投稿。
+- `POST /api/report`：回報事件問題（body 為事件識別與原因）。
+- `GET /api/reaction?eventIds=id1,id2`：讀取反應；`POST /api/reaction`（`eventId`、`type`）：送出反應；`GET /api/reactions/total`：讀取總數。
+- `POST /api/create-payment`（`amount`、`itemName`）：建立付款資訊。
 
-- `GET /api/integrations/events/status` exposes per-service sync health without exposing credentials.
-- iCulture (文化部) is the primary activity source and uses the public activity JSON endpoint by default. `ICULTURE_ACTIVITY_FEED_URL` can override that endpoint.
-- KKTIX remains enabled as a secondary public Atom feed. `KKTIX_EVENTS_FEED_URL` can override that feed.
-- KKTV intentionally remains `never_run` until an authorised public endpoint is supplied through configuration; the app does not probe or invent undocumented APIs.
-- `POST /api/submissions` accepts a rate-limited public event submission. `GET/PATCH /api/submissions` is public only for approved records and requires `REPORT_ADMIN_TOKEN` for review operations.
-- Set `SUBMISSION_AI_MODEL` to override the OpenAI moderation model. Without `OPENAI_API_KEY`, submissions safely remain in `pending_admin`.
+管理與維運 API：
 
-- Keep `api/` under 12 `.js` files for Vercel Hobby deployment.
-- Keep shared helper modules outside `api/`.
-- Keep `node_modules`, `.git`, `.vercel`, `data`, `exports`, and tests out of deployment uploads where possible.
-- After changing event schema or admin APIs, run:
-  - `npm run test:event-display`
-  - `npm run test:alert-zones`
-  - `npm run test:location`
-  - `npm run test:admin`
-  - `node --check` on changed API/frontend files.
+- `GET|POST /api/cron`（`mode` 可由 query 或 body 指定）：執行受控資料更新，需 `CRON_SECRET`。
+- `/api/admin-events`、`/api/health`、`/api/refresh-log`、`/api/reports` 與 `/api/reports/:reportId`：管理事件、健康狀態、更新紀錄及回報，使用 `REPORT_ADMIN_TOKEN`。
+- `GET|PATCH /api/submissions`：管理員可依 `status`、`limit` 查詢或以 `submissionId` 與 body 更新審核；`POST /api/submission-reports`、`GET /api/submission-audit-log` 亦使用 `REPORT_ADMIN_TOKEN`。
 
-## Current Beta Product Scope
+`REPORT_ADMIN_TOKEN` 是人工審核和管理資料的授權；`CRON_SECRET` 只授權排程／手動抓取觸發。兩者不可互相替代，也不可放到前端。
 
-Implemented:
+## 本機開發與測試
 
-- Event map and list UI.
-- Category/city/search/nearby filtering and personalized alert zones.
-- TW Online and statistics views.
-- Event report flow and AI moderation suggestion.
-- Admin report review.
-- Admin event edits and merge/resolved workflow.
-- Health dashboard.
-- Location precision labels: exact, district, city, unknown.
-- Source trace and review state fields.
+Windows 請使用 `npm.cmd`：
 
-Still beta:
+```powershell
+npm.cmd install
+npm.cmd start
+npm.cmd run test:news-map-modules
+npm.cmd run test:homepage-news-focus
+npm.cmd run test:news-map-ui
+npm.cmd test
+```
 
-- Events are derived from third-party/news/traffic sources.
-- Manual review changes affect cached display data.
-- No full user account system.
-- No formal incident SLA.
-- Not an official emergency or traffic authority source.
+共用 helper 請放在 `api/` 外，避免被 Vercel 計入 function 入口。活動、新聞、TDX、PBS、iCulture 與 KKTIX 的抓取和合併規則由既有資料管線維護。

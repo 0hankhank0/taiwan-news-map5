@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/events",
-      "destination": "/api/events.js?integrationStatus=1"
+      "destination": "/api/events.js"
     },
     {
       "source": "/api/admin-events",
@@ -42,7 +42,7 @@
     },
     {
       "source": "/api/integrations/events/status",
-      "destination": "/api/events.js"
+      "destination": "/api/events.js?integrationStatus=1"
     },
     {
       "source": "/api/reactions/total",
