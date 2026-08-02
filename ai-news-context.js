@@ -5,6 +5,7 @@ const {
   normalizeCity,
   normalizeText,
 } = require("./location-resolver");
+const { validateAiCategoryResult } = require("./shared/event-category-decision");
 
 const DEFAULT_AI_CONTEXT_LIMIT = 6;
 const DEFAULT_ARTICLE_TIMEOUT_MS = 1200;
@@ -199,9 +200,10 @@ function normalizeAiExtractedEvents(events = []) {
     const locationText = normalizeText(item.locationText || item.location || item.address || "");
     const locationEvidence = normalizeText(item.locationEvidence || "");
     const confidence = Math.max(0, Math.min(1, Number(item.locationConfidence) || 0));
+    const category = validateAiCategoryResult(item);
     let locationPrecision = normalizePrecision(item.locationPrecision);
 
-    if (!title || !content || !city) return null;
+    if (!title || !content || !city || !category.valid) return null;
     if (!locationEvidence || confidence < MIN_AI_LOCATION_CONFIDENCE) return null;
     if (!locationText && locationPrecision !== "city") return null;
 
@@ -232,6 +234,8 @@ function normalizeAiExtractedEvents(events = []) {
       locationConfidence: confidence,
       locationAmbiguity: Boolean(item.locationAmbiguity),
       locationReason: normalizeText(item.locationReason || locationEvidence),
+      ...category.value,
+      categorySource: "ai",
     };
   }).filter(Boolean);
 }

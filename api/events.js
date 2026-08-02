@@ -3,7 +3,7 @@ const { getOfficialEvents, getEventCacheStatus } = require("../event-store");
 const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
 function publicEvent(event = {}) {
-  const fields = ["id","submissionId","title","content","summary","category","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
+  const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
   return Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
 }
 

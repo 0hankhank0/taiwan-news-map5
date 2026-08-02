@@ -35,6 +35,8 @@ mountHandler("/api/integrations/events/status", "./api/events");
 mountHandler("/api/reports", "./api/admin");
 mountHandler("/api/reports/:reportId", "./api/admin");
 mountHandler("/api/create-payment", "./api/create-payment");
+mountHandler("/event/:eventId", "./event-page");
+mountHandler("/category/:categoryKey", "./event-page");
 
 app.use(express.static(rootDir));
 
