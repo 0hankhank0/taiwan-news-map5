@@ -46,6 +46,7 @@ import { getLocationPresentation } from "./modules/location-presentation.mjs";
 import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mjs";
 import { getCardPreview } from "./modules/event-card-view.mjs";
 import { shareEvent } from "./modules/event-share.mjs";
+import { getRequestedEventId } from "./modules/event-permalink.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -54,7 +55,9 @@ import { shareEvent } from "./modules/event-share.mjs";
     const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("loop") === "1";
     const VIDEO_DEMO_TEST_MODE = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("test") === "1";
     const requestedSubmissionId = VIDEO_DEMO_ROUTE ? "" : getRequestedSubmissionId();
-    const requestedEventId = VIDEO_DEMO_ROUTE ? "" : new URLSearchParams(window.location.search).get("event")?.trim();
+    const requestedEventId = VIDEO_DEMO_ROUTE ? "" : getRequestedEventId();
+    let requestedEventFocused = false;
+    let requestedEventMissingNotified = false;
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
@@ -1975,6 +1978,12 @@ import { shareEvent } from "./modules/event-share.mjs";
         return deduplicateEvents(filtered);
     }
 
+    function includeRequestedEvent(events) {
+        if (!requestedEventId || events.some((event) => String(event?.id || "") === requestedEventId)) return events;
+        const requestedEvent = parsedEvents.find((event) => String(event?.id || "") === requestedEventId);
+        return requestedEvent ? [requestedEvent, ...events] : events;
+    }
+
     // ── REACTION ────────────────────────────────────────────
     async function getReactions(eventId) {
         try {
@@ -2063,12 +2072,20 @@ import { shareEvent } from "./modules/event-share.mjs";
         flyToLatLng([23.698, 120.961], 7, 900);
     }
 
-    function showSubmissionFocusNotice(message) {
+    function showSubmissionFocusNotice(message, action) {
         const notice = document.createElement("div");
         notice.className = "submission-focus-notice";
         notice.textContent = message;
+        if (action?.label && typeof action.onClick === "function") {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "submission-focus-notice-action";
+            button.textContent = action.label;
+            button.addEventListener("click", action.onClick);
+            notice.appendChild(button);
+        }
         document.body.appendChild(notice);
-        window.setTimeout(() => notice.remove(), 5000);
+        window.setTimeout(() => notice.remove(), action ? 10000 : 5000);
     }
 
     function focusRequestedSubmission() {
@@ -2107,13 +2124,25 @@ import { shareEvent } from "./modules/event-share.mjs";
         removeSubmissionQuery();
     }
     function focusRequestedEvent() {
-        if (!requestedEventId) return;
+        if (!requestedEventId || requestedEventFocused) return;
         const event = parsedEvents.find((item) => String(item?.id || "") === requestedEventId);
-        if (!event) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
+        if (!event) {
+            if (!requestedEventMissingNotified) {
+                requestedEventMissingNotified = true;
+                showSubmissionFocusNotice("找不到這則事件，可能已下架、合併或超過保留期限", {
+                    label: "返回全部新聞地圖",
+                    onClick: () => { window.location.assign("/"); }
+                });
+            }
+            return;
+        }
         const rendered = renderedMarkers.find((item) => String(item.event?.id || "") === requestedEventId);
         const lat = Number(event.lat), lng = Number(event.lng);
-        if (!rendered || !Number.isFinite(lat) || !Number.isFinite(lng)) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
+        if (!rendered || !Number.isFinite(lat) || !Number.isFinite(lng)) { showSubmissionFocusNotice("這則事件目前沒有可定位的位置資訊"); return; }
         flyToLatLng([lat, lng], 15, 800); rendered.popup.setLngLat([lng, lat]).addTo(map);
+        eventList.querySelector(`[data-event-id="${CSS.escape(requestedEventId)}"]`)?.classList.add("requested-event-card");
+        if (window.innerWidth < 768) newsSidebar.classList.add("drawer-collapsed");
+        requestedEventFocused = true;
         showSubmissionFocusNotice("已定位至正式事件");
     }
 
@@ -2196,6 +2225,7 @@ import { shareEvent } from "./modules/event-share.mjs";
         let events = applyAlertZoneMatches(getFilteredEvents());
         if (alertZoneFilterEnabled) events = filterAlertZoneEvents(events);
         events = filterEventsByNearby(events);
+        events = includeRequestedEvent(events);
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const isMobile = isMobileViewport();
@@ -2230,10 +2260,11 @@ import { shareEvent } from "./modules/event-share.mjs";
         }
 
         forEachEventSafely(events, (ev, index) => {
-            const shouldRenderMarker = index < markerLimit || ev.submissionId === requestedSubmissionId;
+            const isRequestedEvent = String(ev.id || "") === requestedEventId;
+            const shouldRenderMarker = index < markerLimit || ev.submissionId === requestedSubmissionId || isRequestedEvent;
             const locationPresentation = getLocationPresentation(ev);
             const canRenderMarker = shouldRenderMarker && locationPresentation.marker && (locationPresentation.mode === "city_area" || shouldRenderLocationMarker(ev));
-            const shouldRenderCard = index < cardLimit;
+            const shouldRenderCard = index < cardLimit || isRequestedEvent;
             if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
             const cat = config[mappedCat]||config.other;
@@ -2320,6 +2351,8 @@ import { shareEvent } from "./modules/event-share.mjs";
 
             const card = document.createElement("article");
             card.className = "event-card-v2";
+            card.dataset.eventId = String(ev.id || "");
+            if (isRequestedEvent) card.classList.add("requested-event-card");
             if (ev.source === "user_submission") card.classList.add("submission-card");
             card.style.setProperty("--card-color", catVisual.color);
             card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
