@@ -55,6 +55,8 @@ function distanceMeters(a, b) {
     await page.route("https://api.mapbox.com/mapbox-gl-js/**/mapbox-gl.css", route => route.fulfill({ contentType: "text/css", body: "" }));
     await page.route(/https:\/\/(fonts|cdnjs)\./, route => route.fulfill({ contentType: "text/css", body: "" }));
     await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => Boolean(window.__mapboxTestMap));
+    await page.waitForFunction(() => window.__mapboxTestMap?.isStyleLoaded?.() === true);
     await page.click("#nearby-toggle-desktop");
     await page.waitForFunction(() => Boolean(window.__mapboxTestMap?.getSource("nearby-radius")));
     const first = await page.evaluate(() => {
