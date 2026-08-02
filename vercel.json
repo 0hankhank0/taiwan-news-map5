@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/event-page.js": {
+      "includeFiles": "index.html"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/events",
