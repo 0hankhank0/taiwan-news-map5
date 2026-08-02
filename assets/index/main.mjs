@@ -45,6 +45,8 @@ import { getActivityLifecycle, isFutureActivity, isVisibleEventLayer } from "./m
 import { getLocationPresentation } from "./modules/location-presentation.mjs";
 import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mjs";
 import { getCardPreview } from "./modules/event-card-view.mjs";
+import { buildEventPath, getRequestedCategory, getRequestedEventId, isEventRoute } from "./modules/event-permalink.mjs";
+import { shareEvent } from "./modules/event-share.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -53,7 +55,9 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     const VIDEO_DEMO_LOOP = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("loop") === "1";
     const VIDEO_DEMO_TEST_MODE = VIDEO_DEMO_ROUTE && VIDEO_DEMO_PARAMS.get("test") === "1";
     const requestedSubmissionId = VIDEO_DEMO_ROUTE ? "" : getRequestedSubmissionId();
-    const requestedEventId = VIDEO_DEMO_ROUTE ? "" : new URLSearchParams(window.location.search).get("event")?.trim();
+    let requestedEventId = VIDEO_DEMO_ROUTE ? "" : getRequestedEventId();
+    const NEWS_CATEGORIES = window.TNM_EVENT_CATEGORIES?.NEWS_CATEGORIES || {};
+    const requestedCategory = VIDEO_DEMO_ROUTE ? "" : getRequestedCategory(window.location, NEWS_CATEGORIES);
     const VIDEO_DEMO_FALLBACK_LOCATION = { lat: 23.0, lng: 120.227, accuracy: 20 };
     const VIDEO_DEMO_USER_LOCATION = { lat: 25.0386, lng: 121.5649, accuracy: 20 };
     const VIDEO_DEMO_PRIMARY_EVENT_ID = "video-demo-roadwork";
@@ -93,6 +97,16 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
         other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     };
+    Object.assign(CATEGORY_CONFIG, {
+        crime: { text: "社會治安", icon: "fa-shield-halved", color: "#8B5CF6" },
+        politics: { text: "政治公共", icon: "fa-landmark", color: "#0F766E" },
+        livelihood: { text: "民生生活", icon: "fa-house", color: "#0891B2" },
+        medical: { text: "醫療健康", icon: "fa-heart-pulse", color: "#DC2626" },
+        education: { text: "教育校園", icon: "fa-graduation-cap", color: "#2563EB" },
+        economy: { text: "產業經濟", icon: "fa-chart-line", color: "#CA8A04" },
+        culture: { text: "文化娛樂", icon: "fa-masks-theater", color: "#DB2777" },
+        international: { text: "國際事件", icon: "fa-earth-asia", color: "#4F46E5" }
+    });
 
     const VIDEO_DEMO_CORE_EVENTS = [
         {
@@ -406,12 +420,16 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     function normalizeDisplayEvent(ev) {
         const normalizedTextEvent = normalizeEventTextFields(ev);
         const originalCategory = normalizeText(normalizedTextEvent.category || normalizedTextEvent.type || "other").toLowerCase();
-        const groupCategory = inferEventGroupCategory({ ...normalizedTextEvent, category: originalCategory });
+        const groupCategory = normalizedTextEvent.eventKind === "activity"
+            ? "activity"
+            : (window.TNM_EVENT_CATEGORIES?.normalizeEventCategory(originalCategory, normalizedTextEvent)
+                || inferEventGroupCategory({ ...normalizedTextEvent, category: originalCategory }));
         return {
             ...normalizedTextEvent,
             originalCategory,
             category: groupCategory,
             groupCategory,
+            eventKind: normalizedTextEvent.eventKind || (groupCategory === "activity" ? "activity" : "news"),
             displayCategory: getCategoryVisual(groupCategory)?.text || "其他"
         };
     }
@@ -814,10 +832,11 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                 ${trustHtml}
                 ${reactionSlot}
                 <div class="popup-footer">
-                    ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="popup-btn-v2 primary">
+                    ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noopener noreferrer" class="popup-btn-v2 primary">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         查看原文
                     </a>` : ""}
+                    <button type="button" class="popup-btn-v2 ghost" data-action="share-event" data-event-id="${eventIdAttr}" aria-label="分享事件">分享事件</button>
                     <button type="button" class="popup-btn-v2 ghost" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         回報錯誤
@@ -888,6 +907,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                 <div class="card-actions" aria-label="事件操作">
                     <button type="button" class="card-action-btn card-action-btn--primary" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
                     <div class="card-action-group">
+                        <button type="button" class="card-action-btn" data-action="share-event" data-event-id="${eventIdAttr}" aria-label="分享事件">分享事件</button>
                         ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn card-action-btn--link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>查看原文</a>` : ""}
                         <button type="button" class="card-action-btn card-action-btn--more" data-action="toggle-card-more" aria-expanded="false" aria-label="更多事件操作">更多<i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                     </div>
@@ -962,7 +982,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         }
     };
 
-    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity", "other"];
+    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "crime", "accident", "politics", "livelihood", "medical", "education", "economy", "culture", "international", "activity", "other"];
 
     const SOURCE_CONFIG = {
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
@@ -1543,7 +1563,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const list = document.getElementById("alert-zone-list");
         if (!list) return;
         if (!alertZones.length) {
-            list.innerHTML = `<div class="alert-zone-empty">尚未設定警戒區。新增後，事件卡片會標示是否落在住家、公司或常走區域附近。</div>`;
+            list.innerHTML = `<div class="alert-zone-empty"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>尚未設定警戒區。新增後，事件卡片會標示是否落在住家、公司或常走區域附近。</span></div>`;
             return;
         }
         list.innerHTML = alertZones.map(zone => {
@@ -1634,6 +1654,13 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     }
 
     function requestAlertZoneLocation() {
+        const addButton = document.getElementById("alert-zone-add-current");
+        const setLocationLoading = (isLoading) => {
+            if (!addButton) return;
+            addButton.disabled = isLoading;
+            addButton.classList.toggle("is-loading", isLoading);
+            addButton.setAttribute("aria-busy", String(isLoading));
+        };
         if (userLocation) {
             addAlertZoneFromLocation(userLocation);
             return;
@@ -1643,6 +1670,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             return;
         }
         setAlertZoneStatus("", "正在取得目前位置...");
+        setLocationLoading(true);
         navigator.geolocation.getCurrentPosition((pos) => {
             userLocation = {
                 lat: pos.coords.latitude,
@@ -1652,11 +1680,13 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             updateUserLocationMarker();
             flyToLatLng([userLocation.lat, userLocation.lng], 13, 800);
             addAlertZoneFromLocation(userLocation);
+            setLocationLoading(false);
         }, (error) => {
             const msg = error.code === error.PERMISSION_DENIED
                 ? "定位權限被拒絕，請允許瀏覽器定位後再新增。"
                 : "無法取得目前位置，請稍後再試。";
             setAlertZoneStatus("error", msg);
+            setLocationLoading(false);
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
 
@@ -1895,6 +1925,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             btn.addEventListener("click",()=>{
                 activeCategory=btn.dataset.category||"all";
                 trackEvent("category_filter_change", { category: activeCategory });
+                if (!VIDEO_DEMO_ROUTE) history.pushState({}, "", activeCategory === "all" ? "/" : `/category/${encodeURIComponent(activeCategory)}`);
                 renderCategoryButtons(); renderEvents();
             });
         });
@@ -1934,6 +1965,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const commuteCategories = new Set(["traffic", "accident", "disaster"]);
         const filtered = parsedEvents.filter(ev=>{
+            const isRequested = requestedEventId && String(ev.id || "") === requestedEventId;
             if (!shouldShowRealtimeEvent(ev)) return false;
             const mappedCategory = inferEventGroupCategory(ev);
             const lifecycleEvent = { ...ev, groupCategory: mappedCategory };
@@ -1942,18 +1974,18 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                 lifecycle.state === "upcoming" ||
                 (["ongoing", "recently_ended"].includes(lifecycle.state) && (lifecycle.start !== null || lifecycle.end !== null))
             );
-            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(lifecycleEvent, { showUpcoming: showUpcomingEvents })) return false;
-            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) return false;
-            if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) return false;
+            if (!isRequested && !VIDEO_DEMO_ROUTE && !isVisibleEventLayer(lifecycleEvent, { showUpcoming: showUpcomingEvents })) return false;
+            if (!isRequested && !VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) return false;
+            if (!isRequested && appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) return false;
 
             if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) return false;
-            if(activeCategory!=="all" && mappedCategory!==activeCategory) return false;
+            if(!isRequested && activeCategory!=="all" && mappedCategory!==activeCategory) return false;
             if(cityFilter!=="all"){
-                if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
+                if(!isRequested && !normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
             }
             if(searchKeyword){
                 const hay=getSearchableEventText(ev);
-                if(!hay.includes(searchKeyword)) return false;
+                if(!isRequested && !hay.includes(searchKeyword)) return false;
             }
             return true;
         });
@@ -2095,11 +2127,18 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         if (!requestedEventId) return;
         const event = parsedEvents.find((item) => String(item?.id || "") === requestedEventId);
         if (!event) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
+        if (!isEventRoute() && !VIDEO_DEMO_ROUTE) setEventRoute(event, { replace: true });
         const rendered = renderedMarkers.find((item) => String(item.event?.id || "") === requestedEventId);
         const lat = Number(event.lat), lng = Number(event.lng);
         if (!rendered || !Number.isFinite(lat) || !Number.isFinite(lng)) { showSubmissionFocusNotice("找不到對應正式事件"); return; }
         flyToLatLng([lat, lng], 15, 800); rendered.popup.setLngLat([lng, lat]).addTo(map);
         showSubmissionFocusNotice("已定位至正式事件");
+    }
+
+    function setEventRoute(event, { replace = false } = {}) {
+        if (VIDEO_DEMO_ROUTE || !event?.id) return;
+        requestedEventId = String(event.id);
+        history[replace ? "replaceState" : "pushState"]({}, "", buildEventPath(event));
     }
 
     function buildEmptyStateHtml() {
@@ -2274,6 +2313,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                 const markerEl = marker.getElement();
                 markerEl.style.cursor = "pointer";
                 markerEl.dataset.eventId = String(ev.id || "");
+                markerEl.addEventListener("click", () => setEventRoute(ev));
                 if (ev.source === "user_submission") markerEl.classList.add("submission-marker");
                 markerEl.classList.add(`marker-location-${locationPresentation.mode}`);
 
@@ -2311,6 +2351,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
 
             card.querySelector('[data-action="focus-event"]')?.addEventListener("click", (event) => {
                 event.stopPropagation();
+                setEventRoute(ev);
                 if (popup && locationPresentation.flyTo) {
                     flyToLatLng(latlng, ev.source === "TDX CMS" ? 14 : 13, 800);
                     popup.addTo(map);
@@ -2328,6 +2369,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                     sourceType: String(ev.source || "unknown"),
                     deviceLayout: window.innerWidth < 768 ? "mobile" : "desktop"
                 });
+                setEventRoute(ev);
                 closeActivePopup();
                 if (popup && locationPresentation.flyTo) {
                     flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
@@ -3561,6 +3603,12 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             if (menu) menu.toggleAttribute("hidden", !expanded);
             target.setAttribute("aria-expanded", String(Boolean(expanded)));
         },
+        "share-event"(event, target) {
+            event.preventDefault();
+            event.stopPropagation();
+            const item = parsedEvents.find((candidate) => String(candidate?.id || "") === String(target.dataset.eventId || ""));
+            if (item) shareEvent(item, { onCopied: (message) => showSubmissionFocusNotice(message) });
+        },
         react(event, target) {
             const payload = readReactionPayload(target);
             if (!payload.eventId || !payload.type) return;
@@ -3582,6 +3630,14 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         });
     });
     document.addEventListener("visibilitychange", () => eventDataManager.onVisibilityChange());
+    window.addEventListener("popstate", () => {
+        requestedEventId = getRequestedEventId();
+        const category = getRequestedCategory(window.location, NEWS_CATEGORIES);
+        activeCategory = category || "all";
+        renderCategoryButtons();
+        renderEvents();
+        focusRequestedEvent();
+    });
     window.addEventListener("pagehide", () => eventDataManager.stop(), { once: true });
     document.getElementById("btn-tw")?.addEventListener("click",()=>switchMode(true));
     document.getElementById("btn-global")?.addEventListener("click",()=>switchMode(false));
@@ -3632,6 +3688,9 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     document.getElementById("settings-close-btn")?.addEventListener("click", () => {
         settingsModal.classList.remove("visible");
     });
+    document.getElementById("settings-close-icon-btn")?.addEventListener("click", () => {
+        settingsModal.classList.remove("visible");
+    });
     document.getElementById("map-mode-select")?.addEventListener("change", (e) => {
         if (document.body.classList.contains("stats-mode")) switchMode(true);
         applyMapMode(e.target.value);
@@ -3660,7 +3719,10 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     document.getElementById("map-help-close")?.addEventListener("click", () => { localStorage.setItem("map_help_dismissed", "true"); mapHelp?.setAttribute("hidden", ""); });
     document.getElementById("settings-stats-btn")?.addEventListener("click", () => { switchMode(false); settingsModal.classList.remove("visible"); });
     document.getElementById("settings-refresh-btn")?.addEventListener("click", () => eventDataManager.refresh({ manual: true }));
-    document.getElementById("settings-theme-btn")?.addEventListener("click", () => switchTheme(document.body.classList.contains("light-mode") ? "dark" : "light"));
+    document.getElementById("settings-theme-btn")?.addEventListener("click", (event) => {
+        switchTheme(currentTheme === "light" ? "dark" : "light");
+        event.currentTarget.setAttribute("aria-pressed", String(currentTheme === "light"));
+    });
 
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
@@ -3679,6 +3741,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             currentMapMode = "normal";
         }
         populateCityFilters();
+        if (requestedCategory) activeCategory = requestedCategory;
         removeMapOverlays();
         initMobileFilterCollapse();
         if (isMobileViewport() && !document.body.classList.contains("stats-mode")) {
