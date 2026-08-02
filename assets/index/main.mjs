@@ -45,6 +45,7 @@ import { getActivityLifecycle, isFutureActivity, isVisibleEventLayer } from "./m
 import { getLocationPresentation } from "./modules/location-presentation.mjs";
 import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mjs";
 import { getCardPreview } from "./modules/event-card-view.mjs";
+import { shareEvent } from "./modules/event-share.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -818,6 +819,9 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                         查看原文
                     </a>` : ""}
+                    <button type="button" class="popup-btn-v2 ghost popup-btn-v2--share" data-action="share-event" data-event-id="${eventIdAttr}" aria-label="分享 ${escapeAttribute(displayTitle)}">
+                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="share-label">分享</span>
+                    </button>
                     <button type="button" class="popup-btn-v2 ghost" data-action="${ev.source === "user_submission" ? "report-submission" : "open-report"}" data-submission-id="${escapeAttribute(ev.submissionId || "")}" data-report="${reportArg}" data-report-title="${reportTitleArg}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
                         回報錯誤
@@ -889,6 +893,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
                     <button type="button" class="card-action-btn card-action-btn--primary" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
                     <div class="card-action-group">
                         ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn card-action-btn--link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>查看原文</a>` : ""}
+                        <button type="button" class="card-action-btn card-action-btn--share" data-action="share-event" data-event-id="${eventIdAttr}" aria-label="分享 ${escapeAttribute(displayTitle)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="share-label">分享</span></button>
                         <button type="button" class="card-action-btn card-action-btn--more" data-action="toggle-card-more" aria-expanded="false" aria-label="更多事件操作">更多<i class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                     </div>
                 </div>
@@ -3570,6 +3575,14 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             const expanded = menu?.hasAttribute("hidden");
             if (menu) menu.toggleAttribute("hidden", !expanded);
             target.setAttribute("aria-expanded", String(Boolean(expanded)));
+        },
+        async "share-event"(event, target) {
+            event.preventDefault();
+            event.stopPropagation();
+            const eventId = target.dataset.eventId || "";
+            const sharedEvent = parsedEvents.find((item) => String(item?.id || "") === eventId);
+            if (!sharedEvent) return;
+            await shareEvent(sharedEvent, { onCopied: () => setStatus("事件網址已複製") });
         },
         react(event, target) {
             const payload = readReactionPayload(target);

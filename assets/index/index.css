@@ -805,6 +805,7 @@
             box-shadow: 0 7px 16px rgba(79, 140, 255, .18);
         }
         .card-action-btn--link,
+        .card-action-btn--share,
         .card-action-btn--more {
             display: inline-flex;
             align-items: center;
@@ -3156,8 +3157,11 @@ body::after {
     .card-action-group { min-width: 0; margin-left: 0; }
     .card-action-btn--primary { min-height: 44px; width: 100%; }
     .card-action-btn--link,
+    .card-action-btn--share,
     .card-action-btn--more { min-height: 44px; padding: 0 10px; }
     .card-action-btn--link { max-width: 104px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+    .card-action-btn--share { flex: 0 0 auto; }
+    .card-action-btn--share .share-label { display: none; }
     .card-more-actions { justify-content: stretch; }
     .card-more-actions .report { min-height: 44px; width: 100%; text-align: left; justify-content: flex-start; }
     #news-sidebar {
