@@ -99,37 +99,60 @@
 </div>
 
     <!-- ══ SETTINGS MODAL ════════════════════════════════════════ -->
-    <div id="settings-modal" class="modal-overlay">
-        <div class="modal-box">
-            <div class="modal-header">
-                <div class="modal-icon"><i class="fa-solid fa-gear"></i></div>
-                <div class="modal-title">設定</div>
+    <div id="settings-modal" class="modal-overlay" aria-labelledby="settings-modal-title">
+        <div class="modal-box settings-modal-box" role="document">
+            <div class="modal-header settings-modal-header">
+                <div class="modal-icon settings-modal-icon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></div>
+                <div class="settings-modal-heading">
+                    <div class="modal-title" id="settings-modal-title">設定</div>
+                    <div class="settings-modal-subtitle">調整閱讀偏好與個人警戒區</div>
+                </div>
+                <button id="settings-close-icon-btn" class="settings-close-icon" type="button" aria-label="關閉設定"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
             </div>
-            <div class="form-group">
-                <label class="form-label">地圖主題</label>
-                <select id="map-mode-select" class="form-control">
+            <div class="settings-modal-content">
+            <div class="settings-preferences" aria-label="基礎設定">
+            <div class="form-group settings-preference-row">
+                <div class="settings-preference-icon"><i class="fa-solid fa-map" aria-hidden="true"></i></div>
+                <div class="settings-preference-body">
+                <label class="form-label" for="map-mode-select">地圖主題</label>
+                </div>
+                <select id="map-mode-select" class="form-control settings-preference-select">
                     <option value="normal">新聞事件地圖</option>
                     <option value="online">TW Online 主題</option>
                 </select>
             </div>
-            <div class="form-group">
+            <div class="form-group settings-preference-row">
+                <div class="settings-preference-icon"><i class="fa-solid fa-crosshairs" aria-hidden="true"></i></div>
+                <div class="settings-preference-body">
                 <label class="form-label" for="nearby-radius-desktop">附近事件範圍</label>
-                <select id="nearby-radius-desktop" class="form-control">
+                </div>
+                <select id="nearby-radius-desktop" class="form-control settings-preference-select">
                     <option value="1000">1 km</option>
                     <option value="3000" selected>3 km</option>
                     <option value="5000">5 km</option>
                     <option value="10000">10 km</option>
                 </select>
             </div>
-            <div class="settings-section">
+            </div>
+            <div class="settings-section settings-tools-section">
                 <div class="settings-section-title">更多功能</div>
                 <div class="settings-section-copy">不影響首頁閱讀的工具集中在這裡。</div>
-                <p><a href="/submit-event.html" class="card-action-btn" aria-label="提供新聞線索">提供線索</a> <button id="settings-stats-btn" type="button" class="card-action-btn">統計</button> <button id="settings-refresh-btn" type="button" class="card-action-btn">重新整理</button></p>
-                <p><button id="settings-theme-btn" type="button" class="card-action-btn">切換深淺色</button> <button data-action="donate" data-donate-amount="100" class="card-action-btn">支持維護</button></p>
+                <div class="settings-tools-grid">
+                    <a href="/submit-event.html" class="settings-tool-card" aria-label="提供新聞線索"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i><span>提供線索</span></a>
+                    <button id="settings-stats-btn" type="button" class="settings-tool-card"><i class="fa-solid fa-chart-column" aria-hidden="true"></i><span>統計</span></button>
+                    <button id="settings-refresh-btn" type="button" class="settings-tool-card"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i><span>重新整理</span></button>
+                    <button id="settings-theme-btn" type="button" class="settings-tool-card" aria-pressed="false"><i class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i><span>切換深淺色</span></button>
+                    <button data-action="donate" data-donate-amount="100" class="settings-tool-card" aria-label="支持維護"><i class="fa-solid fa-heart" aria-hidden="true"></i><span>支持維護</span></button>
+                </div>
             </div>
-            <div class="settings-section" aria-labelledby="alert-zone-settings-title">
-                <div class="settings-section-title" id="alert-zone-settings-title">個人化警戒區</div>
-                <div class="settings-section-copy">設定住家、公司或常走區域，事件命中時會在卡片與彈窗顯示標籤。</div>
+            <div class="settings-section alert-zone-settings-card" aria-labelledby="alert-zone-settings-title">
+                <div class="settings-section-heading">
+                    <div class="settings-section-heading-icon"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
+                    <div>
+                        <div class="settings-section-title" id="alert-zone-settings-title">個人化警戒區</div>
+                        <div class="settings-section-copy">設定住家、公司或常走區域，事件命中時會在卡片與彈窗顯示標籤。</div>
+                    </div>
+                </div>
                 <div class="alert-zone-controls">
                     <div class="form-group">
                         <label class="form-label" for="alert-zone-type">區域類型</label>
@@ -160,8 +183,9 @@
                 <div id="alert-zone-status" class="alert-zone-status" aria-live="polite"></div>
                 <div id="alert-zone-list" class="alert-zone-list"></div>
             </div>
-            <div class="modal-actions">
-                <button id="settings-close-btn" class="btn btn-primary">關閉</button>
+            </div>
+            <div class="modal-actions settings-modal-actions">
+                <button id="settings-close-btn" type="button" class="btn btn-ghost">關閉</button>
             </div>
         </div>
     </div>

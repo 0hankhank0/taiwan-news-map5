@@ -1543,7 +1543,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
         const list = document.getElementById("alert-zone-list");
         if (!list) return;
         if (!alertZones.length) {
-            list.innerHTML = `<div class="alert-zone-empty">尚未設定警戒區。新增後，事件卡片會標示是否落在住家、公司或常走區域附近。</div>`;
+            list.innerHTML = `<div class="alert-zone-empty"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>尚未設定警戒區。新增後，事件卡片會標示是否落在住家、公司或常走區域附近。</span></div>`;
             return;
         }
         list.innerHTML = alertZones.map(zone => {
@@ -1634,6 +1634,13 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     }
 
     function requestAlertZoneLocation() {
+        const addButton = document.getElementById("alert-zone-add-current");
+        const setLocationLoading = (isLoading) => {
+            if (!addButton) return;
+            addButton.disabled = isLoading;
+            addButton.classList.toggle("is-loading", isLoading);
+            addButton.setAttribute("aria-busy", String(isLoading));
+        };
         if (userLocation) {
             addAlertZoneFromLocation(userLocation);
             return;
@@ -1643,6 +1650,7 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             return;
         }
         setAlertZoneStatus("", "正在取得目前位置...");
+        setLocationLoading(true);
         navigator.geolocation.getCurrentPosition((pos) => {
             userLocation = {
                 lat: pos.coords.latitude,
@@ -1652,11 +1660,13 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
             updateUserLocationMarker();
             flyToLatLng([userLocation.lat, userLocation.lng], 13, 800);
             addAlertZoneFromLocation(userLocation);
+            setLocationLoading(false);
         }, (error) => {
             const msg = error.code === error.PERMISSION_DENIED
                 ? "定位權限被拒絕，請允許瀏覽器定位後再新增。"
                 : "無法取得目前位置，請稍後再試。";
             setAlertZoneStatus("error", msg);
+            setLocationLoading(false);
         }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     }
 
@@ -3632,6 +3642,9 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     document.getElementById("settings-close-btn")?.addEventListener("click", () => {
         settingsModal.classList.remove("visible");
     });
+    document.getElementById("settings-close-icon-btn")?.addEventListener("click", () => {
+        settingsModal.classList.remove("visible");
+    });
     document.getElementById("map-mode-select")?.addEventListener("change", (e) => {
         if (document.body.classList.contains("stats-mode")) switchMode(true);
         applyMapMode(e.target.value);
@@ -3660,7 +3673,10 @@ import { getCardPreview } from "./modules/event-card-view.mjs";
     document.getElementById("map-help-close")?.addEventListener("click", () => { localStorage.setItem("map_help_dismissed", "true"); mapHelp?.setAttribute("hidden", ""); });
     document.getElementById("settings-stats-btn")?.addEventListener("click", () => { switchMode(false); settingsModal.classList.remove("visible"); });
     document.getElementById("settings-refresh-btn")?.addEventListener("click", () => eventDataManager.refresh({ manual: true }));
-    document.getElementById("settings-theme-btn")?.addEventListener("click", () => switchTheme(document.body.classList.contains("light-mode") ? "dark" : "light"));
+    document.getElementById("settings-theme-btn")?.addEventListener("click", (event) => {
+        switchTheme(currentTheme === "light" ? "dark" : "light");
+        event.currentTarget.setAttribute("aria-pressed", String(currentTheme === "light"));
+    });
 
     document.getElementById("beta-close-btn")?.addEventListener("click",closeBetaModal);
     reportModal.addEventListener("click",e=>{ if(e.target===reportModal) closeReportModal(); });
