@@ -639,6 +639,11 @@
             box-shadow: 0 14px 36px rgba(0, 0, 0, 0.18);
         }
         .event-card-v2:hover { background: var(--bg-card); }
+        .event-card-v2.requested-event-card {
+            border-color: var(--card-color, var(--accent));
+            box-shadow: 0 0 0 2px color-mix(in srgb, var(--card-color, var(--accent)) 58%, transparent), 0 14px 36px rgba(0, 0, 0, 0.22);
+        }
+        .event-card-v2.requested-event-card .card-bar { opacity: 1; width: 5px; }
         .event-card-v2 .card-bar {
             position: absolute;
             left: 0;
