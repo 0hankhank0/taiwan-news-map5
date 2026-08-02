@@ -1,6 +1,7 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { isAuthorized } = require("../admin-auth");
 const { getOfficialEvents, updateOfficialEvent } = require("../event-store");
+const { NEWS_CATEGORIES, normalizeSecondaryTags } = require("../shared/event-categories");
 
 const ALLOWED_STATUSES = new Set(["active", "upcoming", "resolved", "cleared", "expired"]);
 const ALLOWED_REVIEW_STATES = new Set(["unreviewed", "pending_review", "reviewed", "merged", "rejected"]);
@@ -18,7 +19,12 @@ function sanitizePatch(input = {}) {
   const patch = {};
   if (input.title !== undefined) patch.title = String(input.title).trim().slice(0, 160);
   if (input.content !== undefined) patch.content = String(input.content).trim().slice(0, 600);
-  if (input.category !== undefined) patch.category = String(input.category).trim().slice(0, 40);
+  if (input.category !== undefined) {
+    const category = String(input.category).trim();
+    if (!Object.prototype.hasOwnProperty.call(NEWS_CATEGORIES, category)) throw new Error("Invalid category");
+    patch.category = category;
+  }
+  if (input.secondaryTags !== undefined) patch.secondaryTags = normalizeSecondaryTags(Array.isArray(input.secondaryTags) ? input.secondaryTags : String(input.secondaryTags).split(","));
   if (input.address !== undefined) patch.address = String(input.address).trim().slice(0, 180);
   if (input.venue !== undefined) patch.venue = String(input.venue).trim().slice(0, 120);
   if (input.city !== undefined) patch.city = String(input.city).trim().slice(0, 40);

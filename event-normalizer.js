@@ -1,6 +1,7 @@
 const locationResolver = require("./location-resolver");
 const eventDisplay = require("./event-display");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
+const eventCategories = require("./shared/event-categories");
 
 const CMS_DIRECT_EVENT_PATTERN = /事故|車禍|壅塞|回堵|封閉|封路|管制|施工|改道|坍方|落石|淹水|積水|號誌|車道|匝道|交流道|排除|拖吊|救援|警察|消防|救護|緊急|故障車|拋錨|障礙物|掉落物|塞車|車多|禁止通行|單線|雙向|邊坡|土石流|停電|停水|closure|closed|accident|congestion|construction|flood|rockfall|debris/i;
 const CMS_GENERIC_NOTICE_PATTERN = /小心駕駛|安全駕駛|請小心|注意安全|保持車距|請保持|請減速|減速慢行|勿疲勞|疲勞駕駛|酒後不開車|開車不喝酒|嚴禁酒駕|請繫安全帶|繫安全帶|天候不佳|雨天路滑|路況資訊|收聽警廣|旅途平安|祝.*平安|遵守交通規則|請勿超速|勿超速|注意車前|請開大燈|開亮頭燈|drive safely|safe driving|slow down|seat belt|weather|rainy|road information/i;
@@ -214,11 +215,14 @@ function makeStableId(event, index) {
   const existing = normalizeText(event.id || event.eventId || event.eventFingerprint);
   if (existing) return existing;
 
+  // Category and collection position are intentionally excluded: either can
+  // change during later enrichment, while a permalink must remain stable.
   const key = [
-    event.source || "event",
+    event.sourceUrl || event.url || event.link || "",
+    event.source || event.sourceName || "event",
+    event.publishedAt || event.createdAt || event.time || "",
     event.city || "",
-    event.category || "",
-    event.title || event.text || index,
+    event.title || event.text || "untitled",
   ].join(":");
 
   let hash = 0;
@@ -254,8 +258,11 @@ function normalizeEvent(event, index = 0) {
   const content = normalizeText(event.content || event.summary || event.description || event.text || title);
   if (!title && !content) return null;
 
-  const rawCategory = normalizeCategory(event.category || event.type);
-  const groupCategory = CATEGORY_GROUPS[rawCategory] || "other";
+  const eventKind = eventCategories.inferEventKind(event);
+  const normalizedCategory = eventCategories.normalizeEventCategory(event.category || event.type, event);
+  // Keep non-news layers explicit; news always uses the shared fixed taxonomy.
+  const rawCategory = eventKind === "activity" ? "activity" : normalizedCategory;
+  const groupCategory = rawCategory;
   const location = locationResolver.resolveLocationSync(event, { title, content });
   const city = location.city;
   let { lat, lng } = location;
@@ -275,6 +282,11 @@ function normalizeEvent(event, index = 0) {
     category: rawCategory,
     rawCategory,
     groupCategory,
+    eventKind,
+    categoryConfidence: eventCategories.normalizeCategoryConfidence(event.categoryConfidence),
+    categoryReason: normalizeText(event.categoryReason || ""),
+    secondaryTags: eventCategories.normalizeSecondaryTags(event.secondaryTags || event.tags),
+    sourceCategory: normalizeText(event.sourceCategory || event.originalCategory || event.type || ""),
     city,
     district,
     address: normalizeText(event.address || event.location || ""),

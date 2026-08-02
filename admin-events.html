@@ -160,6 +160,8 @@
           <div class="grid">
             <input data-field="title" class="wide" value="${escapeHtml(event.title)}" />
             <input data-field="category" value="${escapeHtml(event.category)}" />
+            <input data-field="secondaryTags" value="${escapeHtml((event.secondaryTags || []).join(", "))}" placeholder="次要標籤（逗號分隔）" />
+            <div class="full">分類來源：${escapeHtml(event.categorySource || "fallback")}｜AI 建議：${escapeHtml(event.aiSuggestedCategory || (event.categorySource === "ai" ? event.category : "-"))}｜信心：${escapeHtml(String(event.aiCategoryConfidence ?? event.categoryConfidence ?? "-"))}｜理由：${escapeHtml(event.categoryReason || "-")}｜來源分類：${escapeHtml(event.sourceCategory || "-")}</div>
             <select data-field="status">
               ${["active","upcoming","resolved","cleared","expired"].map(v => option(v, STATUS_LABELS[v], event.status)).join("")}
             </select>

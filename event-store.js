@@ -2,6 +2,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { Redis } = require("@upstash/redis");
+const { normalizeEventCategory, normalizeSecondaryTags } = require("./shared/event-categories");
 
 const NEWS_CACHE_KEY = "taiwan_news_cache";
 const TRAFFIC_CACHE_KEY = "taiwan_traffic_cache";
@@ -442,7 +443,16 @@ async function getCachedEvents() {
 // `events:official` is the canonical event collection.  The older cache keys
 // remain a read-through compatibility cache for deployments upgraded in place.
 async function getOfficialEvents() {
-  if (process.env.EVENT_STORE_MODE === "supabase") return require("./supabase-event-repository").getOfficialEvents();
+  if (process.env.EVENT_STORE_MODE === "supabase") {
+    try {
+      return await require("./supabase-event-repository").getOfficialEvents();
+    } catch (error) {
+      // Local development must remain usable without a reachable Supabase
+      // instance. Production deliberately keeps the failure visible.
+      if (process.env.NODE_ENV === "production" || process.env.VERCEL) throw error;
+      console.warn("[event-store] Supabase unavailable; using local cache in development:", error.message);
+    }
+  }
   const official = await getCachedValue(OFFICIAL_EVENTS_KEY);
   if (Array.isArray(official)) return official;
   const legacy = await getCachedEvents();
@@ -478,9 +488,14 @@ async function updateOfficialEvent(eventId, patch = {}, actor = "admin") {
   const now = new Date().toISOString();
   const current = events[index];
   const normalizedPatch = normalizeEventPatch(patch);
-  const next = { ...current, ...normalizedPatch, updatedAt: now, statusSource: "manual", sourceTrace: buildSourceTrace(current), adminReview: { ...(current.adminReview || {}), adminNote: normalizedPatch.adminNote ?? current.adminReview?.adminNote ?? "", actor, updatedAt: now } };
+  const categoryChanged = normalizedPatch.category !== undefined || normalizedPatch.secondaryTags !== undefined;
+  const next = { ...current, ...normalizedPatch, updatedAt: now, statusSource: "manual", categorySource: categoryChanged ? "manual" : current.categorySource, categoryReviewedAt: categoryChanged ? now : current.categoryReviewedAt, categoryReviewedBy: categoryChanged ? actor : current.categoryReviewedBy, sourceTrace: buildSourceTrace(current), adminReview: { ...(current.adminReview || {}), adminNote: normalizedPatch.adminNote ?? current.adminReview?.adminNote ?? "", actor, updatedAt: now } };
   events[index] = next;
   await setOfficialEvents(events);
+  if (categoryChanged) {
+    const log = await getCachedValue(EVENT_REVIEW_LOG_KEY);
+    await setCachedValue(EVENT_REVIEW_LOG_KEY, [{ action: "category_updated", eventId: String(eventId), previousCategory: current.category, nextCategory: next.category, previousTags: current.secondaryTags || [], nextTags: next.secondaryTags || [], changedAt: now, changedBy: actor }, ...(Array.isArray(log) ? log : [])].slice(0, 1000));
+  }
   return next;
 }
 
@@ -932,7 +947,8 @@ function normalizeEventPatch(patch = {}) {
   const allowed = {};
   if (patch.title !== undefined) allowed.title = String(patch.title).trim();
   if (patch.content !== undefined) allowed.content = String(patch.content).trim();
-  if (patch.category !== undefined) allowed.category = String(patch.category).trim();
+  if (patch.category !== undefined) allowed.category = normalizeEventCategory(patch.category);
+  if (patch.secondaryTags !== undefined) allowed.secondaryTags = normalizeSecondaryTags(patch.secondaryTags);
   if (patch.status !== undefined) allowed.status = String(patch.status).trim();
   if (patch.verifiedStatus !== undefined) allowed.verifiedStatus = String(patch.verifiedStatus).trim();
   if (patch.reviewState !== undefined) allowed.reviewState = String(patch.reviewState).trim();

@@ -38,6 +38,7 @@ const {
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 const { notifyRefreshAlert } = require("./refresh-alerts");
 const { getActivePbsEvents, getPbsSyncState } = require("./supabase-pbs-repository");
+const { resolveEventCategory } = require("./shared/event-category-decision");
 
 const Parser = require("rss-parser");
 const os = require("os");
@@ -1420,6 +1421,10 @@ async function extractAiEvents(newsItems) {
     "Keep only items with a physical place in Taiwan.",
     "Omit institutional, policy, subsidy, budget, council, application, public-service, or government process news unless it creates an immediate on-site traffic, safety, utility, disaster, or crowd impact.",
     "Use one category from the allowed enum.",
+    "Return categoryConfidence from 0 to 1, a short categoryReason, up to five secondaryTags, and sourceCategory from the source when available.",
+    "Classify the primary event using title, summary, action, impact, source category, then context; do not count keywords.",
+    "Typhoon road closures are disaster; a mayor at a fire is classified by the fire; a crash near a school or hospital is not education or medical.",
+    "Police typhoon reminders are disaster; a suspect's hometown is not the incident location; ordinary building fires are accident, arson is crime, and disaster-caused fires are disaster.",
     "Deduplicate reports of the same real-world event into one event.",
     "Use the provided city fallback coordinates when exact coordinates are unknown.",
     "If no Taiwan location is found, omit the event.",
@@ -1499,6 +1504,10 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     "locationReason must briefly explain why locationText is the event location.",
     "Use locationPrecision exact for venue/road/address, district for district/township, city for city-only.",
     "Use one category from the allowed enum.",
+    "Return categoryConfidence from 0 to 1, a short categoryReason, up to five secondaryTags, and sourceCategory from the source when available.",
+    "Classify the primary event from title, summary, action, impact, source category, then context; do not count keywords.",
+    "Typhoon road closures are disaster; fires are classified by the fire rather than an attending mayor; crashes near schools or hospitals are not education or medical.",
+    "Police typhoon reminders are disaster; a suspect's hometown is not incident location; ordinary fires are accident, arson crime, and disaster-caused fires disaster.",
     "Omit institutional, policy, subsidy, budget, council, application, public-service, or government process news unless it creates an immediate on-site traffic, safety, utility, disaster, or crowd impact.",
     "Deduplicate reports of the same real-world event into one event.",
     "Same event criteria: Same location + Same time + Same nature.",
@@ -1531,7 +1540,11 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
                   properties: {
                     title: { type: "string" },
                     content: { type: "string" },
-                    category: { type: "string", enum: ["traffic", "construction", "disaster", "police", "activity", "politics", "social", "life", "tech", "finance", "international", "entertainment", "fire", "other"] },
+                    category: { type: "string", enum: ["traffic", "disaster", "crime", "accident", "politics", "livelihood", "medical", "education", "economy", "culture", "international", "other"] },
+                    categoryConfidence: { type: "number", minimum: 0, maximum: 1 },
+                    categoryReason: { type: "string" },
+                    secondaryTags: { type: "array", items: { type: "string" }, maxItems: 5 },
+                    sourceCategory: { type: "string" },
                     url: { type: "string" },
                     lat: { type: "number" },
                     lng: { type: "number" },
@@ -1545,7 +1558,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
                     source: { type: "string" },
                     eventFingerprint: { type: "string" },
                   },
-                  required: ["title", "content", "category", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "locationAmbiguity", "locationReason", "source", "eventFingerprint"],
+                  required: ["title", "content", "category", "categoryConfidence", "categoryReason", "secondaryTags", "sourceCategory", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "locationAmbiguity", "locationReason", "source", "eventFingerprint"],
                   additionalProperties: false,
                 },
               },
@@ -1563,6 +1576,24 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     console.error("[cron] Azure OpenAI context extraction failed:", error.message);
     throw error;
   }
+}
+
+function applyCategoryDecision(event = {}) {
+  const source = `${event.source || ""} ${event.sourceName || ""}`.toLowerCase();
+  if (event.categorySource === "manual") return { ...event, ...resolveEventCategory({ manualCategory: event.category }) };
+  if (event.eventKind === "activity" || event.category === "activity") return { ...event, eventKind: "activity", categorySource: event.categorySource || "official" };
+  const officialCategory = /tdx|pbs|official alert/.test(source) ? "traffic" : (event.categorySource === "official" ? event.category : "");
+  const ruleCategory = event.categorySource === "rule" ? event.category : "";
+  const decision = resolveEventCategory({
+    officialCategory,
+    ruleCategory,
+    aiCategory: event.category,
+    categoryConfidence: event.categoryConfidence,
+    categoryReason: event.categoryReason,
+    secondaryTags: event.secondaryTags,
+    sourceCategory: event.sourceCategory,
+  });
+  return { ...event, ...decision, eventKind: event.eventKind || (/tdx|pbs/.test(source) ? "traffic_data" : "news") };
 }
 
 function normalizeFinalEvents(events) {
@@ -1585,6 +1616,8 @@ function normalizeFinalEvents(events) {
         lng: Number(item.lng),
       };
     })
+    .map(applyCategoryDecision)
+    .filter((item) => item.eventKind !== "news" || item.autoPublish !== false)
     .map(enrichCronEvent)
     .map((item) => ({
       ...item,
@@ -1973,6 +2006,7 @@ function sourceWasFullyRefreshed(sources, name) {
 }
 
 function shouldReplaceExistingEvent(event, mode, sources) {
+  if (event?.categorySource === "manual") return false;
   const provider = `${event?.source || ""} ${event?.sourceName || ""}`.toLowerCase();
   if (mode === "traffic") {
     if (!provider.includes("tdx")) return false;

@@ -49,6 +49,14 @@
       "destination": "/api/reactions-total.js"
     },
     {
+      "source": "/event/:eventId",
+      "destination": "/api/event-page.js?eventId=:eventId"
+    },
+    {
+      "source": "/category/:categoryKey",
+      "destination": "/api/event-page.js?categoryKey=:categoryKey"
+    },
+    {
       "source": "/video",
       "destination": "/index.html"
     },
