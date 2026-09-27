@@ -269,8 +269,12 @@ function normalizeEvent(event, index = 0) {
   if (!isValidTaiwanCoord(lat, lng)) return null;
 
   const sourceUrl = normalizeText(event.sourceUrl || event.url || event.link);
-  const publishedAt = event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString();
-  const createdAt = Number(event.createdAt) || Date.parse(publishedAt) || Date.now();
+  // An activity's schedule is authoritative. Do not relabel a provider's
+  // metadata update (or our record creation) as its publication time.
+  const publishedAt = eventKind === "activity"
+    ? (event.publishedAt || null)
+    : (event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString());
+  const createdAt = Number(event.createdAt) || Date.parse(publishedAt || "") || Date.now();
   const district = normalizeText(location.district || event.district || extractDistrict(`${event.address || ""} ${event.location || ""} ${title} ${content}`));
 
   return {
@@ -310,9 +314,10 @@ function normalizeEvent(event, index = 0) {
     sourceName: normalizeText(event.sourceName || event.source || "news"),
     sourceUrl,
     url: sourceUrl,
-    publishedAt: new Date(publishedAt).toString() === "Invalid Date" ? new Date(createdAt).toISOString() : new Date(publishedAt).toISOString(),
-    updatedAt: new Date(event.updatedAt || createdAt).toString() === "Invalid Date" ? new Date(createdAt).toISOString() : new Date(event.updatedAt || createdAt).toISOString(),
+    publishedAt: publishedAt && new Date(publishedAt).toString() !== "Invalid Date" ? new Date(publishedAt).toISOString() : (eventKind === "activity" ? null : new Date(createdAt).toISOString()),
+    updatedAt: event.updatedAt && new Date(event.updatedAt).toString() !== "Invalid Date" ? new Date(event.updatedAt).toISOString() : (eventKind === "activity" ? null : new Date(createdAt).toISOString()),
     createdAt,
+    fetchedAt: event.fetchedAt || null,
     startsAt: event.startsAt || event.startAt || null,
     endsAt: event.endsAt || event.endAt || null,
     expiresAt: event.expiresAt || null,

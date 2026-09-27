@@ -50,6 +50,9 @@ assert.equal(getActivityLifecycle({ ...activity, status: "active" }, now).state,
 assert.equal(getEventTime({ occurredAt: "2026-07-30T10:00:00Z", publishedAt: "2026-07-30T11:00:00Z" }).field, "occurredAt");
 assert.equal(isWithinTimeRange({ publishedAt: "2026-07-30T02:00:00Z" }, "24h", now), true);
 assert.equal(isWithinTimeRange({ publishedAt: "2026-07-28T02:00:00Z" }, "24h", now), false);
+assert.equal(isWithinTimeRange({ category: "activity", startsAt: "2026-01-01T00:00:00Z", endsAt: "2026-12-31T00:00:00Z", fetchedAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString() }, "6h", now), true);
+assert.equal(isWithinTimeRange({ category: "activity", startsAt: "2026-01-01T00:00:00Z", endsAt: "2026-07-29T00:00:00Z", fetchedAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString() }, "6h", now), false);
+assert.equal(formatRelativeTime({ category: "activity", startsAt: "2026-01-01T00:00:00Z", endsAt: "2026-12-31T00:00:00Z" }, now), "進行中");
 assert.equal(getEventLayer({ category: "traffic" }, now), "impact");
 assert.equal(isVisibleEventLayer({ category: "traffic", status: "resolved" }, { now }), true);
 assert.equal(getEventLayer({ category: "news", title: "一般新聞" }, now), "news");

@@ -384,7 +384,14 @@ async function call(handler, req) {
   const tourismEvents = await eventRefresh.fetchTourismEvents(Date.now());
   assert.equal(tourismEvents.length, 1);
   assert.equal(tourismEvents[0].source, "Tourism Events");
+  assert.equal(tourismEvents[0].publishedAt, null);
+  assert.equal(tourismEvents[0].updatedAt, tourismFuture);
+  assert.equal(eventNormalizer.normalizeEvent(tourismEvents[0]).publishedAt, null);
   assert.equal(tourismEvents[0].tourismEvent.EventID, "tourism-1");
+  const tourismDuplicateId = { ...tourismEvents[0], id: "tourism-events_same-occurrence", eventFingerprint: "tourism-events:another-id" };
+  const tourismLaterSession = { ...tourismEvents[0], id: "tourism-events_later-session", eventFingerprint: "tourism-events:later-id", startsAt: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(), endsAt: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString() };
+  assert.equal(eventRefresh.isDuplicateEvent(tourismDuplicateId, [tourismEvents[0]]), true);
+  assert.equal(eventRefresh.isDuplicateEvent(tourismLaterSession, [tourismEvents[0]]), false);
   assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "tourismEvents").status, "success");
   global.fetch = async () => ({ ok: false, status: 503 });
   await assert.rejects(() => eventRefresh.fetchTourismEvents(Date.now()), /Tourism Events HTTP 503/);

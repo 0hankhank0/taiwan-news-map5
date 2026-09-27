@@ -905,8 +905,12 @@ function enrichCronEvent(event) {
   const title = String(event.title || event.text || "").trim();
   const content = String(event.content || event.summary || event.text || title).trim();
   const locationText = `${event.address || ""} ${event.location || ""} ${event.city || ""} ${title} ${content}`;
-  const publishedAt = event.publishedAt || event.pubDate || event.createdAt || now;
-  const createdAt = Number(event.createdAt) || parseEventTime(publishedAt) || now;
+  const sourcePublishedAt = parseEventTime(event.publishedAt || event.pubDate);
+  const sourceUpdatedAt = parseEventTime(event.updatedAt || event.sourceUpdatedAt);
+  // createdAt is our record creation time and fetchedAt is acquisition time;
+  // neither represents when an event occurred.
+  const createdAt = Number(event.createdAt) || now;
+  const fetchedAt = parseEventTime(event.fetchedAt) || now;
   const sourceUrl = String(event.sourceUrl || event.url || event.link || "").trim();
 
   return {
@@ -920,9 +924,10 @@ function enrichCronEvent(event) {
     district: event.district || extractDistrict(locationText),
     address: event.address || event.location || "",
     venue: event.venue || "",
-    publishedAt: new Date(parseEventTime(publishedAt) || createdAt).toISOString(),
-    updatedAt: new Date(now).toISOString(),
+    publishedAt: sourcePublishedAt ? new Date(sourcePublishedAt).toISOString() : (event.category === "activity" ? null : new Date(createdAt).toISOString()),
+    updatedAt: sourceUpdatedAt ? new Date(sourceUpdatedAt).toISOString() : null,
     createdAt,
+    fetchedAt: new Date(fetchedAt).toISOString(),
     status: event.status || inferEventStatus(event, now),
     severity: inferSeverity(event),
     impact: event.impact || inferImpact(event),
@@ -1321,7 +1326,9 @@ function normalizeTourismEvent(item, now = Date.now()) {
     startsAt: startsAt ? new Date(startsAt).toISOString() : null,
     endsAt: endsAt ? new Date(endsAt).toISOString() : null,
     expiresAt: endsAt || (startsAt ? startsAt + 30 * 24 * 60 * 60 * 1000 : now + 30 * 24 * 60 * 60 * 1000),
-    publishedAt: item?.UpdateTime || now, createdAt: now, tourismEvent: {
+    // UpdateTime is source metadata; the activity interval is represented by
+    // StartDateTime/EndDateTime and must not be treated as publication time.
+    publishedAt: null, updatedAt: item?.UpdateTime || null, createdAt: now, fetchedAt: now, tourismEvent: {
       EventID: id, EventName: title, Description: item?.Description || "", PositionLat: lat, PositionLon: lng,
       PostalAddress: address, LocatedCities: item?.LocatedCities || [], WebsiteURL: item?.WebsiteURL || "", Images: images,
       StartDateTime: item?.StartDateTime || "", EndDateTime: item?.EndDateTime || "", EventStatus: item?.EventStatus || "", UpdateTime: item?.UpdateTime || "",
@@ -1626,7 +1633,7 @@ function normalizeFinalEvents(events) {
     .filter((item) => !isGenericCmsNoticeRecord(item))
     .filter((item) => !isInstitutionalEvent(item))
     .filter((item) => {
-      const key = item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
+      const key = activityOccurrenceKey(item) || item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
       if (dedupe.has(key)) return false;
       dedupe.add(key);
       return true;
@@ -1937,7 +1944,27 @@ function isFreshEvent(event, now = Date.now()) {
   return (now - (event.createdAt || 0)) < 48 * 60 * 60 * 1000;
 }
 
+function normalizedOccurrenceText(value) {
+  return String(value || "").toLowerCase().replace(/[\s\W_]+/g, "");
+}
+
+// A schedule is part of an activity's identity. This merges duplicate source
+// records for one occurrence, while preserving separately scheduled sessions.
+function activityOccurrenceKey(event = {}) {
+  if (event.category !== "activity" && event.eventKind !== "activity") return "";
+  const start = parseEventTime(event.startsAt || event.startAt);
+  const end = parseEventTime(event.endsAt || event.endAt);
+  if (start === null && end === null) return "";
+  const title = normalizedOccurrenceText(event.title || event.text);
+  const place = normalizedOccurrenceText(event.venue || event.address || event.location || event.city);
+  return `${title}:${place}:${start || ""}:${end || ""}`;
+}
+
 function isDuplicateEvent(newEvent, existingEventsList) {
+  if (newEvent.category === "activity") {
+    const occurrenceKey = activityOccurrenceKey(newEvent);
+    return Boolean(occurrenceKey) && existingEventsList.some((event) => event.category === "activity" && activityOccurrenceKey(event) === occurrenceKey);
+  }
   const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
   const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
 
@@ -1960,6 +1987,10 @@ function isDuplicateEvent(newEvent, existingEventsList) {
 }
 
 function findDuplicateForMerge(newEvent, existingEventsList) {
+  if (newEvent.category === "activity") {
+    const occurrenceKey = activityOccurrenceKey(newEvent);
+    return existingEventsList.find((event) => event.category === "activity" && occurrenceKey && activityOccurrenceKey(event) === occurrenceKey);
+  }
   const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
   return existingEventsList.find((event) =>
     (event.title || "").replace(/\s+/g, "").slice(0, 15) === newTitle
@@ -2264,7 +2295,7 @@ const REFRESH_SOURCE_FIELDS = Object.freeze([
 ]);
 
 function refreshItemKey(item = {}) {
-  return String(item.eventFingerprint || item.id || item.url || item.sourceUrl || `${item.title || ""}:${item.city || ""}`).trim().toLowerCase();
+  return String(activityOccurrenceKey(item) || item.eventFingerprint || item.id || item.url || item.sourceUrl || `${item.title || ""}:${item.city || ""}`).trim().toLowerCase();
 }
 
 function toRefreshItem(item, source, finalByKey, outcome = {}) {
@@ -2454,6 +2485,7 @@ module.exports = {
   fetchCultureActivityEvents,
   fetchTourismEvents,
   normalizeTourismEvent,
+  activityOccurrenceKey,
   extractZipJson,
   fetchResponse,
   buildMapboxQuery,

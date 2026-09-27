@@ -1,4 +1,12 @@
+import { getActivityLifecycle } from "./event-layer.mjs";
+
 export function formatRelativeTime(event, now = Date.now()) {
+    const lifecycle = getActivityLifecycle(event, now);
+    if (lifecycle.isActivity) {
+        if (lifecycle.state === "ongoing") return "進行中";
+        if (lifecycle.state === "recently_ended") return "剛結束";
+        if (lifecycle.state === "upcoming") return "即將開始";
+    }
     const value = event.occurredAt || event.eventAt || event.startsAt || event.publishedAt || event.updatedAt || event.createdAt || event.time;
     const time = Date.parse(value || "");
     if (!Number.isFinite(time)) return "時間待確認";
