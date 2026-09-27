@@ -967,12 +967,24 @@ function extractRuleBasedEvents(newsItems) {
       const title = String(item.title || "").trim();
       const content = cleanNewsText(item.contentSnippet || item.content || "");
       const combinedText = `${title} ${content}`;
-      const cityInfo = inferCityFromText(combinedText);
+      // The small RSS city alias list is useful for common city spellings, but
+      // it misses safe, already-known places such as named venues and roads.
+      // Let the shared resolver supply those locations; it only returns a
+      // usable coordinate for an explicit city/district or known place and
+      // deliberately falls through for ambiguous text.
+      const aliasCity = inferCityFromText(combinedText)?.city;
+      const location = resolveLocationSync({
+        title,
+        content,
+        city: aliasCity,
+        source: "RSS",
+      }, { title, content });
 
-      if (!cityInfo || !title) return null;
+      if (!title || !location.city || !getCityBounds(location.city)
+        || !isValidTaiwanCoord(Number(location.lat), Number(location.lng))) return null;
       if (isInstitutionalNewsText(combinedText)) return null;
 
-      const dedupeKey = `${cityInfo.city}:${title.slice(0, 40)}`.toLowerCase();
+      const dedupeKey = `${location.city}:${title.slice(0, 40)}`.toLowerCase();
       if (seen.has(dedupeKey)) return null;
       seen.add(dedupeKey);
 
@@ -987,14 +999,35 @@ function extractRuleBasedEvents(newsItems) {
         eventKind: "news",
         categorySource: "rule",
         url: String(item.link || ""),
-        lat: cityInfo.lat,
-        lng: cityInfo.lng,
-        city: cityInfo.city,
+        lat: location.lat,
+        lng: location.lng,
+        city: location.city,
         source: "RSS",
       };
     })
     .filter(Boolean)
     .slice(0, 40);
+}
+
+function rssItemIdentity(item = {}) {
+  const url = String(item.link || item.url || "").trim();
+  if (url) return `url:${url}`;
+  return `text:${String(item.title || "").trim().toLowerCase()}:${cleanNewsText(item.contentSnippet || item.content || "").slice(0, 80).toLowerCase()}`;
+}
+
+function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
+  const successfulRuleItems = new Set(
+    ruleBasedEvents
+      .map((event) => String(event.url || event.sourceUrl || event.link || "").trim())
+      .filter(Boolean)
+      .map((url) => `url:${url}`)
+  );
+
+  // AI is a focused fallback for RSS items that the deterministic extractor
+  // could not safely place.  Preserve feed order and the bounded context cap.
+  return newsItems
+    .filter((item) => !successfulRuleItems.has(rssItemIdentity(item)))
+    .slice(0, Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT));
 }
 
 function parseKktixDate(value = "") {
@@ -2163,8 +2196,9 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   if (includeNews) {
     sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
+    const aiNewsCandidates = selectAiNewsCandidates(sources.rssItems, sources.ruleBasedEvents);
     const azureOpenAiConfig = getAzureOpenAiConfig();
-    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(sources.rssItems, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!sources.rssItems.length ? "沒有可供 AI 提取的來源資料" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
     sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt, { runId: options.runId }));
     sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
@@ -2483,6 +2517,8 @@ async function runEventRefresh(options = {}) {
 module.exports = {
   createAzureOpenAiChatCompletion,
   collectRefreshSources,
+  extractRuleBasedEvents,
+  selectAiNewsCandidates,
   runCollector,
   DEFAULT_EVENT_CACHE_TTL_SECONDS,
   enrichCronEvent,

@@ -1,6 +1,8 @@
 const assert = require("assert");
 const {
   ARTICLE_CONTEXT_MAX_CHARS,
+  DEFAULT_AI_CONTEXT_LIMIT,
+  MIN_AI_LOCATION_CONFIDENCE,
   buildFallbackNewsContext,
   extractArticleContextFromHtml,
   fetchNewsContext,
@@ -8,6 +10,8 @@ const {
 } = require("../ai-news-context");
 
 async function run() {
+  assert.equal(DEFAULT_AI_CONTEXT_LIMIT, 18);
+  assert.equal(MIN_AI_LOCATION_CONFIDENCE, 0.55);
   const html = `
     <html>
       <head>
@@ -131,6 +135,15 @@ async function run() {
   assert.equal(normalized[1].locationPrecision, "city");
   assert(Number.isFinite(normalized[1].lat));
   assert(!normalized.some((event) => event.eventFingerprint === "low_confidence"));
+
+  const missingEvidence = normalizeAiExtractedEvents([{
+    title: "缺少地點佐證", content: "台北市信義區發生火警。", category: "accident",
+    categoryConfidence: 0.9, categoryReason: "火警為主要事件", secondaryTags: ["火警"], sourceCategory: "社會",
+    url: "https://example.test/no-evidence", lat: 25.033, lng: 121.5654, city: "台北市",
+    locationText: "台北市信義區", locationEvidence: "", locationPrecision: "district",
+    locationConfidence: 0.9, locationAmbiguity: false, locationReason: "沒有佐證", source: "news", eventFingerprint: "missing_evidence",
+  }]);
+  assert.equal(missingEvidence.length, 0);
 
   console.log("ai-news-context tests passed");
 }

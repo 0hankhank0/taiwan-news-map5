@@ -209,6 +209,60 @@ async function call(handler, req) {
   assert.equal(normalizedRssNews[0].category, "other");
   assert.equal(normalizedRssNews[0].autoPublish, true);
 
+  // RSS extraction keeps the source contract as news, resolves known Taiwan
+  // places through the shared resolver, and rejects non-events or unknown
+  // locations without inventing a point.
+  const rssRuleFixture = [
+    { title: "台北市忠孝東路車禍造成回堵", contentSnippet: "台北市忠孝東路事故，警方到場疏導。", link: "https://example.test/rss/taipei" },
+    { title: "壽山動物園附近道路坍方", contentSnippet: "現場封閉道路並進行搶修。", link: "https://example.test/rss/shoushan" },
+    { title: "國際市場評論", contentSnippet: "分析全球科技股走勢，未提及台灣現場。", link: "https://example.test/rss/no-place" },
+    { title: "高雄市議會通過年度預算", contentSnippet: "議員審議市府補助與行政程序。", link: "https://example.test/rss/policy" },
+    { title: "台北市週末活動吸引人潮", contentSnippet: "新聞報導台北市的活動現場。", link: "https://example.test/rss/activity" },
+    { title: "台北市忠孝東路車禍造成回堵", contentSnippet: "同一則事故的轉載報導。", link: "https://example.test/rss/taipei-copy" },
+  ];
+  const ruleEvents = eventRefresh.extractRuleBasedEvents(rssRuleFixture);
+  assert.deepEqual(ruleEvents.map((event) => event.url), [
+    "https://example.test/rss/taipei",
+    "https://example.test/rss/shoushan",
+    "https://example.test/rss/activity",
+  ]);
+  assert(ruleEvents.every((event) => event.eventKind === "news"));
+  assert.equal(ruleEvents.find((event) => event.url.endsWith("shoushan")).city, "高雄市");
+  assert.equal(ruleEvents.find((event) => event.url.endsWith("activity")).category, "activity");
+  const finalizedRuleActivity = eventRefresh.normalizeFinalEvents([ruleEvents.find((event) => event.url.endsWith("activity"))]);
+  assert.equal(finalizedRuleActivity[0].eventKind, "news");
+
+  // This fixture mirrors a large RSS refresh: enough safely located reports
+  // should survive the first pass, while the existing 40-item safety cap stays
+  // in force rather than creating one result per RSS entry.
+  const largeRssFixture = Array.from({ length: 94 }, (_, index) => index < 36
+    ? {
+      title: index % 2 === 0 ? `壽山動物園附近道路事故第 ${index + 1} 則` : `高美濕地周邊道路封閉第 ${index + 1} 則`,
+      contentSnippet: `現場事故造成交通影響，持續搶修第 ${index + 1} 處。`,
+      link: `https://example.test/rss/large/${index + 1}`,
+    }
+    : {
+      title: `全球市場評論第 ${index + 1} 則`,
+      contentSnippet: "沒有可靠台灣實體地點的評論。",
+      link: `https://example.test/rss/large/${index + 1}`,
+    });
+  const largeRuleEvents = eventRefresh.extractRuleBasedEvents(largeRssFixture);
+  assert(largeRuleEvents.length > 21, `expected materially more than 19-21 candidates, got ${largeRuleEvents.length}`);
+  assert(largeRuleEvents.length <= 40);
+
+  const aiCandidates = eventRefresh.selectAiNewsCandidates(largeRssFixture, largeRuleEvents);
+  assert.equal(aiCandidates.length, 18);
+  assert.equal(aiCandidates.some((item) => item.link.endsWith("/1")), false);
+  assert.equal(aiCandidates.some((item) => item.link.endsWith("/37")), true);
+
+  // Provider activity records retain their activity contract independently of
+  // the RSS-specific news handling above.
+  const preservedActivity = eventRefresh.normalizeFinalEvents([{
+    title: "iCulture 測試展覽", content: "台北市展覽", category: "activity", eventKind: "activity",
+    city: "台北市", lat: 25.033, lng: 121.5654, source: "iCulture",
+  }]);
+  assert.equal(preservedActivity[0].eventKind, "activity");
+
   const kktixMeta = eventRefresh.parseKktixMeta({
     content: [
       "時間：2026/07/20 19:00 ~ 2026/07/20 21:00",

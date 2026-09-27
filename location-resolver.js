@@ -347,6 +347,10 @@ function resolveKnownLocationCoord(event, city, title = "", content = "") {
   });
   if (!match) return null;
   return {
+    // A known place is itself reliable city evidence.  Keeping the matched
+    // city here lets callers safely resolve RSS reports that name a venue or
+    // landmark without spelling out its municipality.
+    city: normalizeCity(match.city),
     lat: match.lat,
     lng: match.lng,
     locationPrecision: "exact",
@@ -557,7 +561,7 @@ function resolveLocationSync(event, options = {}) {
   }
 
   const known = resolveKnownLocationCoord(event, city, title, content);
-  if (known) return withLocationQuality({ ...known, city, district }, event);
+  if (known) return withLocationQuality({ ...known, city: known.city || city, district }, event);
 
   if (existing && isValidTaiwanCoord(existing.lat, existing.lng)) {
     const outsideCity = !isCoordInCity(city, existing.lat, existing.lng);
