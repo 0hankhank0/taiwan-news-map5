@@ -196,7 +196,8 @@ function normalizePrecision(value) {
 
 function normalizeAiExtractedEvents(events = []) {
   if (!Array.isArray(events)) return [];
-  return events.map((item) => {
+  const diagnostics = { aiRejectedInvalidRequired: 0, aiRejectedMissingEvidence: 0, aiRejectedLowConfidence: 0, aiRejectedMissingLocationText: 0, aiRejectedNoCityFallback: 0 };
+  const normalized = events.map((item) => {
     const title = normalizeText(item.title || "");
     const content = normalizeText(item.content || "");
     const city = normalizeCleanCity(item.city || "") || normalizeCity(item.city || "");
@@ -206,16 +207,32 @@ function normalizeAiExtractedEvents(events = []) {
     const category = validateAiCategoryResult(item);
     let locationPrecision = normalizePrecision(item.locationPrecision);
 
-    if (!title || !content || !city || !category.valid) return null;
-    if (!locationEvidence || confidence < MIN_AI_LOCATION_CONFIDENCE) return null;
-    if (!locationText && locationPrecision !== "city") return null;
+    if (!title || !content || !city || !category.valid) {
+      diagnostics.aiRejectedInvalidRequired += 1;
+      return null;
+    }
+    if (!locationEvidence) {
+      diagnostics.aiRejectedMissingEvidence += 1;
+      return null;
+    }
+    if (confidence < MIN_AI_LOCATION_CONFIDENCE) {
+      diagnostics.aiRejectedLowConfidence += 1;
+      return null;
+    }
+    if (!locationText && locationPrecision !== "city") {
+      diagnostics.aiRejectedMissingLocationText += 1;
+      return null;
+    }
 
     const fallback = getAiCityFallback(city);
     let lat = Number(item.lat);
     let lng = Number(item.lng);
     const invalidCoord = !isValidTaiwanCoord(lat, lng) || !isAiCoordInCity(city, lat, lng);
     if (locationPrecision === "city" || invalidCoord) {
-      if (!fallback) return null;
+      if (!fallback) {
+        diagnostics.aiRejectedNoCityFallback += 1;
+        return null;
+      }
       lat = fallback.lat;
       lng = fallback.lng;
       locationPrecision = "city";
@@ -241,6 +258,8 @@ function normalizeAiExtractedEvents(events = []) {
       categorySource: "ai",
     };
   }).filter(Boolean);
+  Object.defineProperty(normalized, "normalizationDiagnostics", { value: diagnostics, enumerable: false });
+  return normalized;
 }
 
 module.exports = {

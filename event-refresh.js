@@ -962,7 +962,8 @@ function isInstitutionalEvent(event) {
 
 function extractRuleBasedEvents(newsItems) {
   const seen = new Set();
-  return newsItems
+  const diagnostics = { ruleRejectedNoReliableLocation: 0, ruleRejectedInstitutional: 0, ruleDeduplicated: 0, ruleCapped: 0 };
+  const candidates = newsItems
     .map((item) => {
       const title = String(item.title || "").trim();
       const content = cleanNewsText(item.contentSnippet || item.content || "");
@@ -981,11 +982,20 @@ function extractRuleBasedEvents(newsItems) {
       }, { title, content });
 
       if (!title || !location.city || !getCityBounds(location.city)
-        || !isValidTaiwanCoord(Number(location.lat), Number(location.lng))) return null;
-      if (isInstitutionalNewsText(combinedText)) return null;
+        || !isValidTaiwanCoord(Number(location.lat), Number(location.lng))) {
+        diagnostics.ruleRejectedNoReliableLocation += 1;
+        return null;
+      }
+      if (isInstitutionalNewsText(combinedText)) {
+        diagnostics.ruleRejectedInstitutional += 1;
+        return null;
+      }
 
       const dedupeKey = `${location.city}:${title.slice(0, 40)}`.toLowerCase();
-      if (seen.has(dedupeKey)) return null;
+      if (seen.has(dedupeKey)) {
+        diagnostics.ruleDeduplicated += 1;
+        return null;
+      }
       seen.add(dedupeKey);
 
       return {
@@ -1005,8 +1015,11 @@ function extractRuleBasedEvents(newsItems) {
         source: "RSS",
       };
     })
-    .filter(Boolean)
-    .slice(0, 40);
+    .filter(Boolean);
+  diagnostics.ruleCapped = Math.max(0, candidates.length - 40);
+  const result = candidates.slice(0, 40);
+  Object.defineProperty(result, "diagnostics", { value: diagnostics, enumerable: false });
+  return result;
 }
 
 function rssItemIdentity(item = {}) {
@@ -1025,9 +1038,18 @@ function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
 
   // AI is a focused fallback for RSS items that the deterministic extractor
   // could not safely place.  Preserve feed order and the bounded context cap.
-  return newsItems
-    .filter((item) => !successfulRuleItems.has(rssItemIdentity(item)))
-    .slice(0, Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT));
+  const eligible = newsItems.filter((item) => !successfulRuleItems.has(rssItemIdentity(item)));
+  const limit = Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT);
+  const result = eligible.slice(0, limit);
+  Object.defineProperty(result, "diagnostics", {
+    value: {
+      aiExcludedByRuleSuccess: newsItems.length - eligible.length,
+      aiCandidateCapped: Math.max(0, eligible.length - result.length),
+      aiCandidateLimit: limit,
+    },
+    enumerable: false,
+  });
+  return result;
 }
 
 function parseKktixDate(value = "") {
@@ -1617,7 +1639,20 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
 
     const parsed = parseAiJsonCompletion(completion);
-    return normalizeAiExtractedEvents(parsed?.events);
+    const extracted = Array.isArray(parsed?.events) ? parsed.events : [];
+    const normalized = normalizeAiExtractedEvents(extracted);
+    // Observability only: retain the boundary counts on the collector result
+    // so a refresh log can show whether loss happened before or after Azure.
+    Object.defineProperty(normalized, "collector", {
+      value: {
+        aiContextPrepared: simplifiedNews.length,
+        aiExtracted: extracted.length,
+        aiNormalized: normalized.length,
+        ...(normalized.normalizationDiagnostics || {}),
+      },
+      enumerable: false,
+    });
+    return normalized;
   } catch (error) {
     console.error("[cron] Azure OpenAI context extraction failed:", error.message);
     throw error;
@@ -2129,7 +2164,7 @@ async function runCollector(name, work, options = {}) {
   try {
     const items = await work();
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
-    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null, staticLayer: detail.staticLayer || null });
+    const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null, staticLayer: detail.staticLayer || null, aiContextPrepared: Number(detail.aiContextPrepared) || 0, aiExtracted: Number(detail.aiExtracted) || 0, aiNormalized: Number(detail.aiNormalized) || 0, aiRejectedInvalidRequired: Number(detail.aiRejectedInvalidRequired) || 0, aiRejectedMissingEvidence: Number(detail.aiRejectedMissingEvidence) || 0, aiRejectedLowConfidence: Number(detail.aiRejectedLowConfidence) || 0, aiRejectedMissingLocationText: Number(detail.aiRejectedMissingLocationText) || 0, aiRejectedNoCityFallback: Number(detail.aiRejectedNoCityFallback) || 0 });
   } catch (error) {
     return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
   }
@@ -2199,6 +2234,15 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     const aiNewsCandidates = selectAiNewsCandidates(sources.rssItems, sources.ruleBasedEvents);
     const azureOpenAiConfig = getAzureOpenAiConfig();
     sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    Object.assign(sources.__collectorResults.ai, {
+      rssItems: sources.rssItems.length,
+      ruleBasedCandidates: sources.ruleBasedEvents.length,
+      aiCandidates: aiNewsCandidates.length,
+      aiNormalized: sources.aiEvents.length,
+      ...(sources.ruleBasedEvents.diagnostics || {}),
+      ...(aiNewsCandidates.diagnostics || {}),
+    });
+    console.info("[cron] RSS → AI pipeline", getRssAiPipelineDiagnostics(sources));
     if (sources.__collectorResults.ai.status === "failed") sourceFailure("ai", sources.__collectorResults.ai.reason);
     sources.__collectorResults.iculture = await runCollector("iCulture 活動", () => fetchCultureActivityEvents(startedAt, { runId: options.runId }));
     sources.cultureActivityEvents = sources.__collectorResults.iculture.items;
@@ -2243,6 +2287,31 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     ruleBased: sources.ruleBasedEvents.length,
     normalized: finalEvents.length,
     active: activeEvents.length,
+    ...getRssAiPipelineDiagnostics(sources),
+  };
+}
+
+function getRssAiPipelineDiagnostics(sources = {}) {
+  const ai = sources.__collectorResults?.ai || {};
+  return {
+    rssItems: Array.isArray(sources.rssItems) ? sources.rssItems.length : 0,
+    ruleBasedCandidates: Array.isArray(sources.ruleBasedEvents) ? sources.ruleBasedEvents.length : 0,
+    aiCandidates: Math.max(0, Number(ai.aiCandidates) || 0),
+    aiContextPrepared: Math.max(0, Number(ai.aiContextPrepared) || 0),
+    aiExtracted: Math.max(0, Number(ai.aiExtracted) || 0),
+    aiNormalized: Math.max(0, Number(ai.aiNormalized ?? (Array.isArray(sources.aiEvents) ? sources.aiEvents.length : 0)) || 0),
+    ruleRejectedNoReliableLocation: Math.max(0, Number(ai.ruleRejectedNoReliableLocation) || 0),
+    ruleRejectedInstitutional: Math.max(0, Number(ai.ruleRejectedInstitutional) || 0),
+    ruleDeduplicated: Math.max(0, Number(ai.ruleDeduplicated) || 0),
+    ruleCapped: Math.max(0, Number(ai.ruleCapped) || 0),
+    aiExcludedByRuleSuccess: Math.max(0, Number(ai.aiExcludedByRuleSuccess) || 0),
+    aiCandidateCapped: Math.max(0, Number(ai.aiCandidateCapped) || 0),
+    aiCandidateLimit: Math.max(0, Number(ai.aiCandidateLimit) || 0),
+    aiRejectedInvalidRequired: Math.max(0, Number(ai.aiRejectedInvalidRequired) || 0),
+    aiRejectedMissingEvidence: Math.max(0, Number(ai.aiRejectedMissingEvidence) || 0),
+    aiRejectedLowConfidence: Math.max(0, Number(ai.aiRejectedLowConfidence) || 0),
+    aiRejectedMissingLocationText: Math.max(0, Number(ai.aiRejectedMissingLocationText) || 0),
+    aiRejectedNoCityFallback: Math.max(0, Number(ai.aiRejectedNoCityFallback) || 0),
   };
 }
 
@@ -2518,6 +2587,7 @@ module.exports = {
   createAzureOpenAiChatCompletion,
   collectRefreshSources,
   extractRuleBasedEvents,
+  getRssAiPipelineDiagnostics,
   selectAiNewsCandidates,
   runCollector,
   DEFAULT_EVENT_CACHE_TTL_SECONDS,

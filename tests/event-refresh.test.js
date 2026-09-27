@@ -229,6 +229,9 @@ async function call(handler, req) {
   assert(ruleEvents.every((event) => event.eventKind === "news"));
   assert.equal(ruleEvents.find((event) => event.url.endsWith("shoushan")).city, "高雄市");
   assert.equal(ruleEvents.find((event) => event.url.endsWith("activity")).category, "activity");
+  assert.equal(ruleEvents.diagnostics.ruleRejectedNoReliableLocation, 1);
+  assert.equal(ruleEvents.diagnostics.ruleRejectedInstitutional, 1);
+  assert.equal(ruleEvents.diagnostics.ruleDeduplicated, 1);
   const finalizedRuleActivity = eventRefresh.normalizeFinalEvents([ruleEvents.find((event) => event.url.endsWith("activity"))]);
   assert.equal(finalizedRuleActivity[0].eventKind, "news");
 
@@ -254,6 +257,33 @@ async function call(handler, req) {
   assert.equal(aiCandidates.length, 18);
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/1")), false);
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/37")), true);
+  assert.equal(aiCandidates.diagnostics.aiExcludedByRuleSuccess, largeRuleEvents.length);
+  assert.equal(aiCandidates.diagnostics.aiCandidateCapped, 40);
+  assert.deepEqual(eventRefresh.getRssAiPipelineDiagnostics({
+    rssItems: largeRssFixture,
+    ruleBasedEvents: largeRuleEvents,
+    aiEvents: [{ id: "ai-1" }, { id: "ai-2" }],
+    __collectorResults: { ai: { aiCandidates: 18, aiContextPrepared: 18, aiExtracted: 3, aiNormalized: 2 } },
+  }), {
+    rssItems: 94,
+    ruleBasedCandidates: largeRuleEvents.length,
+    aiCandidates: 18,
+    aiContextPrepared: 18,
+    aiExtracted: 3,
+    aiNormalized: 2,
+    ruleRejectedNoReliableLocation: 0,
+    ruleRejectedInstitutional: 0,
+    ruleDeduplicated: 0,
+    ruleCapped: 0,
+    aiExcludedByRuleSuccess: 0,
+    aiCandidateCapped: 0,
+    aiCandidateLimit: 0,
+    aiRejectedInvalidRequired: 0,
+    aiRejectedMissingEvidence: 0,
+    aiRejectedLowConfidence: 0,
+    aiRejectedMissingLocationText: 0,
+    aiRejectedNoCityFallback: 0,
+  });
 
   // Provider activity records retain their activity contract independently of
   // the RSS-specific news handling above.

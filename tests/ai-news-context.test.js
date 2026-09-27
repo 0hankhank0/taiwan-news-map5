@@ -144,6 +144,7 @@ async function run() {
     locationConfidence: 0.9, locationAmbiguity: false, locationReason: "沒有佐證", source: "news", eventFingerprint: "missing_evidence",
   }]);
   assert.equal(missingEvidence.length, 0);
+  assert.equal(missingEvidence.normalizationDiagnostics.aiRejectedMissingEvidence, 1);
 
   console.log("ai-news-context tests passed");
 }
