@@ -189,6 +189,26 @@ async function call(handler, req) {
   assert.deepEqual(eventNormalizer.normalizeEventsForFrontend([genericCmsNotice, directCmsEvent]).map((event) => event.id), ["cms_event_1"]);
   assert.deepEqual(eventRefresh.normalizeFinalEvents([genericCmsNotice, directCmsEvent]).map((event) => event.id), ["cms_event_1"]);
 
+  // RSS news must not become an activity simply because its classifier sees
+  // activity-related language and the article has no event schedule.
+  const rssNews = {
+    id: "rss-news-contract",
+    title: "Taipei weekend activity draws crowds",
+    content: "News report about a Taipei weekend activity.",
+    category: "activity",
+    categorySource: "rule",
+    eventKind: "news",
+    city: "Taipei",
+    lat: 25.0478,
+    lng: 121.517,
+    source: "RSS",
+  };
+  const normalizedRssNews = eventRefresh.normalizeFinalEvents([rssNews]);
+  assert.equal(normalizedRssNews.length, 1);
+  assert.equal(normalizedRssNews[0].eventKind, "news");
+  assert.equal(normalizedRssNews[0].category, "other");
+  assert.equal(normalizedRssNews[0].autoPublish, true);
+
   const kktixMeta = eventRefresh.parseKktixMeta({
     content: [
       "時間：2026/07/20 19:00 ~ 2026/07/20 21:00",

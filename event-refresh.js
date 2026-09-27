@@ -980,6 +980,12 @@ function extractRuleBasedEvents(newsItems) {
         title: title.slice(0, 120),
         content: content || title,
         category: inferCategoryFromText(combinedText),
+        // RSS entries describe news, even when the article mentions an event
+        // or does not contain a schedule.  Keep that contract explicit so the
+        // legacy `category: activity` compatibility path cannot hide it from
+        // the news layer.
+        eventKind: "news",
+        categorySource: "rule",
         url: String(item.link || ""),
         lat: cityInfo.lat,
         lng: cityInfo.lng,
@@ -1588,7 +1594,11 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
 function applyCategoryDecision(event = {}) {
   const source = `${event.source || ""} ${event.sourceName || ""}`.toLowerCase();
   if (event.categorySource === "manual") return { ...event, ...resolveEventCategory({ manualCategory: event.category }) };
-  if (event.eventKind === "activity" || event.category === "activity") return { ...event, eventKind: "activity", categorySource: event.categorySource || "official" };
+  // `eventKind` is the source contract.  In particular, RSS news can contain
+  // activity-related words but is never an activity merely because it has no
+  // startsAt/endsAt schedule.  Preserve the old category fallback only when a
+  // producer did not supply an explicit kind.
+  if (event.eventKind === "activity" || (!event.eventKind && event.category === "activity")) return { ...event, eventKind: "activity", categorySource: event.categorySource || "official" };
   const officialCategory = /tdx|pbs|official alert/.test(source) ? "traffic" : (event.categorySource === "official" ? event.category : "");
   const ruleCategory = event.categorySource === "rule" ? event.category : "";
   const decision = resolveEventCategory({
@@ -1600,6 +1610,12 @@ function applyCategoryDecision(event = {}) {
     secondaryTags: event.secondaryTags,
     sourceCategory: event.sourceCategory,
   });
+  // A rule-classified RSS article can legitimately have no more specific
+  // news taxonomy than "other".  It is still publishable news, not an
+  // activity pending a schedule.
+  if (event.eventKind === "news" && source.includes("rss") && decision.category === "other") {
+    return { ...event, ...decision, eventKind: "news", category: "other", categorySource: "rule", reviewState: "reviewed", autoPublish: true };
+  }
   return { ...event, ...decision, eventKind: event.eventKind || (/tdx|pbs/.test(source) ? "traffic_data" : "news") };
 }
 
