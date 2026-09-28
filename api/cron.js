@@ -98,13 +98,21 @@ module.exports = async (req, res) => {
       skippedByLock: false,
     });
   } catch (error) {
-    console.error("[cron] Handler failed:", error.message);
+    const rawMessage = String(error?.message || "Unknown cron error");
+    const safeMessage = rawMessage
+      .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [REDACTED]")
+      .replace(/(?:api[_-]?key|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
+      .slice(0, 1000);
+    console.error("[cron] Handler failed:", safeMessage);
+    if (error?.stack) console.error("[cron] Handler stack:", String(error.stack).slice(0, 8000));
+    if (error?.cause) console.error("[cron] Handler cause:", error.cause);
     return sendJson(res, 500, {
       success: false,
       skippedByLock: false,
       runId,
       durationMs: Date.now() - startedAt,
       error: "Cron execution failed",
+      diagnostic: safeMessage,
     });
   } finally {
     await releaseCronLock(runId);
