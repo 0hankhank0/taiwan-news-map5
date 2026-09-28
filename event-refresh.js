@@ -2759,6 +2759,13 @@ async function runEventRefresh(options = {}) {
       rawCount: details.pipeline.rawCount,
       errorSourceCount,
       ...tdxObservability,
+      aiDiagnostic: {
+        stage: newsPipeline.ai.stage,
+        contextPrepared: newsPipeline.ai.contextPrepared,
+        extracted: newsPipeline.ai.extracted,
+        normalized: newsPipeline.ai.normalized,
+        error: newsPipeline.ai.error,
+      },
       events: activeEvents,
     };
 
