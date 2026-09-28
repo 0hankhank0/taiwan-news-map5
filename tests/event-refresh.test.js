@@ -254,21 +254,21 @@ async function call(handler, req) {
   assert(largeRuleEvents.length <= 40);
 
   const aiCandidates = eventRefresh.selectAiNewsCandidates(largeRssFixture, largeRuleEvents);
-  assert.equal(aiCandidates.length, 18);
+  assert.equal(aiCandidates.length, 36);
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/1")), false);
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/37")), true);
   assert.equal(aiCandidates.diagnostics.aiExcludedByRuleSuccess, largeRuleEvents.length);
-  assert.equal(aiCandidates.diagnostics.aiCandidateCapped, 40);
+  assert.equal(aiCandidates.diagnostics.aiCandidateCapped, 22);
   const pipelineDiagnostics = eventRefresh.getRssAiPipelineDiagnostics({
     rssItems: largeRssFixture,
     ruleBasedEvents: largeRuleEvents,
     aiEvents: [{ id: "ai-1" }, { id: "ai-2" }],
-    __collectorResults: { ai: { aiCandidates: 18, aiContextPrepared: 18, aiExtracted: 3, aiNormalized: 2 } },
+    __collectorResults: { ai: { aiCandidates: 36, aiContextPrepared: 36, aiExtracted: 3, aiNormalized: 2 } },
   });
   assert.equal(pipelineDiagnostics.rssItems, 94);
   assert.equal(pipelineDiagnostics.ruleBasedCandidates, largeRuleEvents.length);
-  assert.equal(pipelineDiagnostics.aiCandidates, 18);
-  assert.equal(pipelineDiagnostics.aiContextPrepared, 18);
+  assert.equal(pipelineDiagnostics.aiCandidates, 36);
+  assert.equal(pipelineDiagnostics.aiContextPrepared, 36);
   assert.equal(pipelineDiagnostics.aiExtracted, 3);
   assert.equal(pipelineDiagnostics.aiNormalized, 2);
   assert.equal(pipelineDiagnostics.rssItemsWithTitle, 94);
