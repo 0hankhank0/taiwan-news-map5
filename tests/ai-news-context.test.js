@@ -10,7 +10,7 @@ const {
 } = require("../ai-news-context");
 
 async function run() {
-  assert.equal(DEFAULT_AI_CONTEXT_LIMIT, 18);
+  assert.equal(DEFAULT_AI_CONTEXT_LIMIT, 36);
   assert.equal(MIN_AI_LOCATION_CONFIDENCE, 0.55);
   const html = `
     <html>
