@@ -1690,8 +1690,18 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
       maxChars: ARTICLE_CONTEXT_MAX_CHARS,
       timeoutMs: Math.max(500, Math.min(AI_ARTICLE_CONTEXT_TIMEOUT_MS, getRemainingTime(startedAt) - 500)),
     });
+  } catch (error) {
+    error.azureStage = "context";
+    error.aiDiagnostics = {
+      aiContextPrepared: Array.isArray(preparedContexts) ? preparedContexts.length : 0,
+      aiExtracted: 0,
+      aiNormalized: 0,
+    };
+    console.error("[cron] Azure OpenAI article context preparation failed:", error.message);
+    throw error;
+  }
 
-    const simplifiedNews = preparedContexts;
+  const simplifiedNews = preparedContexts;
 
   const systemPrompt = [
     "Extract only real-world Taiwan events from the provided news.",
