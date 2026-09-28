@@ -1951,8 +1951,17 @@ import { getRequestedEventId } from "./modules/event-permalink.mjs";
     function getFilteredEvents(){
         const cityFilter = isTaiwanMode ? currentCityFilter() : "all";
         const commuteCategories = new Set(["traffic", "accident", "disaster"]);
+        const frontendDroppedSamples = [];
+        const frontendReasons = {};
+        const noteDropped = (ev, reason) => {
+            frontendReasons[reason] = (frontendReasons[reason] || 0) + 1;
+            if (frontendDroppedSamples.length < 20) frontendDroppedSamples.push({
+                eventId: String(ev.id || ""), title: String(ev.title || "").slice(0, 120), eventKind: ev.eventKind || "",
+                category: ev.category || "", status: ev.status || "", startsAt: ev.startsAt || null, endsAt: ev.endsAt || null, reason,
+            });
+        };
         const filtered = parsedEvents.filter(ev=>{
-            if (!shouldShowRealtimeEvent(ev)) return false;
+            if (!shouldShowRealtimeEvent(ev)) { noteDropped(ev, "status"); return false; }
             const mappedCategory = inferEventGroupCategory(ev);
             const lifecycleEvent = { ...ev, groupCategory: mappedCategory };
             const lifecycle = getActivityLifecycle(lifecycleEvent);
@@ -1960,22 +1969,32 @@ import { getRequestedEventId } from "./modules/event-permalink.mjs";
                 lifecycle.state === "upcoming" ||
                 (["ongoing", "recently_ended"].includes(lifecycle.state) && (lifecycle.start !== null || lifecycle.end !== null))
             );
-            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(lifecycleEvent, { showUpcoming: showUpcomingEvents })) return false;
-            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) return false;
-            if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) return false;
+            if (!VIDEO_DEMO_ROUTE && !isVisibleEventLayer(lifecycleEvent, { showUpcoming: showUpcomingEvents })) { noteDropped(ev, "visibility"); return false; }
+            if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) { noteDropped(ev, "timeRange"); return false; }
+            if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) { noteDropped(ev, "mapBounds"); return false; }
 
-            if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) return false;
-            if(activeCategory!=="all" && mappedCategory!==activeCategory) return false;
+            if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) { noteDropped(ev, "commuteCategory"); return false; }
+            if(activeCategory!=="all" && mappedCategory!==activeCategory) { noteDropped(ev, "category"); return false; }
             if(cityFilter!=="all"){
-                if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) return false;
+                if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) { noteDropped(ev, "city"); return false; }
             }
             if(searchKeyword){
                 const hay=getSearchableEventText(ev);
-                if(!hay.includes(searchKeyword)) return false;
+                if(!hay.includes(searchKeyword)) { noteDropped(ev, "search"); return false; }
             }
             return true;
         });
-        return deduplicateEvents(filtered);
+        const deduplicated = deduplicateEvents(filtered);
+        // Development-only observability; it neither changes event selection nor
+        // sends data over the network.  Inspect from browser devtools when needed.
+        if (typeof window !== "undefined") window.__NEWS_MAP_FRONTEND_DIAGNOSTICS = {
+            apiReceived: parsedEvents.length, afterStatusFilter: parsedEvents.length - (frontendReasons.status || 0),
+            afterTimeFilter: parsedEvents.length - (frontendReasons.timeRange || 0),
+            afterVisibilityFilter: parsedEvents.length - (frontendReasons.visibility || 0),
+            afterCategoryFilter: parsedEvents.length - (frontendReasons.category || 0), rendered: deduplicated.length,
+            droppedReasons: frontendReasons, frontendDroppedSamples,
+        };
+        return deduplicated;
     }
 
     function includeRequestedEvent(events) {

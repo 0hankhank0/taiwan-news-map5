@@ -259,31 +259,30 @@ async function call(handler, req) {
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/37")), true);
   assert.equal(aiCandidates.diagnostics.aiExcludedByRuleSuccess, largeRuleEvents.length);
   assert.equal(aiCandidates.diagnostics.aiCandidateCapped, 40);
-  assert.deepEqual(eventRefresh.getRssAiPipelineDiagnostics({
+  const pipelineDiagnostics = eventRefresh.getRssAiPipelineDiagnostics({
     rssItems: largeRssFixture,
     ruleBasedEvents: largeRuleEvents,
     aiEvents: [{ id: "ai-1" }, { id: "ai-2" }],
     __collectorResults: { ai: { aiCandidates: 18, aiContextPrepared: 18, aiExtracted: 3, aiNormalized: 2 } },
-  }), {
-    rssItems: 94,
-    ruleBasedCandidates: largeRuleEvents.length,
-    aiCandidates: 18,
-    aiContextPrepared: 18,
-    aiExtracted: 3,
-    aiNormalized: 2,
-    ruleRejectedNoReliableLocation: 0,
-    ruleRejectedInstitutional: 0,
-    ruleDeduplicated: 0,
-    ruleCapped: 0,
-    aiExcludedByRuleSuccess: 0,
-    aiCandidateCapped: 0,
-    aiCandidateLimit: 0,
-    aiRejectedInvalidRequired: 0,
-    aiRejectedMissingEvidence: 0,
-    aiRejectedLowConfidence: 0,
-    aiRejectedMissingLocationText: 0,
-    aiRejectedNoCityFallback: 0,
   });
+  assert.equal(pipelineDiagnostics.rssItems, 94);
+  assert.equal(pipelineDiagnostics.ruleBasedCandidates, largeRuleEvents.length);
+  assert.equal(pipelineDiagnostics.aiCandidates, 18);
+  assert.equal(pipelineDiagnostics.aiContextPrepared, 18);
+  assert.equal(pipelineDiagnostics.aiExtracted, 3);
+  assert.equal(pipelineDiagnostics.aiNormalized, 2);
+  assert.equal(pipelineDiagnostics.rssItemsWithTitle, 94);
+  assert.equal(pipelineDiagnostics.rssItemsWithoutContent, 0);
+  assert.deepEqual(pipelineDiagnostics.ruleLocationRejectReasons, { noCity: 0, noLocationText: 0, invalidCoordinates: 0, resolverReturnedNull: 0, resolverReturnedOutOfTaiwan: 0, cityNotInTaiwan: 0, locationResolutionError: 0, unknown: 0 });
+  assert.equal(pipelineDiagnostics.aiNotProcessedReasons.aiCandidateLimit, 0);
+  assert.deepEqual(pipelineDiagnostics.aiCandidateCappedSamples, []);
+
+  // Diagnostic-only bookkeeping accounts exactly for location rejection and
+  // the AI cap without changing the pre-existing selection result.
+  const locationTotal = Object.values(largeRuleEvents.diagnostics.ruleLocationRejectReasons).reduce((sum, value) => sum + value, 0);
+  assert.equal(locationTotal, largeRuleEvents.diagnostics.ruleRejectedNoReliableLocation);
+  assert.equal(aiCandidates.diagnostics.aiNotProcessedReasons.aiCandidateLimit, aiCandidates.diagnostics.aiCandidateCapped);
+  assert.equal(aiCandidates.diagnostics.aiNotProcessedReasons.ruleSuccess, largeRuleEvents.length);
 
   // Provider activity records retain their activity contract independently of
   // the RSS-specific news handling above.

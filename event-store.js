@@ -785,6 +785,15 @@ function sanitizeRefreshRunDetails(details = {}) {
     items: (Array.isArray(value.items) ? value.items : []).slice(0, 100).map(sanitizeRefreshRunItem),
   });
   const pipeline = details.pipeline || {};
+  const news = details.newsPipeline || {};
+  const safeNewsRecord = (item = {}) => ({
+    source: String(item.source || "RSS").slice(0, 120), sourceId: String(item.sourceId || "").slice(0, 500),
+    title: String(item.title || "").slice(0, 120), publishedAt: item.publishedAt || null,
+    feedUrl: String(item.feedUrl || "").split("?")[0].slice(0, 500), stage: String(item.stage || "rss").slice(0, 40),
+    outcome: String(item.outcome || "received").slice(0, 40), reason: cleanRefreshLogError(item.reason), city: item.city ? String(item.city).slice(0, 80) : null,
+    locationText: String(item.locationText || "").slice(0, 240), resolverReason: String(item.resolverReason || "").slice(0, 160),
+    rulePassed: Boolean(item.rulePassed), aiEligible: Boolean(item.aiEligible), aiProcessed: Boolean(item.aiProcessed), aiExtracted: Boolean(item.aiExtracted), aiNormalized: Boolean(item.aiNormalized), normalized: Boolean(item.normalized), persisted: Boolean(item.persisted),
+  });
   return {
     runId: String(details.runId || ""), startedAt: String(details.startedAt || ""), completedAt: String(details.completedAt || ""),
     status: ["success", "partial_success", "error", "skipped"].includes(details.status) ? details.status : "error",
@@ -814,6 +823,15 @@ function sanitizeRefreshRunDetails(details = {}) {
       rawCount: Math.max(0, Number(pipeline.rawCount) || 0), normalizedCount: Math.max(0, Number(pipeline.normalizedCount) || 0),
       filteredCount: Math.max(0, Number(pipeline.filteredCount) || 0), duplicateCount: Math.max(0, Number(pipeline.duplicateCount) || 0),
       finalCount: Math.max(0, Number(pipeline.finalCount) || 0),
+    },
+    // Kept separate from the legacy pipeline schema: this is diagnostics-only
+    // and contains snippets/identifiers, never RSS article bodies or secrets.
+    newsPipeline: {
+      rss: news.rss || {}, ruleBased: news.ruleBased || {}, locationRejectReasons: news.locationRejectReasons || {},
+      locationRejectSamples: (Array.isArray(news.locationRejectSamples) ? news.locationRejectSamples : []).slice(0, 20).map((item) => ({ title: String(item.title || "").slice(0, 120), source: String(item.source || "RSS").slice(0, 120), descriptionSnippet: String(item.descriptionSnippet || "").slice(0, 300), resolvedCity: String(item.resolvedCity || "").slice(0, 80), resolvedLocationText: String(item.resolvedLocationText || "").slice(0, 240), resolvedLat: Number.isFinite(Number(item.resolvedLat)) ? Number(item.resolvedLat) : null, resolvedLng: Number.isFinite(Number(item.resolvedLng)) ? Number(item.resolvedLng) : null, reason: String(item.reason || "unknown").slice(0, 80) })),
+      ai: news.ai || {}, aiCandidateCappedSamples: (Array.isArray(news.aiCandidateCappedSamples) ? news.aiCandidateCappedSamples : []).slice(0, 20),
+      merge: news.merge || {}, normalizationRejectReasons: news.normalizationRejectReasons || {}, rssRecords: (Array.isArray(news.rssRecords) ? news.rssRecords : []).slice(0, 100).map(safeNewsRecord),
+      persistence: { ...(news.persistence || {}), records: (Array.isArray(news.persistence?.records) ? news.persistence.records : []).slice(0, 200).map((item) => ({ diagnosticId: String(item.diagnosticId || "").slice(0, 180), eventId: String(item.eventId || "").slice(0, 180), eventKind: String(item.eventKind || "").slice(0, 40), source: String(item.source || "").slice(0, 120), title: String(item.title || "").slice(0, 120), persisted: Boolean(item.persisted), inserted: Boolean(item.inserted), updated: Boolean(item.updated), rejected: Boolean(item.rejected), rejectReason: cleanRefreshLogError(item.rejectReason) })) },
     },
     finalEvents: (Array.isArray(details.finalEvents) ? details.finalEvents : []).slice(0, 200).map(sanitizeRefreshRunItem),
   };

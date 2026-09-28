@@ -960,9 +960,46 @@ function isInstitutionalEvent(event) {
   return isLowRealtimeEvent(event);
 }
 
+const NEWS_DIAGNOSTIC_SAMPLE_LIMIT = 20;
+function newsDiagnosticRecord(item = {}, patch = {}) {
+  const content = cleanNewsText(item.contentSnippet || item.content || item.summary || "");
+  return {
+    source: String(item.source || "RSS").slice(0, 120),
+    sourceId: String(item.guid || item.id || item.link || "").slice(0, 500),
+    title: String(item.title || "").trim().slice(0, 120),
+    publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
+    feedUrl: String(item.feedUrl || item.sourceUrl || "").split("?")[0].slice(0, 500),
+    stage: "rss", outcome: "received", reason: null,
+    city: null, locationText: "", resolverReason: "", rulePassed: false,
+    aiEligible: false, aiProcessed: false, aiExtracted: false, aiNormalized: false,
+    normalized: false, persisted: false,
+    ...patch,
+    // Raw article bodies are deliberately never retained in refresh diagnostics.
+    descriptionSnippet: content.slice(0, 300),
+  };
+}
+
+function classifyRuleLocationRejection(location = {}) {
+  const city = normalizeCity(location.city || "");
+  const locationText = String(location.locationQuery || location.locationText || "").trim();
+  const lat = Number(location.lat); const lng = Number(location.lng);
+  if (!city) return "noCity";
+  if (!locationText) return "noLocationText";
+  if (!getCityBounds(city)) return "cityNotInTaiwan";
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return "resolverReturnedNull";
+  if (!isValidTaiwanCoord(lat, lng)) return "resolverReturnedOutOfTaiwan";
+  return "unknown";
+}
+
 function extractRuleBasedEvents(newsItems) {
   const seen = new Set();
-  const diagnostics = { ruleRejectedNoReliableLocation: 0, ruleRejectedInstitutional: 0, ruleDeduplicated: 0, ruleCapped: 0 };
+  const diagnostics = {
+    ruleInputCount: newsItems.length, ruleBasedCandidatesBeforeFilter: 0,
+    ruleRejectedNoReliableLocation: 0, ruleRejectedInstitutional: 0, ruleDeduplicated: 0, ruleCapped: 0,
+    rulePassedCount: 0,
+    ruleLocationRejectReasons: { noCity: 0, noLocationText: 0, invalidCoordinates: 0, resolverReturnedNull: 0, resolverReturnedOutOfTaiwan: 0, cityNotInTaiwan: 0, locationResolutionError: 0, unknown: 0 },
+    locationRejectSamples: [], rssRecords: [],
+  };
   const candidates = newsItems
     .map((item) => {
       const title = String(item.title || "").trim();
@@ -974,29 +1011,45 @@ function extractRuleBasedEvents(newsItems) {
       // usable coordinate for an explicit city/district or known place and
       // deliberately falls through for ambiguous text.
       const aliasCity = inferCityFromText(combinedText)?.city;
-      const location = resolveLocationSync({
-        title,
-        content,
-        city: aliasCity,
-        source: "RSS",
-      }, { title, content });
+      let location;
+      try { location = resolveLocationSync({ title, content, city: aliasCity, source: "RSS" }, { title, content }); }
+      catch (error) {
+        diagnostics.ruleRejectedNoReliableLocation += 1;
+        diagnostics.ruleLocationRejectReasons.locationResolutionError += 1;
+        diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "rejected", reason: "locationResolutionError", resolverReason: String(error?.message || "resolver error").slice(0, 160) }));
+        return null;
+      }
 
       if (!title || !location.city || !getCityBounds(location.city)
         || !isValidTaiwanCoord(Number(location.lat), Number(location.lng))) {
         diagnostics.ruleRejectedNoReliableLocation += 1;
+        const reason = !title ? "unknown" : classifyRuleLocationRejection(location);
+        diagnostics.ruleLocationRejectReasons[reason] += 1;
+        if (diagnostics.locationRejectSamples.length < NEWS_DIAGNOSTIC_SAMPLE_LIMIT) diagnostics.locationRejectSamples.push({
+          title: title.slice(0, 120), source: "RSS", descriptionSnippet: content.slice(0, 300),
+          resolvedCity: location.city || "", resolvedLocationText: location.locationQuery || "",
+          resolvedLat: Number.isFinite(Number(location.lat)) ? Number(location.lat) : null,
+          resolvedLng: Number.isFinite(Number(location.lng)) ? Number(location.lng) : null, reason,
+        });
+        diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "rejected", reason, city: location.city || null, locationText: location.locationQuery || "", resolverReason: location.locationSource || "" }));
         return null;
       }
       if (isInstitutionalNewsText(combinedText)) {
         diagnostics.ruleRejectedInstitutional += 1;
+        diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "rejected", reason: "institutional", city: location.city, locationText: location.locationQuery || "", resolverReason: location.locationSource || "" }));
         return null;
       }
 
       const dedupeKey = `${location.city}:${title.slice(0, 40)}`.toLowerCase();
       if (seen.has(dedupeKey)) {
         diagnostics.ruleDeduplicated += 1;
+        diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "rejected", reason: "duplicate", city: location.city, locationText: location.locationQuery || "", resolverReason: location.locationSource || "" }));
         return null;
       }
       seen.add(dedupeKey);
+      diagnostics.ruleBasedCandidatesBeforeFilter += 1;
+      diagnostics.rulePassedCount += 1;
+      diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "passed", reason: "ruleSuccess", city: location.city, locationText: location.locationQuery || "", resolverReason: location.locationSource || "", rulePassed: true }));
 
       return {
         title: title.slice(0, 120),
@@ -1017,6 +1070,11 @@ function extractRuleBasedEvents(newsItems) {
     })
     .filter(Boolean);
   diagnostics.ruleCapped = Math.max(0, candidates.length - 40);
+  // Capping is an existing behavior; annotate the omitted records without changing it.
+  candidates.slice(40).forEach((candidate) => {
+    const record = diagnostics.rssRecords.find((item) => item.sourceId === String(candidate.url || ""));
+    if (record) { record.outcome = "capped"; record.reason = "ruleCandidateLimit"; }
+  });
   const result = candidates.slice(0, 40);
   Object.defineProperty(result, "diagnostics", { value: diagnostics, enumerable: false });
   return result;
@@ -1041,11 +1099,23 @@ function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
   const eligible = newsItems.filter((item) => !successfulRuleItems.has(rssItemIdentity(item)));
   const limit = Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT);
   const result = eligible.slice(0, limit);
+  const capped = eligible.slice(limit);
   Object.defineProperty(result, "diagnostics", {
     value: {
       aiExcludedByRuleSuccess: newsItems.length - eligible.length,
       aiCandidateCapped: Math.max(0, eligible.length - result.length),
       aiCandidateLimit: limit,
+      aiEligible: eligible.length,
+      aiNotProcessedReasons: {
+        ruleSuccess: newsItems.length - eligible.length,
+        noReliableLocation: 0, institutional: 0, duplicate: 0,
+        aiCandidateLimit: capped.length, other: 0,
+      },
+      aiCandidateCappedSamples: capped.slice(0, NEWS_DIAGNOSTIC_SAMPLE_LIMIT).map((item) => ({
+        title: String(item.title || "").slice(0, 120), source: String(item.source || "RSS").slice(0, 120),
+        publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
+        reason: "aiCandidateLimit", ruleMatched: false, locationResolved: Boolean(inferCityFromText(`${item.title || ""} ${item.contentSnippet || item.content || ""}`)), eligibleForAi: true,
+      })),
     },
     enumerable: false,
   });
@@ -2232,10 +2302,23 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
     const aiNewsCandidates = selectAiNewsCandidates(sources.rssItems, sources.ruleBasedEvents);
+    const rssRecords = sources.ruleBasedEvents.diagnostics?.rssRecords || [];
+    const candidateIds = new Set(aiNewsCandidates.map(rssItemIdentity));
+    // This merely annotates the rule-stage records produced above.  AI output
+    // has no reliable one-to-one article identifier, so extraction is counted
+    // in aggregate rather than guessed per article.
+    rssRecords.forEach((record) => {
+      const identity = record.sourceId ? `url:${record.sourceId}` : "";
+      if (candidateIds.has(identity)) { record.aiEligible = true; record.aiProcessed = true; }
+      else if (record.outcome === "capped" || (record.reason === "ruleCandidateLimit")) record.aiEligible = false;
+    });
     const azureOpenAiConfig = getAzureOpenAiConfig();
     sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    if (sources.__collectorResults.ai.status !== "success") rssRecords.forEach((record) => { if (record.aiProcessed) record.aiProcessed = false; });
     Object.assign(sources.__collectorResults.ai, {
       rssItems: sources.rssItems.length,
+      rssItemsWithTitle: sources.rssItems.filter((item) => String(item.title || "").trim()).length,
+      rssItemsWithContent: sources.rssItems.filter((item) => String(item.contentSnippet || item.content || "").trim()).length,
       ruleBasedCandidates: sources.ruleBasedEvents.length,
       aiCandidates: aiNewsCandidates.length,
       aiNormalized: sources.aiEvents.length,
@@ -2295,7 +2378,13 @@ function getRssAiPipelineDiagnostics(sources = {}) {
   const ai = sources.__collectorResults?.ai || {};
   return {
     rssItems: Array.isArray(sources.rssItems) ? sources.rssItems.length : 0,
+    rssItemsWithTitle: Number.isFinite(Number(ai.rssItemsWithTitle)) ? Math.max(0, Number(ai.rssItemsWithTitle)) : (Array.isArray(sources.rssItems) ? sources.rssItems.filter((item) => String(item.title || "").trim()).length : 0),
+    rssItemsWithContent: Number.isFinite(Number(ai.rssItemsWithContent)) ? Math.max(0, Number(ai.rssItemsWithContent)) : (Array.isArray(sources.rssItems) ? sources.rssItems.filter((item) => String(item.contentSnippet || item.content || "").trim()).length : 0),
+    rssItemsWithoutContent: Math.max(0, (Array.isArray(sources.rssItems) ? sources.rssItems.length : 0) - (Number.isFinite(Number(ai.rssItemsWithContent)) ? Number(ai.rssItemsWithContent) : (Array.isArray(sources.rssItems) ? sources.rssItems.filter((item) => String(item.contentSnippet || item.content || "").trim()).length : 0))),
     ruleBasedCandidates: Array.isArray(sources.ruleBasedEvents) ? sources.ruleBasedEvents.length : 0,
+    ruleInputCount: Math.max(0, Number(ai.ruleInputCount) || 0),
+    ruleBasedCandidatesBeforeFilter: Math.max(0, Number(ai.ruleBasedCandidatesBeforeFilter) || 0),
+    rulePassedCount: Math.max(0, Number(ai.rulePassedCount) || 0),
     aiCandidates: Math.max(0, Number(ai.aiCandidates) || 0),
     aiContextPrepared: Math.max(0, Number(ai.aiContextPrepared) || 0),
     aiExtracted: Math.max(0, Number(ai.aiExtracted) || 0),
@@ -2307,6 +2396,12 @@ function getRssAiPipelineDiagnostics(sources = {}) {
     aiExcludedByRuleSuccess: Math.max(0, Number(ai.aiExcludedByRuleSuccess) || 0),
     aiCandidateCapped: Math.max(0, Number(ai.aiCandidateCapped) || 0),
     aiCandidateLimit: Math.max(0, Number(ai.aiCandidateLimit) || 0),
+    aiEligible: Math.max(0, Number(ai.aiEligible) || 0),
+    aiNotProcessedReasons: ai.aiNotProcessedReasons || { ruleSuccess: 0, noReliableLocation: 0, institutional: 0, duplicate: 0, aiCandidateLimit: 0, other: 0 },
+    aiCandidateCappedSamples: Array.isArray(ai.aiCandidateCappedSamples) ? ai.aiCandidateCappedSamples.slice(0, NEWS_DIAGNOSTIC_SAMPLE_LIMIT) : [],
+    ruleLocationRejectReasons: ai.ruleLocationRejectReasons || { noCity: 0, noLocationText: 0, invalidCoordinates: 0, resolverReturnedNull: 0, resolverReturnedOutOfTaiwan: 0, cityNotInTaiwan: 0, locationResolutionError: 0, unknown: 0 },
+    locationRejectSamples: Array.isArray(ai.locationRejectSamples) ? ai.locationRejectSamples.slice(0, NEWS_DIAGNOSTIC_SAMPLE_LIMIT) : [],
+    rssRecords: Array.isArray(ai.rssRecords) ? ai.rssRecords.slice(0, 100) : [],
     aiRejectedInvalidRequired: Math.max(0, Number(ai.aiRejectedInvalidRequired) || 0),
     aiRejectedMissingEvidence: Math.max(0, Number(ai.aiRejectedMissingEvidence) || 0),
     aiRejectedLowConfidence: Math.max(0, Number(ai.aiRejectedLowConfidence) || 0),
@@ -2432,7 +2527,7 @@ function toRefreshItem(item, source, finalByKey, outcome = {}) {
   };
 }
 
-function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten, sourceFailures, tdxBudget, tdxLayers }) {
+function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten, sourceFailures, tdxBudget, tdxLayers, newsPipeline }) {
   const finalByKey = new Map(finalEvents.map((item) => [refreshItemKey(item), item]));
   const existingByKey = new Set(activeEvents.map(refreshItemKey));
   const seenCandidates = new Set();
@@ -2467,6 +2562,7 @@ function buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, 
     runId, startedAt: new Date(startedAt).toISOString(), completedAt, status, mode, trigger, cacheWritten,
     sources: sourceDetails,
     pipeline: { rawCount, normalizedCount: candidates.length, filteredCount: Math.max(0, candidates.length - finalEvents.length - duplicateCount), duplicateCount, finalCount: finalEvents.length },
+    newsPipeline,
     finalEvents: finalEvents.map((item) => ({ ...toRefreshItem(item, item.sourceName || item.source || "最終事件", finalByKey, { result: "accepted", reason: "已寫入地圖事件快取" }), processingResult: "accepted", processingReason: "已寫入地圖事件快取", eventId: item.id || "" })),
     activeEventCount: activeEvents.length,
     tdxBudget,
@@ -2500,6 +2596,14 @@ async function runEventRefresh(options = {}) {
       ? options.existingEvents
       : await getOfficialEvents();
     const activeEvents = mergeRefreshBuckets(existingEvents, finalEvents, mode, sources, now);
+    const existingKeys = new Set(existingEvents.map(refreshItemKey));
+    const persistence = {
+      eventsBeforePersist: activeEvents.length, persistInputCount: activeEvents.length,
+      eventsWritten: 0, eventsInserted: 0, eventsUpdated: 0,
+      eventsRejectedBeforePersist: 0, eventsRejectedAtPersist: 0,
+      persistRejectedCount: 0, persistFailureCount: 0, persistErrorCount: 0,
+      records: activeEvents.slice(0, 200).map((event) => ({ diagnosticId: refreshItemKey(event).slice(0, 180), eventId: String(event.id || "").slice(0, 180), eventKind: event.eventKind || "news", source: String(event.source || "").slice(0, 120), title: String(event.title || "").slice(0, 120), persisted: false, inserted: !existingKeys.has(refreshItemKey(event)), updated: existingKeys.has(refreshItemKey(event)), rejected: false, rejectReason: null })),
+    };
     const cacheTtlSeconds = resolveEventCacheTtlSeconds(options.cacheTtlSeconds ?? process.env.EVENT_CACHE_TTL_SECONDS);
     const cacheOptions = { ex: cacheTtlSeconds };
     let buckets = { traffic: 0, news: 0, activities: 0 };
@@ -2510,7 +2614,17 @@ async function runEventRefresh(options = {}) {
       // Candidates are pending review items only; never clone the whole event
       // payload (raw source, tourism object, and images) into KV.
       buckets = await writeEventBucketsToStore(activeEvents, cacheOptions);
+      persistence.eventsWritten = activeEvents.length;
+      persistence.eventsInserted = persistence.records.filter((record) => record.inserted).length;
+      persistence.eventsUpdated = persistence.records.filter((record) => record.updated).length;
+      persistence.records.forEach((record) => { record.persisted = true; });
     }
+    const finalRssUrls = new Set(finalEvents.map((event) => String(event.url || event.sourceUrl || "").trim()).filter(Boolean));
+    const activeRssUrls = new Set(activeEvents.map((event) => String(event.url || event.sourceUrl || "").trim()).filter(Boolean));
+    (sources.ruleBasedEvents.diagnostics?.rssRecords || []).forEach((record) => {
+      if (record.sourceId && finalRssUrls.has(record.sourceId)) record.normalized = true;
+      if (record.sourceId && activeRssUrls.has(record.sourceId) && options.write !== false) record.persisted = true;
+    });
 
     const durationMs = Date.now() - startedAt;
     const sourceCounts = getSourceCounts(sources, finalEvents, activeEvents);
@@ -2521,7 +2635,21 @@ async function runEventRefresh(options = {}) {
     const status = errorSourceCount ? "partial_success" : "success";
     const completedAt = new Date().toISOString();
     const tdxObservability = await getTdxObservability(sources);
-    const details = buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten: options.write !== false, sourceFailures, ...tdxObservability });
+    const rssAi = getRssAiPipelineDiagnostics(sources);
+    const newsPipeline = {
+      rss: { input: rssAi.rssItems, rssItemsWithTitle: rssAi.rssItemsWithTitle, rssItemsWithContent: rssAi.rssItemsWithContent, rssItemsWithoutContent: rssAi.rssItemsWithoutContent },
+      ruleBased: { input: rssAi.rssItems, ruleInputCount: rssAi.ruleInputCount || rssAi.rssItems, ruleBasedCandidatesBeforeFilter: rssAi.ruleBasedCandidatesBeforeFilter || 0, passed: rssAi.rulePassedCount || rssAi.ruleBasedCandidates, rejectedNoReliableLocation: rssAi.ruleRejectedNoReliableLocation, rejectedInstitutional: rssAi.ruleRejectedInstitutional, deduplicated: rssAi.ruleDeduplicated, capped: rssAi.ruleCapped },
+      locationRejectReasons: rssAi.ruleLocationRejectReasons,
+      locationRejectSamples: rssAi.locationRejectSamples,
+      ai: { eligible: rssAi.aiEligible, excludedByRuleSuccess: rssAi.aiExcludedByRuleSuccess, candidates: rssAi.aiCandidates, candidateLimit: rssAi.aiCandidateLimit, notProcessedByCandidateLimit: rssAi.aiCandidateCapped, notProcessedReasons: rssAi.aiNotProcessedReasons, contextPrepared: rssAi.aiContextPrepared, extracted: rssAi.aiExtracted, normalized: rssAi.aiNormalized },
+      aiCandidateCappedSamples: rssAi.aiCandidateCappedSamples,
+      merge: { ruleNewsOutput: sources.ruleBasedEvents.length, aiNewsOutput: sources.aiEvents.length, mergedNewsOutput: sources.ruleBasedEvents.length + sources.aiEvents.length, normalizedNewsOutput: finalEvents.filter((event) => event.eventKind === "news").length, normalizedNonNewsOutput: finalEvents.filter((event) => event.eventKind !== "news").length },
+      normalizationRejectReasons: { invalidTitle: 0, invalidCategory: 0, invalidLocation: 0, invalidCoordinates: 0, missingRequiredField: 0, duplicate: 0, unsupportedEventKind: 0, other: 0 },
+      persistence,
+      rssRecords: rssAi.rssRecords,
+    };
+    console.info("[cron] news pipeline summary", newsPipeline);
+    const details = buildRefreshRunDetails({ runId, mode, trigger, startedAt, completedAt, status, sources, finalEvents, activeEvents, geocodingStats, cacheWritten: options.write !== false, sourceFailures, newsPipeline, ...tdxObservability });
     const result = {
       success: status === "success",
       status,
