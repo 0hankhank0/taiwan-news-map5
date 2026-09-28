@@ -98,7 +98,7 @@ const DEFAULT_RSS_SOURCES = [
 
 const RSS_TIMEOUT_MS = 2200;
 const TDX_TIMEOUT_MS = 1800;
-const AZURE_OPENAI_TIMEOUT_MS = 5000;
+const AZURE_OPENAI_TIMEOUT_MS = Number(process.env.AZURE_OPENAI_TIMEOUT_MS || 9000);
 const MAX_NEWS_FOR_AI = Number(process.env.MAX_NEWS_FOR_AI || DEFAULT_AI_CONTEXT_LIMIT);
 const AI_ARTICLE_CONTEXT_TIMEOUT_MS = Number(process.env.AI_ARTICLE_CONTEXT_TIMEOUT_MS || DEFAULT_ARTICLE_TIMEOUT_MS);
 const SOFT_DEADLINE_MS = 7000;
@@ -1583,6 +1583,11 @@ async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TI
       if (!retryable || attempt === attempts - 1) throw lastError;
     } catch (error) {
       lastError = error;
+      if (error?.name === "TimeoutError" || error?.name === "AbortError") {
+        error.azureStage = "request";
+        error.httpStatus = null;
+        throw error;
+      }
       if (attempt === attempts - 1) break;
     }
   }
