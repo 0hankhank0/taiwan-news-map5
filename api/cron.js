@@ -103,8 +103,10 @@ module.exports = async (req, res) => {
       .replace(/Bearer\s+[A-Za-z0-9._~+\/-]+/gi, "Bearer [REDACTED]")
       .replace(/(?:api[_-]?key|secret|token)(\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]")
       .slice(0, 1000);
+    const stack = error?.stack ? String(error.stack).slice(0, 8000) : "";
+    const diagnostic = stack ? `${safeMessage}\n${stack}` : safeMessage;
     console.error("[cron] Handler failed:", safeMessage);
-    if (error?.stack) console.error("[cron] Handler stack:", String(error.stack).slice(0, 8000));
+    if (stack) console.error("[cron] Handler stack:", stack);
     if (error?.cause) console.error("[cron] Handler cause:", error.cause);
     return sendJson(res, 500, {
       success: false,
@@ -112,7 +114,7 @@ module.exports = async (req, res) => {
       runId,
       durationMs: Date.now() - startedAt,
       error: "Cron execution failed",
-      diagnostic: safeMessage,
+      diagnostic: diagnostic.slice(0, 9000),
     });
   } finally {
     await releaseCronLock(runId);
