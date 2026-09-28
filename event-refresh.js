@@ -123,7 +123,7 @@ const DEFAULT_EVENT_CACHE_TTL_SECONDS = 60 * 60 * 6;
 const KKTIX_ACTIVITY_FEED = "https://kktix.com/events.atom";
 const KKTIX_RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const ICULTURE_ACTIVITY_FEED = "https://cloud.culture.tw/frontsite/trans/SearchShowAction.do?category=all&method=doFindTypeJ";
-const ICULTURE_TIMEOUT_MS = 3000;
+const ICULTURE_TIMEOUT_MS = Number(process.env.ICULTURE_TIMEOUT_MS || 5000);
 const ICULTURE_MAX_EVENTS = 30;
 const TOURISM_EVENTS_FEED = "https://media.taiwan.net.tw/XMLReleaseAll_public/v2.0/Zh_tw/Event-json.zip";
 const TOURISM_EVENTS_TIMEOUT_MS = 5000;
@@ -1369,26 +1369,19 @@ async function fetchCultureActivityEvents(startedAt, options = {}) {
     if (getRemainingTime(startedAt) < 1000) throw new Error("refresh deadline exceeded");
     const endpoint = String(process.env.ICULTURE_ACTIVITY_FEED_URL || ICULTURE_ACTIVITY_FEED).trim();
     let response;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      attempts = attempt + 1;
-      try {
-        response = await fetch(endpoint, {
-          signal: AbortSignal.timeout(Math.max(800, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
-          headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
-        });
-        if (response.ok || attempt === 1) {
-          logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: response.ok ? "response_ok" : "http_error", runId: options.runId });
-          break;
-        }
-        logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: "http_error", runId: options.runId });
-      } catch (error) {
-        if (attempt === 1) {
-          logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: options.runId });
-          throw error;
-        }
-        logICultureAttempt({ stage: "request", attempt: attempt + 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: options.runId });
-      }
-      await delay(350);
+    // iCulture's all-category feed can legitimately take several seconds because
+    // it returns a large JSON dataset. Prefer one longer request over two short
+    // retries so a slow provider does not consume the refresh deadline twice.
+    attempts = 1;
+    try {
+      response = await fetch(endpoint, {
+        signal: AbortSignal.timeout(Math.max(1000, Math.min(ICULTURE_TIMEOUT_MS, getRemainingTime(startedAt) - 150))),
+        headers: { "User-Agent": "Taiwan-News-Map/1.0 (+event integration)", Accept: "application/json, text/json;q=0.9, */*;q=0.8" },
+      });
+      logICultureAttempt({ stage: "request", attempt: 1, outcome: response.ok ? "response_ok" : "http_error", runId: options.runId });
+    } catch (error) {
+      logICultureAttempt({ stage: "request", attempt: 1, outcome: error.name === "TimeoutError" ? "timeout" : "request_error", runId: options.runId });
+      throw error;
     }
     if (!response.ok) {
       const error = new Error(`iCulture HTTP ${Number(response.status) || "request failed"}`);
