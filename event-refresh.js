@@ -2778,6 +2778,7 @@ async function runEventRefresh(options = {}) {
       geocodingHits: geocodingStats.geocodingHits,
       rawCount: details.pipeline.rawCount,
       errorSourceCount,
+      sourceFailures,
       ...tdxObservability,
       aiDiagnostic: {
         stage: newsPipeline.ai.stage,
