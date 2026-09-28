@@ -1547,10 +1547,14 @@ function requireAzureOpenAiConfig() {
   return config;
 }
 
-function azureOpenAiErrorForStatus(status) {
-  if (status === 401) return "Azure OpenAI authentication failed (HTTP 401)";
-  if (status === 429) return "Azure OpenAI rate limit or quota exceeded (HTTP 429)";
-  return `Azure OpenAI request failed (HTTP ${Number.isInteger(status) ? status : "unknown"})`;
+function azureOpenAiErrorForStatus(status, bodyPreview = "") {
+  const base = status === 401
+    ? "Azure OpenAI authentication failed (HTTP 401)"
+    : status === 429
+      ? "Azure OpenAI rate limit or quota exceeded (HTTP 429)"
+      : `Azure OpenAI request failed (HTTP ${Number.isInteger(status) ? status : "unknown"})`;
+  const detail = sanitizeKktixBodyPreview(bodyPreview, 280);
+  return detail ? `${base}: ${detail}` : base;
 }
 
 async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TIMEOUT_MS) {
@@ -1570,8 +1574,12 @@ async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TI
       if (response.ok) return response.json();
 
       const status = Number(response.status) || null;
+      let bodyText = "";
+      try { bodyText = await response.text(); } catch {}
       const retryable = status === 408 || status === 429 || status >= 500;
-      lastError = new Error(azureOpenAiErrorForStatus(status));
+      lastError = new Error(azureOpenAiErrorForStatus(status, bodyText));
+      lastError.azureStage = "request";
+      lastError.httpStatus = status;
       if (!retryable || attempt === attempts - 1) throw lastError;
     } catch (error) {
       lastError = error;
@@ -1666,13 +1674,24 @@ async function extractAiEvents(newsItems) {
 
 async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
   if (!newsItems.length) return [];
-  requireAzureOpenAiConfig();
+  const config = getAzureOpenAiConfig();
+  const contextLimit = Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT);
+  let preparedContexts = [];
+  if (config.error) {
+    const error = new Error(config.error);
+    error.azureStage = "config";
+    error.aiDiagnostics = { aiContextPrepared: 0, aiExtracted: 0, aiNormalized: 0 };
+    throw error;
+  }
 
-  const simplifiedNews = await prepareNewsContexts(newsItems, {
-    maxArticles: Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT),
-    maxChars: ARTICLE_CONTEXT_MAX_CHARS,
-    timeoutMs: Math.max(500, Math.min(AI_ARTICLE_CONTEXT_TIMEOUT_MS, getRemainingTime(startedAt) - 500)),
-  });
+  try {
+    preparedContexts = await prepareNewsContexts(newsItems, {
+      maxArticles: contextLimit,
+      maxChars: ARTICLE_CONTEXT_MAX_CHARS,
+      timeoutMs: Math.max(500, Math.min(AI_ARTICLE_CONTEXT_TIMEOUT_MS, getRemainingTime(startedAt) - 500)),
+    });
+
+    const simplifiedNews = preparedContexts;
 
   const systemPrompt = [
     "Extract only real-world Taiwan events from the provided news.",
@@ -1768,6 +1787,12 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     });
     return normalized;
   } catch (error) {
+    error.azureStage = error.azureStage || "extract";
+    error.aiDiagnostics = {
+      aiContextPrepared: Array.isArray(preparedContexts) ? preparedContexts.length : 0,
+      aiExtracted: 0,
+      aiNormalized: 0,
+    };
     console.error("[cron] Azure OpenAI context extraction failed:", error.message);
     throw error;
   }
@@ -2280,7 +2305,14 @@ async function runCollector(name, work, options = {}) {
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
     const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null, staticLayer: detail.staticLayer || null, aiContextPrepared: Number(detail.aiContextPrepared) || 0, aiExtracted: Number(detail.aiExtracted) || 0, aiNormalized: Number(detail.aiNormalized) || 0, aiRejectedInvalidRequired: Number(detail.aiRejectedInvalidRequired) || 0, aiRejectedMissingEvidence: Number(detail.aiRejectedMissingEvidence) || 0, aiRejectedLowConfidence: Number(detail.aiRejectedLowConfidence) || 0, aiRejectedMissingLocationText: Number(detail.aiRejectedMissingLocationText) || 0, aiRejectedNoCityFallback: Number(detail.aiRejectedNoCityFallback) || 0 });
   } catch (error) {
-    return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
+    return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], {
+      error: cleanRefreshLogError(error?.stack || error?.message),
+      requestCount: Math.max(1, Number(options.requestCount) || 1),
+      aiStage: error?.azureStage || null,
+      aiContextPrepared: Number(error?.aiDiagnostics?.aiContextPrepared) || 0,
+      aiExtracted: Number(error?.aiDiagnostics?.aiExtracted) || 0,
+      aiNormalized: Number(error?.aiDiagnostics?.aiNormalized) || 0,
+    });
   }
 }
 
@@ -2693,7 +2725,7 @@ async function runEventRefresh(options = {}) {
       ruleBased: { input: rssAi.rssItems, ruleInputCount: rssAi.ruleInputCount || rssAi.rssItems, ruleBasedCandidatesBeforeFilter: rssAi.ruleBasedCandidatesBeforeFilter || 0, passed: rssAi.rulePassedCount || rssAi.ruleBasedCandidates, rejectedNoReliableLocation: rssAi.ruleRejectedNoReliableLocation, rejectedInstitutional: rssAi.ruleRejectedInstitutional, deduplicated: rssAi.ruleDeduplicated, capped: rssAi.ruleCapped },
       locationRejectReasons: rssAi.ruleLocationRejectReasons,
       locationRejectSamples: rssAi.locationRejectSamples,
-      ai: { eligible: rssAi.aiEligible, excludedByRuleSuccess: rssAi.aiExcludedByRuleSuccess, candidates: rssAi.aiCandidates, candidateLimit: rssAi.aiCandidateLimit, notProcessedByCandidateLimit: rssAi.aiCandidateCapped, notProcessedReasons: rssAi.aiNotProcessedReasons, contextPrepared: rssAi.aiContextPrepared, extracted: rssAi.aiExtracted, normalized: rssAi.aiNormalized },
+      ai: { eligible: rssAi.aiEligible, excludedByRuleSuccess: rssAi.aiExcludedByRuleSuccess, candidates: rssAi.aiCandidates, candidateLimit: rssAi.aiCandidateLimit, notProcessedByCandidateLimit: rssAi.aiCandidateCapped, notProcessedReasons: rssAi.aiNotProcessedReasons, contextPrepared: rssAi.aiContextPrepared, extracted: rssAi.aiExtracted, normalized: rssAi.aiNormalized, stage: sources.__collectorResults?.ai?.aiStage || null, error: sources.__collectorResults?.ai?.reason || null },
       aiCandidateCappedSamples: rssAi.aiCandidateCappedSamples,
       merge: { ruleNewsOutput: sources.ruleBasedEvents.length, aiNewsOutput: sources.aiEvents.length, mergedNewsOutput: sources.ruleBasedEvents.length + sources.aiEvents.length, normalizedNewsOutput: finalEvents.filter((event) => event.eventKind === "news").length, normalizedNonNewsOutput: finalEvents.filter((event) => event.eventKind !== "news").length },
       normalizationRejectReasons: { invalidTitle: 0, invalidCategory: 0, invalidLocation: 0, invalidCoordinates: 0, missingRequiredField: 0, duplicate: 0, unsupportedEventKind: 0, other: 0 },
