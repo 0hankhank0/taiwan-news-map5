@@ -507,9 +507,11 @@ async function call(handler, req) {
   const cachedCountBeforeFailure = (await getCachedEvents()).length;
   let attempts = 0;
   global.fetch = async () => { attempts += 1; return { ok: false, status: 503, url: "https://kktix.com/events.atom", headers: new Headers({ "content-type": "text/html", server: "test" }), text: async () => "upstream failure" }; };
-  await assert.rejects(() => eventRefresh.fetchKktixActivityEvents(Date.now()));
+  const retainedAfter503 = await eventRefresh.fetchKktixActivityEvents(Date.now());
   assert.equal(attempts, 3);
+  assert.ok(Array.isArray(retainedAfter503));
   assert.equal((await getCachedEvents()).length, cachedCountBeforeFailure);
+  assert.equal((await getEventIntegrationStatuses()).find((item) => item.service === "kktix").status, "warning");
 
   attempts = 0;
   global.fetch = async () => {
@@ -522,10 +524,11 @@ async function call(handler, req) {
       text: async () => "<html>Cloudflare Access Denied token=secret-value Cookie=session-secret contact=test@example.com Authorization: Bearer hidden-value</html>",
     };
   };
-  await assert.rejects(() => eventRefresh.fetchKktixActivityEvents(Date.now()), /KKTIX HTTP 403/);
+  const retainedAfter403 = await eventRefresh.fetchKktixActivityEvents(Date.now());
   assert.equal(attempts, 1);
+  assert.ok(Array.isArray(retainedAfter403));
   const blockedStatus = (await getEventIntegrationStatuses()).find((item) => item.service === "kktix");
-  assert.equal(blockedStatus.status, "provider_blocked");
+  assert.equal(blockedStatus.status, "warning");
   assert.equal(blockedStatus.lastErrorType, "provider_blocked");
   assert.equal(blockedStatus.lastDiagnostic.httpStatus, 403);
   assert.equal(blockedStatus.lastDiagnostic.contentType, "text/html; charset=utf-8");
@@ -553,7 +556,7 @@ async function call(handler, req) {
   assert.equal(sourcesAfterKktixBlock.__collectorResults.rss.status, "success");
   assert.equal(sourcesAfterKktixBlock.__collectorResults.iculture.status, "success");
   assert.equal(sourcesAfterKktixBlock.cultureActivityEvents.length, 1);
-  assert.equal(sourcesAfterKktixBlock.__collectorResults.kktix.status, "failed");
+  assert.equal(sourcesAfterKktixBlock.__collectorResults.kktix.status, "warning");
   const integrationStatus = await call(eventsApi, { method: "GET", query: { integrationStatus: "1" }, url: "/api/integrations/events/status" });
   assert.equal(integrationStatus.statusCode, 200);
   assert.equal(JSON.stringify(integrationStatus.payload).includes("upstream failure"), false);
