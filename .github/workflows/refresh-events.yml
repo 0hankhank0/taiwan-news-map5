@@ -79,6 +79,7 @@ jobs:
             durationMs: payload.durationMs,
             sourceCounts,
             aiDiagnostic: payload.aiDiagnostic || null,
+            sourceFailures: payload.sourceFailures || {},
             lock: payload.lock || null,
           };
           console.log(`[cron-summary] ${JSON.stringify(summary)}`);
@@ -88,7 +89,7 @@ jobs:
             process.exit(0);
           }
           if (payload.status === "partial_success" && count > 0) {
-            console.warn(`::warning::Cron completed with partial success: ${count} active events; ${errorSourceCount} sources failed. sourceCounts=${JSON.stringify(sourceCounts)} aiDiagnostic=${JSON.stringify(payload.aiDiagnostic || null)}`);
+            console.warn(`::warning::Cron completed with partial success: ${count} active events; ${errorSourceCount} sources failed. sourceFailures=${JSON.stringify(payload.sourceFailures || {})} sourceCounts=${JSON.stringify(sourceCounts)} aiDiagnostic=${JSON.stringify(payload.aiDiagnostic || null)}`);
             process.exit(0);
           }
           if (payload.success === false) {
