@@ -7,10 +7,10 @@ const {
 } = require("./location-resolver");
 const { validateAiCategoryResult } = require("./shared/event-category-decision");
 
-// Keep this bounded for the refresh deadline.  Eighteen gives the model a
-// useful second pass over RSS misses without turning a typical 90+ item feed
-// into one HTTP fetch per article.
-const DEFAULT_AI_CONTEXT_LIMIT = 18;
+// Keep this bounded for the refresh deadline. Thirty-six gives the model a
+// larger second pass over RSS misses while still keeping article fetching and
+// one Azure request comfortably inside the refresh deadline.
+const DEFAULT_AI_CONTEXT_LIMIT = 36;
 const DEFAULT_ARTICLE_TIMEOUT_MS = 1200;
 const ARTICLE_CONTEXT_MAX_CHARS = 1600;
 const MIN_AI_LOCATION_CONFIDENCE = 0.55;
