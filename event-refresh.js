@@ -1117,7 +1117,19 @@ function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
 
   // AI is a focused fallback for RSS items that the deterministic extractor
   // could not safely place.  Preserve feed order and the bounded context cap.
-  const eligible = newsItems.filter((item) => !successfulRuleItems.has(rssItemIdentity(item)));
+  const eligible = newsItems
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => !successfulRuleItems.has(rssItemIdentity(item)))
+    .sort((a, b) => {
+      const aHasContent = Boolean(String(a.item.contentSnippet || a.item.content || a.item.summary || "").trim());
+      const bHasContent = Boolean(String(b.item.contentSnippet || b.item.content || b.item.summary || "").trim());
+      if (aHasContent !== bHasContent) return Number(bHasContent) - Number(aHasContent);
+      const aTime = Date.parse(a.item.isoDate || a.item.pubDate || a.item.publishedAt || "") || 0;
+      const bTime = Date.parse(b.item.isoDate || b.item.pubDate || b.item.publishedAt || "") || 0;
+      if (aTime !== bTime) return bTime - aTime;
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
   const limit = Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT);
   const result = eligible.slice(0, limit);
   const capped = eligible.slice(limit);
@@ -1543,20 +1555,31 @@ function azureOpenAiErrorForStatus(status) {
 
 async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TIMEOUT_MS) {
   const config = requireAzureOpenAiConfig();
-  let response;
-  try {
-    response = await fetch(config.url, {
-      method: "POST",
-      headers: config.headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
-    });
-  } catch {
-    throw new Error("Azure OpenAI request failed");
+  const attempts = 2;
+  let lastError = null;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: config.headers,
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
+      });
+
+      if (response.ok) return response.json();
+
+      const status = Number(response.status) || null;
+      const retryable = status === 408 || status === 429 || status >= 500;
+      lastError = new Error(azureOpenAiErrorForStatus(status));
+      if (!retryable || attempt === attempts - 1) throw lastError;
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts - 1) break;
+    }
   }
 
-  if (!response.ok) throw new Error(azureOpenAiErrorForStatus(response.status));
-  return response.json();
+  throw lastError || new Error("Azure OpenAI request failed");
 }
 
 function parseAiJsonCompletion(completion) {
@@ -2334,7 +2357,15 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
       else if (record.outcome === "capped" || (record.reason === "ruleCandidateLimit")) record.aiEligible = false;
     });
     const azureOpenAiConfig = getAzureOpenAiConfig();
-    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    const aiSkipReason = options.skipAi
+      ? "AI 提取已停用"
+      : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : "");
+    sources.__collectorResults.ai = await runCollector(
+      "AI 提取",
+      () => extractAiEventsWithContext(aiNewsCandidates, startedAt),
+      { skipReason: aiSkipReason, configError: azureOpenAiConfig.error || null }
+    );
+    sources.aiEvents = sources.__collectorResults.ai.items;
     if (sources.__collectorResults.ai.status !== "success") rssRecords.forEach((record) => { if (record.aiProcessed) record.aiProcessed = false; });
     Object.assign(sources.__collectorResults.ai, {
       rssItems: sources.rssItems.length,
