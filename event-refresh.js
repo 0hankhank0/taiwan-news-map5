@@ -2451,6 +2451,9 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
     sources.kktixActivityEvents = sources.__collectorResults.kktix.items;
     sources.activityEvents = [...sources.cultureActivityEvents, ...sources.tourismEvents, ...sources.kktixActivityEvents];
     if (sources.__collectorResults.kktix.status === "failed") sourceFailure("kktix", sources.__collectorResults.kktix.reason);
+  }
+
+  if (includeTraffic) {
     sources.__collectorResults.pbs = await runCollector("PBS", async () => {
       const [events, syncState] = await Promise.all([getActivePbsEvents(), getPbsSyncState()]);
       events.collector = { snapshotId: syncState?.lastSnapshotId || null, lastSuccessfulFetch: syncState?.lastSuccessfulFetch || null };
@@ -2477,6 +2480,7 @@ function getSourceCounts(sources, finalEvents, activeEvents) {
     tdx: sources.tdxEvents.length,
     construction: sources.constructionEvents.length,
     pbs: sources.pbsEvents.length,
+    kktix: sources.kktixActivityEvents.length,
     iCulture: sources.cultureActivityEvents.length,
     tourismEvents: sources.tourismEvents.length,
     activities: sources.activityEvents.length,
