@@ -30,9 +30,29 @@ jobs:
             exit 1
           fi
           BASE_URL="${BASE_URL%/}"
-          response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=news" \
-            -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json")"
+
+          tmp_body="$(mktemp)"
+          trap 'rm -f "$tmp_body"' EXIT
+
+          http_code="$(curl -sS -o "$tmp_body" -w "%{http_code}" -X POST "$BASE_URL/api/cron?mode=news"             -H "Authorization: Bearer $CRON_SECRET"             -H "Content-Type: application/json")"
+          response="$(cat "$tmp_body")"
+
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "::error::Cron endpoint returned HTTP $http_code."
+            CRON_RESPONSE="$response" node <<'NODE'
+          const raw = process.env.CRON_RESPONSE || "";
+          try {
+            const payload = JSON.parse(raw);
+            const diagnostic = payload.diagnostic ? String(payload.diagnostic).slice(0, 1000) : "";
+            const error = payload.error ? String(payload.error) : "";
+            console.error(`Cron error payload: ${JSON.stringify({ error, diagnostic, runId: payload.runId, durationMs: payload.durationMs })}`);
+          } catch {
+            console.error(`Cron raw response: ${raw.slice(0, 2000)}`);
+          }
+          NODE
+            exit 1
+          fi
+
           CRON_RESPONSE="$response" node <<'NODE'
           let payload;
           try {
