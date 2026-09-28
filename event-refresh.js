@@ -1734,6 +1734,68 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     'Set source to "news".',
   ].join(" ");
 
+  const requestBatch = async (batch) => {
+    try {
+      const completion = await createAzureOpenAiChatCompletion({
+        model: "gpt-4o-mini",
+        temperature: 0,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: JSON.stringify({ cityFallbacks: CITY_FALLBACKS, news: batch }) },
+        ],
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "taiwan_events",
+            strict: true,
+            schema: {
+              type: "object",
+              properties: {
+                events: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      title: { type: "string" },
+                      content: { type: "string" },
+                      category: { type: "string", enum: ["traffic", "disaster", "crime", "accident", "politics", "livelihood", "medical", "education", "economy", "culture", "international", "other"] },
+                      categoryConfidence: { type: "number", minimum: 0, maximum: 1 },
+                      categoryReason: { type: "string" },
+                      secondaryTags: { type: "array", items: { type: "string" }, maxItems: 5 },
+                      sourceCategory: { type: "string" },
+                      url: { type: "string" },
+                      lat: { type: "number" },
+                      lng: { type: "number" },
+                      city: { type: "string" },
+                      locationText: { type: "string" },
+                      locationEvidence: { type: "string" },
+                      locationPrecision: { type: "string", enum: ["exact", "district", "city", "unknown"] },
+                      locationConfidence: { type: "number", minimum: 0, maximum: 1 },
+                      locationAmbiguity: { type: "boolean" },
+                      locationReason: { type: "string" },
+                      source: { type: "string" },
+                      eventFingerprint: { type: "string" },
+                    },
+                    required: ["title", "content", "category", "categoryConfidence", "categoryReason", "secondaryTags", "sourceCategory", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "locationAmbiguity", "locationReason", "source", "eventFingerprint"],
+                    additionalProperties: false,
+                  },
+                },
+              },
+              required: ["events"],
+              additionalProperties: false,
+            },
+          },
+        },
+      }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
+
+      const parsed = parseAiJsonCompletion(completion);
+      return Array.isArray(parsed?.events) ? parsed.events : [];
+    } catch (error) {
+      error.azureStage = error.azureStage || "request";
+      throw error;
+    }
+  };
+
   try {
     const batches = [];
     for (let index = 0; index < simplifiedNews.length; index += 18) {
