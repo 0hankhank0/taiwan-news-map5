@@ -1725,6 +1725,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     "Typhoon road closures are disaster; fires are classified by the fire rather than an attending mayor; crashes near schools or hospitals are not education or medical.",
     "Police typhoon reminders are disaster; a suspect's hometown is not incident location; ordinary fires are accident, arson crime, and disaster-caused fires disaster.",
     "Omit institutional, policy, subsidy, budget, council, application, public-service, or government process news unless it creates an immediate on-site traffic, safety, utility, disaster, or crowd impact.",
+    "Evaluate each supplied article independently. Return every qualifying event you can support; do not stop after the first event.",
     "Deduplicate reports of the same real-world event into one event.",
     "Same event criteria: Same location + Same time + Same nature.",
     "Generate a unique eventFingerprint in format city_type_keyword.",
@@ -1734,60 +1735,12 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
   ].join(" ");
 
   try {
-    const completion = await createAzureOpenAiChatCompletion({
-      model: "gpt-4o-mini",
-      temperature: 0,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: JSON.stringify({ cityFallbacks: CITY_FALLBACKS, news: simplifiedNews }) },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "taiwan_events",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              events: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string" },
-                    content: { type: "string" },
-                    category: { type: "string", enum: ["traffic", "disaster", "crime", "accident", "politics", "livelihood", "medical", "education", "economy", "culture", "international", "other"] },
-                    categoryConfidence: { type: "number", minimum: 0, maximum: 1 },
-                    categoryReason: { type: "string" },
-                    secondaryTags: { type: "array", items: { type: "string" }, maxItems: 5 },
-                    sourceCategory: { type: "string" },
-                    url: { type: "string" },
-                    lat: { type: "number" },
-                    lng: { type: "number" },
-                    city: { type: "string" },
-                    locationText: { type: "string" },
-                    locationEvidence: { type: "string" },
-                    locationPrecision: { type: "string", enum: ["exact", "district", "city", "unknown"] },
-                    locationConfidence: { type: "number" },
-                    locationAmbiguity: { type: "boolean" },
-                    locationReason: { type: "string" },
-                    source: { type: "string" },
-                    eventFingerprint: { type: "string" },
-                  },
-                  required: ["title", "content", "category", "categoryConfidence", "categoryReason", "secondaryTags", "sourceCategory", "url", "lat", "lng", "city", "locationText", "locationEvidence", "locationPrecision", "locationConfidence", "locationAmbiguity", "locationReason", "source", "eventFingerprint"],
-                  additionalProperties: false,
-                },
-              },
-            },
-            required: ["events"],
-            additionalProperties: false,
-          },
-        },
-      },
-    }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
-
-    const parsed = parseAiJsonCompletion(completion);
-    const extracted = Array.isArray(parsed?.events) ? parsed.events : [];
+    const batches = [];
+    for (let index = 0; index < simplifiedNews.length; index += 18) {
+      batches.push(simplifiedNews.slice(index, index + 18));
+    }
+    const batchResults = await Promise.all(batches.map((batch) => requestBatch(batch)));
+    const extracted = batchResults.flat();
     const normalized = normalizeAiExtractedEvents(extracted);
     // Observability only: retain the boundary counts on the collector result
     // so a refresh log can show whether loss happened before or after Azure.
