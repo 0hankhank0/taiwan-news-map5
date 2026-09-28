@@ -961,14 +961,35 @@ function isInstitutionalEvent(event) {
 }
 
 const NEWS_DIAGNOSTIC_SAMPLE_LIMIT = 20;
+
+function safeDiagnosticString(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  try {
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return String(value);
+    if (typeof value === "symbol") return fallback;
+    if (typeof value === "object") {
+      try {
+        const json = JSON.stringify(value);
+        return typeof json === "string" ? json : fallback;
+      } catch {
+        return fallback;
+      }
+    }
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function newsDiagnosticRecord(item = {}, patch = {}) {
   const content = cleanNewsText(item.contentSnippet || item.content || item.summary || "");
   return {
-    source: String(item.source || "RSS").slice(0, 120),
-    sourceId: String(item.guid || item.id || item.link || "").slice(0, 500),
-    title: String(item.title || "").trim().slice(0, 120),
+    source: safeDiagnosticString(item.source, "RSS").slice(0, 120),
+    sourceId: safeDiagnosticString(item.guid ?? item.id ?? item.link, "").slice(0, 500),
+    title: safeDiagnosticString(item.title, "").trim().slice(0, 120),
     publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
-    feedUrl: String(item.feedUrl || item.sourceUrl || "").split("?")[0].slice(0, 500),
+    feedUrl: safeDiagnosticString(item.feedUrl ?? item.sourceUrl, "").split("?")[0].slice(0, 500),
     stage: "rss", outcome: "received", reason: null,
     city: null, locationText: "", resolverReason: "", rulePassed: false,
     aiEligible: false, aiProcessed: false, aiExtracted: false, aiNormalized: false,
