@@ -1308,15 +1308,35 @@ async function fetchKktixActivityEvents(startedAt) {
   } catch (error) {
     const providerBlocked = Number(error.httpStatus) === 403;
     const diagnostic = error.kktixDiagnostic || null;
-    console.warn("[cron] KKTIX activity fetch failed:", diagnostic || error.message);
+    console.warn("[cron] KKTIX activity fetch failed; retaining existing events:", diagnostic || error.message);
+    const existingEvents = await getOfficialEvents();
+    const retained = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => {
+      const source = `${event?.source || ""} ${event?.sourceName || ""}`.toLowerCase();
+      return source.includes("kktix");
+    });
     await recordEventIntegrationStatus("kktix", {
-      status: providerBlocked ? "provider_blocked" : "error",
+      status: "warning",
       lastAttemptAt: attemptedAt,
       lastErrorType: providerBlocked ? "provider_blocked" : (error.name === "TimeoutError" ? "timeout" : "request_error"),
       lastDiagnostic: diagnostic,
       failedCount: 1,
     });
-    throw error;
+    logSourceFallback({
+      source: "kktix",
+      fallbackType: "existing_official_events",
+      retainedCount: retained.length,
+      failureCode: providerBlocked ? "provider_blocked" : (error.name === "TimeoutError" ? "timeout" : "provider_unavailable"),
+    });
+    Object.defineProperty(retained, "collector", {
+      value: {
+        status: "warning",
+        reason: providerBlocked ? "KKTIX provider blocked; retained existing events" : "KKTIX unavailable; retained existing events",
+        cacheRetained: true,
+        diagnostic,
+      },
+      enumerable: false,
+    });
+    return retained;
   }
 }
 
