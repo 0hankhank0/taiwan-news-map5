@@ -30,9 +30,38 @@ jobs:
             exit 1
           fi
           BASE_URL="${BASE_URL%/}"
-          response="$(curl -fsS -X POST "$BASE_URL/api/cron?mode=news" \
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          set +e
+          http_status="$(curl -sS -X POST "$BASE_URL/api/cron?mode=news" \
             -H "Authorization: Bearer $CRON_SECRET" \
-            -H "Content-Type: application/json")"
+            -H "Content-Type: application/json" \
+            -o "$response_file" -w "%{http_code}")"
+          curl_exit=$?
+          set -e
+          response="$(cat "$response_file")"
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "::error::Cron request failed in curl (exit $curl_exit, HTTP ${http_status:-unknown})."
+          fi
+          if [ "${http_status:-000}" -ge 400 ] 2>/dev/null; then
+            CRON_RESPONSE="$response" CRON_HTTP_STATUS="$http_status" node <<'NODE'
+          const secretValues = [process.env.CRON_SECRET, process.env.APP_BASE_URL, process.env.APP_BASE_URL_SECRET]
+            .filter(Boolean)
+            .sort((a, b) => b.length - a.length);
+          let body = String(process.env.CRON_RESPONSE || "");
+          for (const secret of secretValues) body = body.split(secret).join("[redacted-secret]");
+          body = body
+            .replace(/(authorization|bearer|token|api[_ -]?key|secret|password)\s*[:=]?\s*[^\s,;"'}]+/gi, "$1=[redacted]")
+            .replace(/https?:\/\/[^\s?#"']+\?[^\s"']*/gi, (url) => url.split("?")[0])
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 4000);
+          console.error(`::error::Cron endpoint returned HTTP ${process.env.CRON_HTTP_STATUS}. Safe response body: ${body || "<empty>"}`);
+          NODE
+          fi
+          if [ "$curl_exit" -ne 0 ] || [ "${http_status:-000}" -ge 400 ] 2>/dev/null; then
+            exit 22
+          fi
           CRON_RESPONSE="$response" node <<'NODE'
           let payload;
           try {
