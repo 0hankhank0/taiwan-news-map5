@@ -47,6 +47,7 @@ import { isEventInBounds, normalizeBounds } from "./modules/map-bounds-filter.mj
 import { getCardPreview } from "./modules/event-card-view.mjs";
 import { shareEvent } from "./modules/event-share.mjs";
 import { getRequestedEventId } from "./modules/event-permalink.mjs";
+import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-dedup.mjs";
 
     // ── CONFIG ──────────────────────────────────────────────
     const MAPBOX_TOKEN = getMapboxToken(); 
@@ -1923,29 +1924,11 @@ import { getRequestedEventId } from "./modules/event-permalink.mjs";
     }
 
     function deduplicateEvents(events) {
-        const seenTitles = new Set();
-        const seenContent = new Set();
-        return events.filter(ev => {
-            // 把標題與內容正規化：去空白、去標點、只留文字
-            const titleKey = (ev.title || ev.text || "")
-                .replace(/\s+/g, "")
-                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
-                .slice(0, 20); // 取前20字
-            
-            const contentKey = (ev.content || "")
-                .replace(/\s+/g, "")
-                .replace(/[，。！？、：；「」『』【】《》〈〉\-\.\,\!\?]/g, "")
-                .slice(0, 30); // 取前30字比對
-
-            // 如果標題或內容其中一個重複，就視為重複事件
-            if (seenTitles.has(titleKey) || (contentKey && seenContent.has(contentKey))) {
-                return false;
-            }
-
-            seenTitles.add(titleKey);
-            if (contentKey) seenContent.add(contentKey);
-            return true;
-        });
+        const kept = [];
+        for (const event of events) {
+            if (!kept.some(existing => isDuplicateDisplayEvent(event, existing))) kept.push(event);
+        }
+        return kept;
     }
 
     function getFilteredEvents(){

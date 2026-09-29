@@ -1758,7 +1758,7 @@ function applyCategoryDecision(event = {}) {
 }
 
 function normalizeFinalEvents(events) {
-  const dedupe = new Set();
+  const deduplicated = [];
   return events
     .filter((item) => {
       const lat = Number(item.lat);
@@ -1787,9 +1787,8 @@ function normalizeFinalEvents(events) {
     .filter((item) => !isGenericCmsNoticeRecord(item))
     .filter((item) => !isInstitutionalEvent(item))
     .filter((item) => {
-      const key = activityOccurrenceKey(item) || item.eventFingerprint || `${item.city}:${item.title.slice(0, 50)}:${item.category}`.toLowerCase();
-      if (dedupe.has(key)) return false;
-      dedupe.add(key);
+      if (deduplicated.some((existing) => isDuplicateEvent(item, [existing]))) return false;
+      deduplicated.push(item);
       return true;
     });
 }
@@ -2115,40 +2114,46 @@ function activityOccurrenceKey(event = {}) {
 }
 
 function isDuplicateEvent(newEvent, existingEventsList) {
-  if (newEvent.category === "activity") {
+  if (newEvent.category === "activity" || newEvent.eventKind === "activity") {
     const occurrenceKey = activityOccurrenceKey(newEvent);
-    return Boolean(occurrenceKey) && existingEventsList.some((event) => event.category === "activity" && activityOccurrenceKey(event) === occurrenceKey);
+    return Boolean(occurrenceKey) && existingEventsList.some((event) => (event.category === "activity" || event.eventKind === "activity") && activityOccurrenceKey(event) === occurrenceKey);
   }
-  const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
-  const newContent = (newEvent.content || "").replace(/\s+/g, "").slice(0, 30);
-
+  const normalize = (value) => String(value || "").toLocaleLowerCase().replace(/[\s\p{P}\p{S}_]+/gu, "");
+  const identity = (event) => event.sourceEventId || event.sourceId || event.externalId || event.eventId || event.eventFingerprint || event.id;
+  const url = (event) => String(event.sourceUrl || event.url || event.link || "").trim().toLocaleLowerCase();
+  const eventTime = (event) => {
+    const value = event.occurredAt || event.startsAt || event.startAt || event.publishedAt || event.updatedAt || event.createdAt;
+    const parsed = typeof value === "number" ? value : Date.parse(String(value || ""));
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  const sameLocation = (a, b) => {
+    if (normalize(a.city) && normalize(a.city) === normalize(b.city)) return true;
+    const latA = Number(a.lat), lngA = Number(a.lng), latB = Number(b.lat), lngB = Number(b.lng);
+    if (![latA, lngA, latB, lngB].every(Number.isFinite)) return false;
+    const latDistance = (latA - latB) * 111000;
+    const lngDistance = (lngA - lngB) * 111000 * Math.cos((latA + latB) * Math.PI / 360);
+    return Math.hypot(latDistance, lngDistance) <= 2000;
+  };
   return existingEventsList.some((event) => {
-    const existTitle = (event.title || "").replace(/\s+/g, "").slice(0, 15);
-    const existContent = (event.content || "").replace(/\s+/g, "").slice(0, 30);
-
-    if (newTitle === existTitle) return true;
-    if (newContent === existContent && newContent.length > 10) return true;
-
-    if (event.city === newEvent.city && event.category === newEvent.category && event.category !== "activity") {
-      let sameCount = 0;
-      for (const char of newTitle) {
-        if (existTitle.includes(char)) sameCount++;
-      }
-      if (sameCount >= 5) return true;
-    }
-    return false;
+    const newIdentity = identity(newEvent);
+    if (newIdentity && newIdentity === identity(event)) return true;
+    const newUrl = url(newEvent);
+    if (newUrl && newUrl === url(event)) return true;
+    if (newUrl || url(event)) return false;
+    if (normalize(newEvent.title || newEvent.text) !== normalize(event.title || event.text)) return false;
+    if (!normalize(newEvent.sourceName || newEvent.source) || normalize(newEvent.sourceName || newEvent.source) !== normalize(event.sourceName || event.source)) return false;
+    if (!sameLocation(newEvent, event)) return false;
+    const newTime = eventTime(newEvent), existingTime = eventTime(event);
+    return newTime !== null && existingTime !== null && Math.abs(newTime - existingTime) <= 48 * 60 * 60 * 1000;
   });
 }
 
 function findDuplicateForMerge(newEvent, existingEventsList) {
-  if (newEvent.category === "activity") {
+  if (newEvent.category === "activity" || newEvent.eventKind === "activity") {
     const occurrenceKey = activityOccurrenceKey(newEvent);
-    return existingEventsList.find((event) => event.category === "activity" && occurrenceKey && activityOccurrenceKey(event) === occurrenceKey);
+    return existingEventsList.find((event) => (event.category === "activity" || event.eventKind === "activity") && occurrenceKey && activityOccurrenceKey(event) === occurrenceKey);
   }
-  const newTitle = (newEvent.title || "").replace(/\s+/g, "").slice(0, 15);
-  return existingEventsList.find((event) =>
-    (event.title || "").replace(/\s+/g, "").slice(0, 15) === newTitle
-  );
+  return existingEventsList.find((event) => isDuplicateEvent(newEvent, [event]));
 }
 
 function mergeRefreshEvents(existingEvents, newEvents, now = Date.now()) {
