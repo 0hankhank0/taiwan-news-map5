@@ -11,7 +11,8 @@ module.exports = async (req, res) => {
 
   if (req.method === "OPTIONS") return res.status(204).end();
 
-  const { eventId } = req.method === "GET" ? req.query : req.body;
+  const { getRequestQuery } = require("./request-query");
+  const { eventId } = req.method === "GET" ? getRequestQuery(req) : req.body;
 
   if (!eventId) {
     return res.status(400).json({ error: "Missing eventId" });

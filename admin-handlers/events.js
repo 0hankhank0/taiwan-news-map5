@@ -83,10 +83,11 @@ module.exports = async (req, res) => {
   if (!auth.ok) return sendJson(res, auth.status, { error: auth.error });
 
   if (req.method === "GET") {
-    const q = String(req.query?.q || "").trim().toLowerCase();
-    const reviewState = String(req.query?.reviewState || "").trim();
-    const locationQuality = String(req.query?.locationQuality || "").trim();
-    const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 120)));
+    const query = getRequestQuery(req);
+    const q = String(query.q || "").trim().toLowerCase();
+    const reviewState = String(query.reviewState || "").trim();
+    const locationQuality = String(query.locationQuality || "").trim();
+    const limit = Math.max(1, Math.min(500, Number(query.limit || 120)));
     const events = normalizeEventsForFrontend(await getOfficialEvents());
     let filtered = events;
     if (reviewState) filtered = filtered.filter((event) => String(event.reviewState || "") === reviewState);
@@ -105,7 +106,7 @@ module.exports = async (req, res) => {
 
   if (req.method === "PATCH") {
     const body = getBody(req);
-    const eventId = String(req.query?.eventId || body.eventId || "").trim();
+    const eventId = String(getRequestQuery(req).eventId || body.eventId || "").trim();
     if (!eventId) return sendJson(res, 400, { error: "Missing eventId" });
 
     let patch;
@@ -122,3 +123,4 @@ module.exports = async (req, res) => {
 
   return sendJson(res, 405, { error: "Method not allowed" });
 };
+const { getRequestQuery } = require("../request-query");

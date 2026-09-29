@@ -21,9 +21,10 @@ module.exports = async (req, res) => {
   if (!auth.ok) return sendJson(res, auth.status, { error: auth.error });
 
   if (req.method === "GET") {
-    const status = String(req.query?.status || "").trim();
-    const eventId = String(req.query?.eventId || "").trim();
-    const limit = Math.max(1, Math.min(500, Number(req.query?.limit || 100)));
+    const query = getRequestQuery(req);
+    const status = String(query.status || "").trim();
+    const eventId = String(query.eventId || "").trim();
+    const limit = Math.max(1, Math.min(500, Number(query.limit || 100)));
     if (status && !REPORT_STATUSES.has(status)) {
       return sendJson(res, 400, { error: "Invalid status" });
     }
@@ -33,7 +34,7 @@ module.exports = async (req, res) => {
 
   if (req.method === "PATCH") {
     const body = getBody(req);
-    const reportId = String(req.query?.reportId || req.params?.reportId || body.reportId || "").trim();
+    const reportId = String(getRequestQuery(req).reportId || req.params?.reportId || body.reportId || "").trim();
     if (!reportId) return sendJson(res, 400, { error: "Missing reportId" });
 
     const status = body.status ? String(body.status).trim() : undefined;
@@ -52,3 +53,4 @@ module.exports = async (req, res) => {
 
   return sendJson(res, 405, { error: "Method not allowed" });
 };
+const { getRequestQuery } = require("../request-query");

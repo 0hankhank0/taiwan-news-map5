@@ -67,8 +67,9 @@ function sendHtml(res, status, body) {
 
 async function handler(req, res) {
   const origin = originFor(req);
-  const eventId = String(req.params?.eventId || req.query?.eventId || "").trim();
-  const categoryKey = String(req.params?.categoryKey || req.query?.categoryKey || "").trim().toLowerCase();
+  const query = getRequestQuery(req);
+  const eventId = String(req.params?.eventId || query.eventId || "").trim();
+  const categoryKey = String(req.params?.categoryKey || query.categoryKey || "").trim().toLowerCase();
   const canonical = eventId ? `${origin}/event/${encodeURIComponent(eventId)}` : `${origin}/`;
   try {
     if (eventId) {
@@ -95,3 +96,4 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.CATEGORY_DESCRIPTIONS = CATEGORY_DESCRIPTIONS;
+const { getRequestQuery } = require("./request-query");

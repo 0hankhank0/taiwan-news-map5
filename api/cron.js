@@ -74,11 +74,29 @@ module.exports = async (req, res) => {
     });
   }
 
+  if (!lockResult.acquired && lockResult.reason === "coordination_unavailable") {
+    return sendJson(res, 503, {
+      success: false,
+      skippedByLock: false,
+      runId,
+      durationMs: Date.now() - startedAt,
+      error: "Cron lock unavailable",
+    });
+  }
+
   if (!lockResult.acquired) {
     const completedAt = new Date().toISOString();
     const durationMs = Date.now() - startedAt;
-    await appendRefreshLog({ runId, trigger: "scheduled", mode, status: "skipped", skippedReason: "cron_lock", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs });
-    await saveRefreshRunDetail({ runId, trigger: "scheduled", mode, status: "skipped", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: "已有排程執行中", sources: {}, pipeline: {}, finalEvents: [] });
+    try {
+      await appendRefreshLog({ runId, trigger: "scheduled", mode, status: "skipped", skippedReason: "cron_lock", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs });
+    } catch (error) {
+      console.warn("[cron] skipped-run log write failed", { code: String(error?.code || "telemetry_error").slice(0, 80) });
+    }
+    try {
+      await saveRefreshRunDetail({ runId, trigger: "scheduled", mode, status: "skipped", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: "已有排程執行中", sources: {}, pipeline: {}, finalEvents: [] });
+    } catch (error) {
+      console.warn("[cron] skipped-run detail write failed", { code: String(error?.code || "telemetry_error").slice(0, 80) });
+    }
     return sendJson(res, 200, {
       success: true,
       skippedByLock: true,
@@ -107,7 +125,11 @@ module.exports = async (req, res) => {
       error: "Cron execution failed",
     });
   } finally {
-    await releaseCronLock(runId);
+    try {
+      await releaseCronLock(runId);
+    } catch (error) {
+      console.warn("[cron] lock release failed", { code: String(error?.code || "lock_release_error").slice(0, 80) });
+    }
   }
 };
 

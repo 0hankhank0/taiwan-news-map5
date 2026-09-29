@@ -325,7 +325,8 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
       },
     });
     const feed = await parser.parseString(await xmlResponse.text());
-    return feed.items || [];
+    const fetchedAt = new Date().toISOString();
+    return (feed.items || []).map((item) => ({ ...item, fetchedAt, feedUrl: item.feedUrl || rssUrl }));
   } catch (error) {
     console.warn(`[cron] RSS fetch failed for ${rssUrl}:`, error.message);
     return [];
@@ -862,6 +863,17 @@ function parseEventTime(value) {
   return Number.isFinite(ts) ? ts : null;
 }
 
+async function bestEffortTelemetry(operation, work) {
+  try {
+    await work();
+  } catch (error) {
+    console.warn("[event-refresh] telemetry write failed", {
+      operation,
+      code: String(error?.code || "telemetry_error").replace(/[^a-z0-9_-]/gi, "_").slice(0, 80),
+    });
+  }
+}
+
 function inferEventStatus(event, now = Date.now()) {
   const startAt = parseEventTime(event.startsAt || event.startAt);
   const endAt = parseEventTime(event.endsAt || event.endAt || event.expiresAt);
@@ -909,7 +921,9 @@ function enrichCronEvent(event) {
   const sourceUpdatedAt = parseEventTime(event.updatedAt || event.sourceUpdatedAt);
   // createdAt is our record creation time and fetchedAt is acquisition time;
   // neither represents when an event occurred.
-  const createdAt = Number(event.createdAt) || now;
+  const createdAt = Number.isFinite(Number(event.createdAt))
+    ? Number(event.createdAt)
+    : (parseEventTime(event.createdAt) || now);
   const fetchedAt = parseEventTime(event.fetchedAt) || now;
   const sourceUrl = String(event.sourceUrl || event.url || event.link || "").trim();
 
@@ -924,10 +938,11 @@ function enrichCronEvent(event) {
     district: event.district || extractDistrict(locationText),
     address: event.address || event.location || "",
     venue: event.venue || "",
-    publishedAt: sourcePublishedAt ? new Date(sourcePublishedAt).toISOString() : (event.category === "activity" ? null : new Date(createdAt).toISOString()),
+    publishedAt: sourcePublishedAt ? new Date(sourcePublishedAt).toISOString() : null,
     updatedAt: sourceUpdatedAt ? new Date(sourceUpdatedAt).toISOString() : null,
     createdAt,
     fetchedAt: new Date(fetchedAt).toISOString(),
+    publicationNotice: !sourcePublishedAt && event.eventKind === "news" ? "來源未提供發布時間" : (event.publicationNotice || null),
     status: event.status || inferEventStatus(event, now),
     severity: inferSeverity(event),
     impact: event.impact || inferImpact(event),
@@ -1062,6 +1077,9 @@ function extractRuleBasedEvents(newsItems) {
         eventKind: "news",
         categorySource: "rule",
         url: String(item.link || ""),
+        sourceUrl: String(item.link || ""),
+        publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
+        fetchedAt: item.fetchedAt || null,
         lat: location.lat,
         lng: location.lng,
         city: location.city,
@@ -1078,6 +1096,20 @@ function extractRuleBasedEvents(newsItems) {
   const result = candidates.slice(0, 40);
   Object.defineProperty(result, "diagnostics", { value: diagnostics, enumerable: false });
   return result;
+}
+
+function inheritNewsTimestamps(events = [], rssItems = []) {
+  const byUrl = new Map(rssItems.map((item) => [String(item.link || item.url || "").trim(), item]).filter(([url]) => url));
+  return events.map((event) => {
+    const source = byUrl.get(String(event.url || event.sourceUrl || "").trim());
+    if (!source) return event;
+    return {
+      ...event,
+      sourceUrl: event.sourceUrl || source.link || source.url || "",
+      publishedAt: event.publishedAt || source.isoDate || source.pubDate || source.publishedAt || null,
+      fetchedAt: event.fetchedAt || source.fetchedAt || null,
+    };
+  });
 }
 
 function rssItemIdentity(item = {}) {
@@ -2318,7 +2350,7 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
       else if (record.outcome === "capped" || (record.reason === "ruleCandidateLimit")) record.aiEligible = false;
     });
     const azureOpenAiConfig = getAzureOpenAiConfig();
-    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = sources.__collectorResults.ai.items;
+    sources.__collectorResults.ai = await runCollector("AI 提取", () => extractAiEventsWithContext(aiNewsCandidates, startedAt), { skipReason: options.skipAi ? "AI 提取已停用" : (!aiNewsCandidates.length ? "沒有需要 AI 補充的 RSS 新聞" : (azureOpenAiConfig.error || "")) }); sources.aiEvents = inheritNewsTimestamps(sources.__collectorResults.ai.items, sources.rssItems);
     if (sources.__collectorResults.ai.status !== "success") rssRecords.forEach((record) => { if (record.aiProcessed) record.aiProcessed = false; });
     Object.assign(sources.__collectorResults.ai, {
       rssItems: sources.rssItems.length,
@@ -2674,7 +2706,7 @@ async function runEventRefresh(options = {}) {
     };
 
     if (options.write !== false) {
-      await setRefreshStatus({
+      await bestEffortTelemetry("setRefreshStatus:success", () => setRefreshStatus({
         status,
         runId,
         mode,
@@ -2685,11 +2717,11 @@ async function runEventRefresh(options = {}) {
         geocodingAttempts: geocodingStats.geocodingAttempts,
         geocodingHits: geocodingStats.geocodingHits,
         completedAt,
-      });
-      await appendRefreshLog({ ...result, trigger, status, startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: true });
-      await saveRefreshRunDetail(details);
-      if (activeEvents.length === 0) await notifyRefreshAlert("zero_events", "成功抓取後事件數為 0");
-      if (errorSourceCount) await notifyRefreshAlert("source_failure", buildSourceFailureAlert(sourceFailures));
+      }));
+      await bestEffortTelemetry("appendRefreshLog:success", () => appendRefreshLog({ ...result, trigger, status, startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: true }));
+      await bestEffortTelemetry("saveRefreshRunDetail:success", () => saveRefreshRunDetail(details));
+      if (activeEvents.length === 0) await bestEffortTelemetry("notifyRefreshAlert:zero_events", () => notifyRefreshAlert("zero_events", "成功抓取後事件數為 0"));
+      if (errorSourceCount) await bestEffortTelemetry("notifyRefreshAlert:source_failure", () => notifyRefreshAlert("source_failure", buildSourceFailureAlert(sourceFailures)));
     }
 
     console.log(`[event-refresh] complete runId=${runId} count=${activeEvents.length}`);
@@ -2699,17 +2731,17 @@ async function runEventRefresh(options = {}) {
     if (options.write !== false) {
       const completedAt = new Date().toISOString();
       const safeError = cleanRefreshLogError(error?.message);
-      await setRefreshStatus({
+      await bestEffortTelemetry("setRefreshStatus:error", () => setRefreshStatus({
         status: "error",
         runId,
         mode,
         durationMs,
         error: safeError,
         completedAt,
-      });
-      await appendRefreshLog({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs, error: safeError });
-      await saveRefreshRunDetail({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: safeError, sources: {}, pipeline: {}, finalEvents: [] });
-      await notifyRefreshAlert("refresh_failure", `抓取執行失敗：${safeError}`);
+      }));
+      await bestEffortTelemetry("appendRefreshLog:error", () => appendRefreshLog({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, durationMs, error: safeError }));
+      await bestEffortTelemetry("saveRefreshRunDetail:error", () => saveRefreshRunDetail({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: safeError, sources: {}, pipeline: {}, finalEvents: [] }));
+      await bestEffortTelemetry("notifyRefreshAlert:failure", () => notifyRefreshAlert("refresh_failure", "抓取執行失敗：" + safeError));
     }
     console.error("[event-refresh] failed:", error.message);
     throw error;

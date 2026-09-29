@@ -2,7 +2,7 @@ const { isAuthorized } = require("../admin-auth");
 const { getRefreshLog, getRefreshRunDetail } = require("../event-store");
 
 function sendJson(res, status, payload) { return res.status(status).json(payload); }
-function getQuery(req, key) { return String(req.query?.[key] || "").trim(); }
+function getQuery(req, key) { return String(getRequestQuery(req)[key] || "").trim(); }
 function parseLimit(value) { return Math.min(200, Math.max(1, Number.parseInt(value, 10) || 50)); }
 function parseOffset(value) { return Math.max(0, Number.parseInt(value, 10) || 0); }
 function validDate(value) { const ms = Date.parse(value); return Number.isFinite(ms) ? ms : null; }
@@ -42,3 +42,4 @@ module.exports = async (req, res) => {
   const offset = parseOffset(getQuery(req, "offset"));
   return sendJson(res, 200, { logs: filtered.slice(offset, offset + limit), total: filtered.length, limit, offset });
 };
+const { getRequestQuery } = require("../request-query");

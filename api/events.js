@@ -2,25 +2,25 @@ const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { getOfficialEvents, getEventCacheStatus } = require("../event-store");
 const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
+const { getRequestQuery } = require("../request-query");
 function publicEvent(event = {}) {
-  const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
+  const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","occurredAt","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
   return Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
 }
 function apiFilterDiagnostics(events = [], query = {}, returned = []) {
-  // Read-only mirror of the existing query result.  It deliberately does not
-  // participate in filtering or the JSON response contract.
   const count = Array.isArray(events) ? events.length : 0;
+  const normalize = (value) => String(Array.isArray(value) ? value[0] : value || "").trim().toLowerCase();
+  const category = normalize(query.category), status = normalize(query.status);
+  const categoryRows = category && category !== "all" ? events.filter((event) => String(event.category || "").toLowerCase() === category || String(event.groupCategory || "").toLowerCase() === category) : events;
+  const statusRows = status && status !== "all" ? categoryRows.filter((event) => String(event.status || "").toLowerCase() === status) : categoryRows;
   const afterQuery = applyEventQueryFilters(events, query).length;
   return {
     databaseRowsFetched: count,
-    rowsAfterStatusFilter: count, rowsAfterTimeFilter: count, rowsAfterCategoryFilter: count,
-    rowsAfterVisibilityFilter: count, rowsReturned: returned.length,
+    rowsAfterStatusFilter: statusRows.length, rowsAfterCategoryFilter: categoryRows.length, rowsReturned: returned.length,
     filters: [{ filterName: "normalization", before: count, rejected: 0, after: count, note: "normalization is recorded separately" },
       { filterName: "query", before: count, rejected: Math.max(0, count - afterQuery), after: afterQuery },
-      { filterName: "status", before: count, rejected: 0, after: count, note: "no standalone status filter outside query" },
-      { filterName: "time", before: count, rejected: 0, after: count, note: "no time filter in API handler" },
-      { filterName: "category", before: count, rejected: 0, after: count, note: "category is part of query filter" },
-      { filterName: "visibility", before: count, rejected: 0, after: count, note: "no visibility filter in API handler" }],
+      { filterName: "category", before: count, rejected: count - categoryRows.length, after: categoryRows.length },
+      { filterName: "status", before: categoryRows.length, rejected: categoryRows.length - statusRows.length, after: statusRows.length }],
   };
 }
 
@@ -36,7 +36,8 @@ module.exports = async (req, res) => {
 
   // This route is intentionally shared with the events function to stay within
   // Vercel Hobby's function limit; the rewrite preserves the public endpoint.
-  if (String(req.url || "").includes("/api/integrations/events/status") || req.query?.integrationStatus === "1") {
+  const query = getRequestQuery(req);
+  if (String(req.url || "").includes("/api/integrations/events/status") || query.integrationStatus === "1") {
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ integrations: await getEventIntegrationStatuses() });
   }
@@ -44,8 +45,8 @@ module.exports = async (req, res) => {
   try {
     const storedEvents = await getOfficialEvents();
     const normalizedEvents = normalizeEventsForFrontend(storedEvents);
-    const events = applyEventQueryFilters(normalizedEvents, req.query).map(publicEvent);
-    console.info("[events] diagnostics", apiFilterDiagnostics(storedEvents, req.query, events));
+    const events = applyEventQueryFilters(normalizedEvents, query).map(publicEvent);
+    console.info("[events] diagnostics", apiFilterDiagnostics(normalizedEvents, query, events));
     const cacheStatus = await getEventCacheStatus();
     const summary = getEventStatusSummary(normalizedEvents, cacheStatus);
     res.setHeader("X-Event-Count", String(events.length));

@@ -2,9 +2,10 @@ const adminEvents = require("../admin-handlers/events");
 const health = require("../admin-handlers/health");
 const reports = require("../admin-handlers/reports");
 const refreshLog = require("../admin-handlers/refresh-log");
+const { getRequestQuery } = require("../request-query");
 
 function routeType(req) {
-  const route = String(req.query?.adminRoute || "").trim();
+  const route = String(getRequestQuery(req).adminRoute || "").trim();
   if (route) return route;
   const pathname = String(req.path || req.url || "").split("?")[0];
   if (pathname.endsWith("/admin-events")) return "events";

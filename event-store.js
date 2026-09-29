@@ -29,7 +29,8 @@ const publishLocks = new Map();
 const MAX_REFRESH_RUN_DETAILS = 50;
 const REFRESH_RUN_DETAIL_TTL_SECONDS = 60 * 60 * 24 * 14;
 const CRON_LOCK_KEY = "cron:lock";
-const DEFAULT_CRON_LOCK_TTL_SECONDS = 120;
+// Matches the ten-minute workflow timeout plus a small recovery margin.
+const DEFAULT_CRON_LOCK_TTL_SECONDS = 660;
 const CLEARABLE_EVENT_CACHE_KEYS = [
   NEWS_CACHE_KEY,
   TRAFFIC_CACHE_KEY,
@@ -77,6 +78,10 @@ function getSqliteDb() {
 
 function shouldSkipLocalCache() {
   return process.env.DISABLE_LOCAL_EVENT_CACHE === "1";
+}
+
+function localPersistenceAllowed() {
+  return process.env.NODE_ENV !== "production" && !process.env.VERCEL;
 }
 
 // Coordination protects a provider-wide quota and must therefore be shared
@@ -266,13 +271,17 @@ async function getCachedValue(key) {
     setSqliteValue(key, kvValue);
     return kvValue;
   }
-  return getSqliteValue(key);
+  return localPersistenceAllowed() ? getSqliteValue(key) : undefined;
 }
 
 async function setCachedValue(key, value, options = {}) {
   const kvOk = await setKvValue(key, value, options);
-  const sqliteOk = setSqliteValue(key, value, options);
-  return kvOk || sqliteOk;
+  if (kv) {
+    setSqliteValue(key, value, options);
+    return kvOk;
+  }
+  if (!localPersistenceAllowed()) return false;
+  return setSqliteValue(key, value, options);
 }
 
 async function trySetCachedValue(key, value, options = {}) {
@@ -282,24 +291,30 @@ async function trySetCachedValue(key, value, options = {}) {
     return true;
   }
   if (kvResult === false) return false;
+  if (!localPersistenceAllowed()) return undefined;
   return trySetSqliteValue(key, value, options);
 }
 
 async function deleteCachedValue(key) {
   const kvOk = await deleteKvValue(key);
-  const sqliteOk = deleteSqliteValue(key);
-  return kvOk || sqliteOk;
+  if (kv) {
+    deleteSqliteValue(key);
+    return kvOk;
+  }
+  if (!localPersistenceAllowed()) return false;
+  return deleteSqliteValue(key);
 }
 
 async function deleteCachedValueIfOwner(key, ownerToken) {
   if (!ownerToken) return false;
   if (kv) {
     try {
-      const result = await kv.eval("local value=redis.call('GET',KEYS[1]); if not value then return 0 end; local ok,data=pcall(cjson.decode,value); if ok and data.ownerToken==ARGV[1] then return redis.call('DEL',KEYS[1]) end; return 0", [key], [ownerToken]);
+      const result = await kv.eval("local value=redis.call('GET',KEYS[1]); if not value then return 0 end; local ok,data=pcall(cjson.decode,value); if ok and (data.ownerToken==ARGV[1] or data.ownerRunId==ARGV[1] or data.owner==ARGV[1]) then return redis.call('DEL',KEYS[1]) end; return 0", [key], [ownerToken]);
       if (Number(result) === 1) { deleteSqliteValue(key); return true; }
       return false;
     } catch (error) {
       console.warn(`[event-store] KV owner delete failed for ${key}`);
+      return false;
     }
   }
   if (shouldSkipLocalCache()) return false;
@@ -309,7 +324,9 @@ async function deleteCachedValueIfOwner(key, ownerToken) {
     try {
       const row = db.prepare("SELECT value, expires_at FROM cache_entries WHERE key = ?").get(key);
       const value = row && (!row.expires_at || row.expires_at > Date.now()) ? decodeCachedValue(JSON.parse(row.value)) : null;
-      const deleted = value?.ownerToken === ownerToken ? db.prepare("DELETE FROM cache_entries WHERE key = ?").run(key).changes : 0;
+      const deleted = [value?.ownerToken, value?.ownerRunId, value?.owner].includes(ownerToken)
+        ? db.prepare("DELETE FROM cache_entries WHERE key = ?").run(key).changes
+        : 0;
       db.exec("COMMIT");
       return Number(deleted) === 1;
     } catch (error) { db.exec("ROLLBACK"); throw error; }
@@ -473,7 +490,12 @@ async function migrateLegacyEvents() {
 async function setOfficialEvents(events, options = {}) {
   if (process.env.EVENT_STORE_MODE === "supabase") return require("./supabase-event-repository").setOfficialEvents(events);
   const safe = dedupeEvents(Array.isArray(events) ? events : []);
-  await setCachedValue(OFFICIAL_EVENTS_KEY, safe, options);
+  const canonicalWritten = await setCachedValue(OFFICIAL_EVENTS_KEY, safe, options);
+  if (!canonicalWritten) {
+    const error = new Error("Canonical event persistence failed");
+    error.code = "CANONICAL_PERSISTENCE_FAILED";
+    throw error;
+  }
   // Kept in sync for old workers and bucket readers; consumers must read the
   // official collection above, never a bucket directly.
   await setCachedEvents(safe, options);
@@ -903,10 +925,7 @@ async function acquireCronLock(options = {}) {
 }
 
 async function releaseCronLock(owner) {
-  const current = await getCachedValue(CRON_LOCK_KEY);
-  const currentOwner = current?.ownerRunId || current?.owner;
-  if (owner && currentOwner && currentOwner !== owner) return false;
-  return deleteCachedValue(CRON_LOCK_KEY);
+  return deleteCachedValueIfOwner(CRON_LOCK_KEY, owner);
 }
 
 function getCronLockStatusPayload(lock) {

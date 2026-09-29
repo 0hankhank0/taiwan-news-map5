@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const { isAuthorized } = require("../admin-auth");
 const { SUBMISSION_STATUSES, createSubmission, listSubmissions, updateSubmission, addSubmissionReport, getSubmissionReportSummary, getAuditLog, hasValidTaiwanCoordinates } = require("../submission-store");
 const { getCachedValue, setCachedValue, getCachedEvents } = require("../event-store");
+const { getRequestQuery } = require("../request-query");
 
 // Keep historical values readable for old records and API clients; the public form only offers public-impact categories.
 const CATEGORIES = new Set(["activity", "traffic", "construction", "public_facility", "disaster", "police", "social", "life", "other"]);
@@ -70,10 +71,10 @@ function publicSubmission(submission) {
   return safe;
 }
 function isSubmissionReportRoute(req) {
-  return req.query?.submissionReports === "1" || String(req.url || "").includes("/api/submission-reports");
+  return getRequestQuery(req).submissionReports === "1" || String(req.url || "").includes("/api/submission-reports");
 }
 function isSubmissionAuditLogRoute(req) {
-  return req.query?.auditLog === "1" || String(req.url || "").includes("/api/submission-audit-log");
+  return getRequestQuery(req).auditLog === "1" || String(req.url || "").includes("/api/submission-audit-log");
 }
 const AUDIT_LOG_MAX_LIMIT = 200;
 const AUDIT_LOG_DEFAULT_LIMIT = 50;
@@ -104,10 +105,11 @@ async function handleSubmissionAuditLog(req, res) {
   const auth = isAuthorized(req);
   if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
   try {
-    const limit = Math.min(AUDIT_LOG_MAX_LIMIT, Math.max(1, auditInteger(req.query?.limit, AUDIT_LOG_DEFAULT_LIMIT, "limit")));
-    const offset = auditInteger(req.query?.offset, 0, "offset");
-    const action = text(req.query?.action, 80), submissionId = text(req.query?.submissionId, 100), actorRole = text(req.query?.actorRole, 40);
-    const dateFrom = auditDate(req.query?.dateFrom, "dateFrom"), dateTo = auditDate(req.query?.dateTo, "dateTo", true);
+    const query = getRequestQuery(req);
+    const limit = Math.min(AUDIT_LOG_MAX_LIMIT, Math.max(1, auditInteger(query.limit, AUDIT_LOG_DEFAULT_LIMIT, "limit")));
+    const offset = auditInteger(query.offset, 0, "offset");
+    const action = text(query.action, 80), submissionId = text(query.submissionId, 100), actorRole = text(query.actorRole, 40);
+    const dateFrom = auditDate(query.dateFrom, "dateFrom"), dateTo = auditDate(query.dateTo, "dateTo", true);
     if (dateFrom !== null && dateTo !== null && dateFrom > dateTo) throw new Error("Invalid date range");
     const logs = (await getAuditLog()).map(publicAuditLogEntry).filter((entry) => {
       const time = Date.parse(entry.actionTime);
@@ -194,9 +196,10 @@ module.exports = async (req, res) => {
   if (isSubmissionReportRoute(req)) return handleSubmissionReport(req, res);
   const admin = isAuthorized(req).ok;
   if (req.method === "GET") {
-    const status = text(req.query?.status, 30);
+    const query = getRequestQuery(req);
+    const status = text(query.status, 30);
     if (status && !SUBMISSION_STATUSES.has(status)) return res.status(400).json({ error: "Invalid status" });
-    const submissions = await listSubmissions({ status: admin ? status : "approved", publicOnly: !admin, limit: req.query?.limit });
+    const submissions = await listSubmissions({ status: admin ? status : "approved", publicOnly: !admin, limit: query.limit });
     if (admin) await Promise.all(submissions.map(async (submission) => {
       submission.reportSummary = await getSubmissionReportSummary(submission.submissionId);
     }));
@@ -221,7 +224,7 @@ module.exports = async (req, res) => {
   }
   if (req.method === "PATCH") {
     const auth = isAuthorized(req); if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
-    const id = text(req.query?.submissionId || req.body?.submissionId, 80), status = text(req.body?.status, 30);
+    const id = text(getRequestQuery(req).submissionId || req.body?.submissionId, 80), status = text(req.body?.status, 30);
     if (!id || !SUBMISSION_STATUSES.has(status)) return res.status(400).json({ error: "Missing submissionId or invalid status" });
     const existing = (await listSubmissions({ limit: 1000 })).find((item) => item.submissionId === id);
     const restoring = status === "approved" && Boolean(existing?.hiddenByReports);

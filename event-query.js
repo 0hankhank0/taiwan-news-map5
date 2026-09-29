@@ -42,7 +42,13 @@ function applyEventQueryFilters(events, query = {}) {
 }
 
 function getEventTimestamp(event) {
-  const raw = event?.updatedAt || event?.publishedAt || event?.time || event?.createdAt || event?.startsAt || event?.startAt;
+  const kind = String(event?.eventKind || "").toLowerCase();
+  const category = String(event?.category || event?.groupCategory || "").toLowerCase();
+  const raw = kind === "activity" || category === "activity"
+    ? (event?.startsAt || event?.startAt || event?.createdAt || event?.fetchedAt)
+    : (kind === "news" || category === "news" || category === "other"
+      ? (event?.publishedAt || event?.createdAt || event?.fetchedAt)
+      : (event?.occurredAt || event?.updatedAt || event?.createdAt || event?.fetchedAt));
   const timestamp = Date.parse(raw || "");
   return Number.isFinite(timestamp) ? timestamp : 0;
 }

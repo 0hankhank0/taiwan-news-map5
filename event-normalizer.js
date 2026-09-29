@@ -159,6 +159,17 @@ function parseTime(value) {
   return Number.isFinite(ts) ? ts : null;
 }
 
+function eventSortTimestamp(event = {}) {
+  const kind = String(event.eventKind || "").toLowerCase();
+  const category = String(event.category || event.groupCategory || "").toLowerCase();
+  const raw = kind === "activity" || category === "activity"
+    ? (event.startsAt || event.startAt || event.createdAt || event.fetchedAt)
+    : (kind === "news" || category === "news" || category === "other"
+      ? (event.publishedAt || event.createdAt || event.fetchedAt)
+      : (event.occurredAt || event.updatedAt || event.createdAt || event.fetchedAt));
+  return parseTime(raw) || 0;
+}
+
 function inferStatus(event) {
   return eventDisplay.deriveEventStatus(event);
 }
@@ -271,10 +282,10 @@ function normalizeEvent(event, index = 0) {
   const sourceUrl = normalizeText(event.sourceUrl || event.url || event.link);
   // An activity's schedule is authoritative. Do not relabel a provider's
   // metadata update (or our record creation) as its publication time.
-  const publishedAt = eventKind === "activity"
-    ? (event.publishedAt || null)
-    : (event.publishedAt || event.updatedAt || event.time || event.createdAt || new Date().toISOString());
-  const createdAt = Number(event.createdAt) || Date.parse(publishedAt || "") || Date.now();
+  const publishedAt = event.publishedAt || null;
+  const createdAt = Number.isFinite(Number(event.createdAt))
+    ? Number(event.createdAt)
+    : (parseTime(event.createdAt) || Date.now());
   const district = normalizeText(location.district || event.district || extractDistrict(`${event.address || ""} ${event.location || ""} ${title} ${content}`));
 
   return {
@@ -314,10 +325,11 @@ function normalizeEvent(event, index = 0) {
     sourceName: normalizeText(event.sourceName || event.source || "news"),
     sourceUrl,
     url: sourceUrl,
-    publishedAt: publishedAt && new Date(publishedAt).toString() !== "Invalid Date" ? new Date(publishedAt).toISOString() : (eventKind === "activity" ? null : new Date(createdAt).toISOString()),
-    updatedAt: event.updatedAt && new Date(event.updatedAt).toString() !== "Invalid Date" ? new Date(event.updatedAt).toISOString() : (eventKind === "activity" ? null : new Date(createdAt).toISOString()),
+    publishedAt: publishedAt && new Date(publishedAt).toString() !== "Invalid Date" ? new Date(publishedAt).toISOString() : null,
+    updatedAt: event.updatedAt && new Date(event.updatedAt).toString() !== "Invalid Date" ? new Date(event.updatedAt).toISOString() : null,
     createdAt,
     fetchedAt: event.fetchedAt || null,
+    publicationNotice: event.publicationNotice || (!event.publishedAt && eventKind === "news" ? "來源未提供發布時間" : null),
     startsAt: event.startsAt || event.startAt || null,
     endsAt: event.endsAt || event.endAt || null,
     expiresAt: event.expiresAt || null,
@@ -386,11 +398,7 @@ function normalizeEventsForFrontend(value) {
       seen.add(key);
       return true;
     })
-    .sort((a, b) => {
-      const aTime = Date.parse(a.publishedAt) || a.createdAt || 0;
-      const bTime = Date.parse(b.publishedAt) || b.createdAt || 0;
-      return bTime - aTime;
-    });
+    .sort((a, b) => eventSortTimestamp(b) - eventSortTimestamp(a));
 }
 
 module.exports = {

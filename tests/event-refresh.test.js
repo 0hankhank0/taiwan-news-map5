@@ -79,7 +79,7 @@ async function call(handler, req) {
   await deleteCachedValue(EVENT_REFRESH_RUN_INDEX_KEY);
   await deleteCachedValue(CRON_LOCK_KEY);
 
-  assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 120);
+  assert.equal(DEFAULT_CRON_LOCK_TTL_SECONDS, 660);
   const firstLock = await acquireCronLock({ owner: "lock-owner", ttlSeconds: 60 });
   assert.equal(firstLock.acquired, true);
   assert.equal(firstLock.lock.locked, true);

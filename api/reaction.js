@@ -1,4 +1,5 @@
 const { getReaction, getReactions, incrementReaction } = require("../reaction-store");
+const { getRequestQuery } = require("../request-query");
 
 const MAX_BATCH_REACTIONS = 100;
 
@@ -23,7 +24,7 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === "GET") {
-    const eventIds = normalizeEventIds(req.query?.eventIds);
+    const eventIds = normalizeEventIds(getRequestQuery(req).eventIds);
     if (eventIds.length > 0) {
       try {
         return res.status(200).json({ reactions: await getReactions(eventIds) });
@@ -34,7 +35,7 @@ module.exports = async (req, res) => {
     }
   }
 
-  const { eventId } = req.method === "GET" ? req.query : req.body;
+  const { eventId } = req.method === "GET" ? getRequestQuery(req) : req.body;
 
   if (!eventId) {
     return res.status(400).json({ error: "Missing eventId" });

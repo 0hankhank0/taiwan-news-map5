@@ -9,7 +9,7 @@ jobs:
   refresh:
     concurrency:
       group: cron-news
-      cancel-in-progress: true
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

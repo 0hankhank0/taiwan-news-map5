@@ -1,7 +1,15 @@
 const CACHE_KEY = "island-pulse:events:v1";
 
 export function eventFingerprint(events) {
-  return JSON.stringify((Array.isArray(events) ? events : []).map((event) => [event.id, event.updatedAt, event.publishedAt, event.title]));
+  const value = (input) => input == null ? null : String(input).replace(/\s+/g, " ").trim();
+  const number = (input) => Number.isFinite(Number(input)) ? Number(input) : null;
+  return JSON.stringify((Array.isArray(events) ? events : []).map((event) => ({
+    id: value(event?.id), title: value(event?.title), category: value(event?.category), groupCategory: value(event?.groupCategory),
+    status: value(event?.status), lat: number(event?.lat), lng: number(event?.lng),
+    locationQuality: value(event?.locationQuality), locationPrecision: value(event?.locationPrecision),
+    publishedAt: value(event?.publishedAt), updatedAt: value(event?.updatedAt), startsAt: value(event?.startsAt), endsAt: value(event?.endsAt),
+    sourceUrl: value(event?.sourceUrl || event?.url), summary: value(event?.summary), content: value(event?.content),
+  })).sort((a, b) => String(a.id || "").localeCompare(String(b.id || ""))));
 }
 
 export function readEventCache(storage = globalThis.localStorage) {

@@ -252,7 +252,12 @@
   }
 
   function formatEventTime(event) {
-    const raw = event?.updatedAt || event?.publishedAt || event?.time || event?.createdAt;
+    const category = normalizeText(event?.eventKind || event?.category || event?.groupCategory).toLowerCase();
+    const raw = category === "activity"
+      ? (event?.startsAt || event?.startAt || event?.createdAt || event?.fetchedAt)
+      : (category === "news" || category === "other"
+        ? (event?.publishedAt || event?.createdAt || event?.fetchedAt)
+        : (event?.occurredAt || event?.updatedAt || event?.createdAt || event?.fetchedAt));
     if (!raw) return "";
     const date = new Date(raw);
     if (Number.isNaN(date.getTime())) return "";
