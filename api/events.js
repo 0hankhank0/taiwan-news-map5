@@ -5,7 +5,14 @@ const { getEventIntegrationStatuses } = require("../integration-store");
 const { getRequestQuery } = require("../request-query");
 function publicEvent(event = {}) {
   const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","occurredAt","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
-  return Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
+  fields.push("verifiedStatus", "reviewState", "severity");
+  const result = Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
+  if (event.sourceTrace && typeof event.sourceTrace === "object") {
+    const safe = ["outlet", "title", "capturedAt", "source", "sourceName", "sourceUrl", "url", "publishedAt", "fetchedAt", "updatedAt"];
+    const project = trace => Object.fromEntries(safe.filter(key => trace?.[key] !== undefined).map(key => [key, trace[key]]));
+    result.sourceTrace = Array.isArray(event.sourceTrace) ? event.sourceTrace.map(project) : project(event.sourceTrace);
+  }
+  return result;
 }
 function apiFilterDiagnostics(events = [], query = {}, returned = []) {
   const count = Array.isArray(events) ? events.length : 0;

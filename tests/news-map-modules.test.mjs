@@ -48,6 +48,10 @@ assert.equal(isVisibleEventLayer({ ...activity, startsAt: "2026-08-02T12:00:00Z"
 assert.equal(getActivityLifecycle({ ...activity, status: "active" }, now).state, "ongoing");
 
 assert.equal(getEventTime({ occurredAt: "2026-07-30T10:00:00Z", publishedAt: "2026-07-30T11:00:00Z" }).field, "occurredAt");
+assert.equal(getEventTime({ publishedAt: "2026-07-30T20:00:00" }).time, now, "news timestamps without a timezone use Taipei time");
+assert.equal(isWithinTimeRange({ eventKind: "news", category: "activity", title: "市集活動新聞", publishedAt: new Date(now - 48 * 3600000).toISOString(), status: "active" }, "24h", now), false, "activity words in news cannot bypass the time range");
+assert.equal(getActivityLifecycle({ eventKind: "traffic_data", title: "演唱會周邊交通管制", category: "traffic" }, now).isActivity, false);
+assert.equal(getActivityLifecycle({ eventKind: "activity", category: "other", startsAt: new Date(now).toISOString() }, now).state, "ongoing");
 assert.equal(isWithinTimeRange({ publishedAt: "2026-07-30T02:00:00Z" }, "24h", now), true);
 assert.equal(isWithinTimeRange({ publishedAt: "2026-07-28T02:00:00Z" }, "24h", now), false);
 assert.equal(isWithinTimeRange({ category: "activity", startsAt: "2026-01-01T00:00:00Z", endsAt: "2026-12-31T00:00:00Z", fetchedAt: new Date(now).toISOString(), updatedAt: new Date(now).toISOString() }, "6h", now), true);

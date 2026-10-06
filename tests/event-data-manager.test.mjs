@@ -8,4 +8,10 @@ await Promise.resolve(); assert.equal(calls, 1); resolve([{ id: "real-1", update
 assert.equal(states.at(-1).phase, "success");
 const failing = createEventDataManager({ storage, onState: (state) => states.push(state), fetchEvents: async () => { throw new Error("offline"); } });
 await failing.refresh(); assert.equal(states.at(-1).cached.events[0].id, "real-1");
+const response = { headers: new Headers({ "X-Event-Total": "42" }) };
+const metadataManager = createEventDataManager({ storage, onState: state => states.push(state), fetchEvents: async () => ({ events: [{ id: "with-metadata" }], response }) });
+assert.deepEqual(await metadataManager.refresh(), [{ id: "with-metadata" }]);
+assert.equal(states.at(-1).response, response);
+await failing.refresh();
+assert.deepEqual(states.at(-1).cached.events, [{ id: "with-metadata" }], "only serializable event data is cached");
 console.log("event data manager tests passed");

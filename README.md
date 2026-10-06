@@ -18,7 +18,7 @@
 
 ## API function inventory
 
-`api/` 必須維持少於 12 個 `.js` 入口；rewrite route 是同一個入口的路由別名，不能當成獨立 Serverless Function。合併後文件列出的 9 個入口如下：
+`api/` 必須維持少於 12 個 `.js` 入口；rewrite route 是同一個入口的路由別名，不能當成獨立 Serverless Function。目前共 11 個入口：
 
 - `api/config.js`
 - `api/events.js`
@@ -29,6 +29,8 @@
 - `api/reaction.js`
 - `api/reactions-total.js`
 - `api/create-payment.js`
+- `api/event-candidates.js`
+- `api/event-page.js`
 
 合併路由：
 
@@ -60,12 +62,13 @@ api/submission.js
 - `POST /api/report`：回報事件問題（body 為事件識別與原因）。
 - `GET /api/reaction?eventIds=id1,id2`：讀取反應；`POST /api/reaction`（`eventId`、`type`）：送出反應；`GET /api/reactions/total`：讀取總數。
 - `POST /api/create-payment`（`amount`、`itemName`）：建立付款資訊。
+- `POST /api/payment-callback`：綠界付款通知；共用付款入口，驗證簽章、訂單及金額後保存結果，重送不重複入帳。`PAYMENT_BASE_URL` 設定公開 HTTPS 網域；測試模式使用 `ECPAY_OPERATION_MODE=Test`。
 
 管理與維運 API：
 
 - `GET|POST /api/cron`（`mode` 可由 query 或 body 指定）：執行受控資料更新，需 `CRON_SECRET`。
 - `/api/admin-events`、`/api/health`、`/api/refresh-log`、`/api/reports` 與 `/api/reports/:reportId`：管理事件、健康狀態、更新紀錄及回報，使用 `REPORT_ADMIN_TOKEN`。
-- `GET|PATCH /api/submissions`：管理員可依 `status`、`limit` 查詢或以 `submissionId` 與 body 更新審核；`POST /api/submission-reports`、`GET /api/submission-audit-log` 亦使用 `REPORT_ADMIN_TOKEN`。
+- `GET|PATCH /api/submissions`：管理員可依 `status`、`limit` 查詢或以 `submissionId` 與 body 更新審核；`GET /api/submission-audit-log` 使用 `REPORT_ADMIN_TOKEN`。`POST /api/submission-reports` 是有次數限制的公開檢舉端點。
 
 `REPORT_ADMIN_TOKEN` 是人工審核和管理資料的授權；`CRON_SECRET` 只授權排程／手動抓取觸發。兩者不可互相替代，也不可放到前端。
 

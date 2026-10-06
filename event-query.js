@@ -1,13 +1,14 @@
 function normalizeQueryValue(value) {
   return String(Array.isArray(value) ? value[0] : value || "").trim();
 }
+function normalizeFilterText(value) { return normalizeQueryValue(value).toLowerCase().replace(/臺/g, "台"); }
 
 function applyEventQueryFilters(events, query = {}) {
   const category = normalizeQueryValue(query.category).toLowerCase();
   const status = normalizeQueryValue(query.status).toLowerCase();
-  const city = normalizeQueryValue(query.city);
+  const city = normalizeFilterText(query.city);
   const source = normalizeQueryValue(query.source).toLowerCase();
-  const q = normalizeQueryValue(query.q).toLowerCase();
+  const q = normalizeFilterText(query.q);
   const limit = Math.max(0, Math.min(Number(normalizeQueryValue(query.limit)) || 0, 500));
 
   let filtered = Array.isArray(events) ? events : [];
@@ -21,7 +22,7 @@ function applyEventQueryFilters(events, query = {}) {
     filtered = filtered.filter((event) => String(event.status || "").toLowerCase() === status);
   }
   if (city && city !== "all") {
-    filtered = filtered.filter((event) => String(event.city || "").includes(city));
+    filtered = filtered.filter((event) => normalizeFilterText(event.city).includes(city));
   }
   if (source && source !== "all") {
     filtered = filtered.filter((event) =>
@@ -31,10 +32,9 @@ function applyEventQueryFilters(events, query = {}) {
   }
   if (q) {
     filtered = filtered.filter((event) =>
-      [event.title, event.content, event.summary, event.address, event.venue, event.city, event.district]
+      normalizeFilterText([event.title, event.content, event.summary, event.address, event.venue, event.city, event.district, event.sourceName]
         .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
+        .join(" "))
         .includes(q)
     );
   }

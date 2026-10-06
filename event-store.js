@@ -432,7 +432,9 @@ async function tryAcquireCoordinationLock(key, value, options = {}) {
   if (kvResult === true) return { acquired: true, backend: "redis" };
   if (kvResult === false) return { acquired: false, backend: "redis", reason: "locked" };
   if (!canUseLocalCoordinationFallback()) return { acquired: false, backend: "redis", reason: "coordination_unavailable" };
-  return { acquired: trySetSqliteValue(key, value, options), backend: "sqlite" };
+  if (shouldSkipLocalCache()) return { acquired: false, backend: "sqlite", reason: "coordination_unavailable" };
+  const acquired = trySetSqliteValue(key, value, options);
+  return { acquired, backend: "sqlite", reason: acquired ? undefined : "locked" };
 }
 
 async function getCachedCounter(key) {
@@ -460,6 +462,13 @@ async function getCachedEvents() {
 // `events:official` is the canonical event collection.  The older cache keys
 // remain a read-through compatibility cache for deployments upgraded in place.
 async function getOfficialEvents() {
+  const rows = await readOfficialEvents();
+  // Submission review state is authoritative even if a cross-store sync failed.
+  const { getPublicMapSubmissionEvents } = require("./submission-store");
+  const submissions = await getPublicMapSubmissionEvents();
+  return [...rows.filter(row => !row.submissionId && !String(row.id || "").startsWith("submission:")), ...submissions.map(row => ({ ...row, status: "active" }))];
+}
+async function readOfficialEvents() {
   if (process.env.EVENT_STORE_MODE === "supabase") {
     try {
       return await require("./supabase-event-repository").getOfficialEvents();
@@ -1084,6 +1093,9 @@ function dedupeEvents(events) {
 }
 
 module.exports = {
+  getDurableValue,
+  mutateDurableValue,
+  syncSubmissionEvent,
   NEWS_CACHE_KEY,
   TRAFFIC_CACHE_KEY,
   EVENT_CACHE_KEY,
@@ -1146,3 +1158,63 @@ module.exports = {
     resetKvClient() { kv = createKvClient(); },
   },
 };
+
+function storageUnavailable() {
+  return Object.assign(new Error("Durable storage unavailable"), { code: "STORAGE_UNAVAILABLE" });
+}
+async function getDurableValue(key) {
+  if (kv) {
+    try { return decodeCachedValue(await kv.get(key)); }
+    catch { throw storageUnavailable(); }
+  }
+  if (!localPersistenceAllowed() || shouldSkipLocalCache()) throw storageUnavailable();
+  try {
+    const row = getSqliteDb().prepare("SELECT value, expires_at FROM cache_entries WHERE key = ?").get(key);
+    if (!row || (row.expires_at && row.expires_at <= Date.now())) return undefined;
+    return decodeCachedValue(JSON.parse(row.value));
+  } catch { throw storageUnavailable(); }
+}
+// The shared lease serializes readers and writers. The commit checks ownership
+// atomically, so an expired lease can never overwrite a newer writer's value.
+async function mutateDurableValue(key, update, options = {}) {
+  const lockKey = `write-lock:${key}`;
+  const ownerToken = require("crypto").randomUUID();
+  const deadline = Date.now() + 5000;
+  while (true) {
+    const lock = await tryAcquireCoordinationLock(lockKey, { ownerToken }, { ex: 30 });
+    if (lock.acquired) break;
+    if (lock.reason !== "locked" || Date.now() >= deadline) throw storageUnavailable();
+    await new Promise(resolve => setTimeout(resolve, 20));
+  }
+  try {
+    const next = update(await getDurableValue(key));
+    if (next && typeof next.then === "function") throw new Error("Storage updater must be synchronous");
+    if (kv) {
+      const result = await kv.eval("local lock=redis.call('GET',KEYS[1]); if not lock then return 0 end; local data=cjson.decode(lock); if data.ownerToken~=ARGV[1] then return 0 end; redis.call('SET',KEYS[2],ARGV[2]); if tonumber(ARGV[3])>0 then redis.call('EXPIRE',KEYS[2],ARGV[3]) end; return 1", [lockKey, key], [ownerToken, JSON.stringify(next), String(options.ex || 0)]);
+      if (Number(result) !== 1) throw storageUnavailable();
+    } else {
+      const db = getSqliteDb();
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const lock = getSqliteValue(lockKey);
+        if (lock?.ownerToken !== ownerToken || !setSqliteValue(key, next, options)) throw storageUnavailable();
+        db.exec("COMMIT");
+      } catch (error) { db.exec("ROLLBACK"); throw error; }
+    }
+    return next;
+  } catch (error) {
+    if (error.code) throw error;
+    throw storageUnavailable();
+  } finally { await deleteCachedValueIfOwner(lockKey, ownerToken); }
+}
+async function syncSubmissionEvent(submissionId, event) {
+  if (process.env.EVENT_STORE_MODE === "supabase") {
+    return require("./supabase-event-repository").syncSubmissionEvent(submissionId, event);
+  }
+  const legacy = await getCachedEvents();
+  const events = await mutateDurableValue(OFFICIAL_EVENTS_KEY, current => {
+    const rows = (Array.isArray(current) ? current : legacy).filter(row => row.submissionId !== submissionId && row.id !== `submission:${submissionId}`);
+    return event ? [...rows, event] : rows;
+  });
+  await setCachedEvents(events);
+}

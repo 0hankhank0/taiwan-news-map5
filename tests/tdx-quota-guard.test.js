@@ -110,10 +110,11 @@ const refresh = require("../event-refresh");
   // remains usable, while existing official/non-TDX events remain untouched.
   await store.setCachedValue("tdx:live_cms_events", { events: [{ id: "prod-live", source: "TDX CMS", category: "traffic", title: "cached", city: "Taipei", lat: 25.03, lng: 121.56, expiresAt: Date.now() + 60000 }] }, { ex: 60 });
   await store.setCachedValue("tdx:construction_events", { events: [{ id: "prod-construction", source: "TDX CMS", category: "construction", title: "cached work", city: "Taipei", lat: 25.03, lng: 121.56, expiresAt: Date.now() + 60000 }] }, { ex: 60 });
+  const durableCache = new Map(await Promise.all(["tdx:live_cms_events", "tdx:construction_events"].map(async (key) => [key, await store.getCachedValue(key)])));
   const savedNodeEnv = process.env.NODE_ENV; const savedVercel = process.env.VERCEL; const savedBackend = process.env.EVENT_COORDINATION_BACKEND;
   const savedProductionClientId = process.env.TDX_CLIENT_ID; const savedProductionClientSecret = process.env.TDX_CLIENT_SECRET;
   process.env.NODE_ENV = "production"; process.env.VERCEL = "1"; process.env.EVENT_COORDINATION_BACKEND = "redis";
-  store.__test.setKvClient({ async get() { throw new Error("redis://secret@example unavailable"); }, async set() { throw new Error("redis unavailable"); }, async eval() { throw new Error("redis unavailable"); } });
+  store.__test.setKvClient({ async get(key) { if (durableCache.has(key)) return durableCache.get(key); throw new Error("redis://secret@example unavailable"); }, async set() { throw new Error("redis unavailable"); }, async eval() { throw new Error("redis unavailable"); } });
   assert.equal(store.canUseLocalCoordinationFallback(), false);
   const productionReservation = await store.reserveCachedCounter(`tdx:production:${Date.now()}`, 1, { budget: 220, ex: 60 });
   assert.deepEqual(productionReservation, { allowed: false, used: 0, reason: "coordination_unavailable", backend: "redis" });
@@ -132,6 +133,16 @@ const refresh = require("../event-refresh");
   assert.equal(productionRefresh.tdxBudget.available, false);
   assert.equal(productionRefresh.tdxLayers.live.outcome, "coordination_unavailable");
   assert.equal(JSON.stringify(productionRefresh).includes("redis://secret"), false, "Redis connection details are not exposed");
+  // A complete Redis outage cannot read the durable cache. Production must
+  // retain official events rather than rely on an instance-local SQLite copy.
+  store.__test.setKvClient({ async get() { throw new Error("redis unavailable"); }, async set() { throw new Error("redis unavailable"); }, async eval() { throw new Error("redis unavailable"); } });
+  const outageSources = await refresh.fetchDefaultSources("traffic", Date.now(), { tdxDelayMs: 0 });
+  assert.equal(outageSources.__collectorResults.tdxTraffic.retainedSource, "official_events");
+  assert.equal(outageSources.tdxEvents.length, 0);
+  const outageRefresh = await refresh.runEventRefresh({ mode: "traffic", write: false, existingEvents: productionRefresh.events, sourceData: outageSources, skipExternalGeocoding: true });
+  assert.ok(outageRefresh.events.some((event) => event.id === "official-live"));
+  assert.ok(outageRefresh.events.some((event) => event.id === "manual"));
+  assert.equal(productionFetches, 0);
   const trafficWorkflow = fs.readFileSync(path.join(__dirname, "..", ".github", "workflows", "refresh-traffic.yml"), "utf8");
   assert.match(trafficWorkflow, /payload\.status === "partial_success" && count >= 0/, "traffic workflow accepts retained partial success");
   global.fetch = originalFetch;

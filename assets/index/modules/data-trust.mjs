@@ -106,13 +106,11 @@ export function createDataTrustController({ getEventStatusLabel, getLocationPrec
         renderPanel(state, visibleCount ?? (document.querySelectorAll(".event-card-v2").length || count));
     }
 
-    function updateError(message = "暫時讀不到事件資料，請稍後再試") {
+    function updateError(message = "暫時讀不到事件資料，請稍後再試", visibleCount = 0) {
         state.status = "error";
-        state.total = 0;
-        state.lastUpdated = "";
-        state.sources = [];
+        state.total = Math.max(state.total, visibleCount);
         state.message = message;
-        renderPanel(state, 0);
+        renderPanel(state, visibleCount);
     }
 
     function updateVisibleCount(visibleCount = 0) {

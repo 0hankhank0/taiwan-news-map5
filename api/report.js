@@ -1,4 +1,6 @@
 const { createReport, getPublicReportSummary } = require("../report-store");
+const { reserveCachedCounter, getOfficialEvents } = require("../event-store");
+const crypto = require("crypto");
 
 const AI_STATUSES = new Set(["valid", "likely_valid", "unclear", "likely_invalid", "spam"]);
 const AI_ACTIONS = new Set([
@@ -148,6 +150,7 @@ async function reviewReportWithAi({ title, eventSnapshot, errorType, message }) 
   try {
     const response = await fetch(aiConfig.url, {
       method: "POST",
+      signal: AbortSignal.timeout(7000),
       headers: aiConfig.headers,
       body: JSON.stringify({
         ...aiConfig.bodyExtra,
@@ -282,8 +285,15 @@ module.exports = async (req, res) => {
     if (!eventId || !title || !errorType || !message) {
       return sendJson(res, 400, { error: "缺少必要欄位 eventId/title/errorType/message" });
     }
+    const reporter = crypto.createHash("sha256").update(String(req.headers?.["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")).digest("hex");
+    const reservation = await reserveCachedCounter(`report:rate:${reporter}`, 1, { budget: 6, ex: 3600 });
+    if (!reservation || reservation.reason === "coordination_unavailable") return sendJson(res, 503, { error: "回報服務暫時無法使用" });
+    if (!reservation.allowed) return sendJson(res, 429, { error: "回報次數過多，請稍後再試" });
+    const officialEvent = (await getOfficialEvents()).find(event => String(event.id) === eventId);
+    if (!officialEvent) return sendJson(res, 404, { error: "事件不存在或已撤下" });
+    const fingerprint = crypto.createHash("sha256").update(JSON.stringify([reporter, eventId, errorType, message])).digest("hex");
 
-    const eventSnapshot = sanitizeSnapshot(body.eventSnapshot, {
+    const eventSnapshot = sanitizeSnapshot(officialEvent, {
       eventId,
       title,
       content: body.content,
@@ -293,6 +303,7 @@ module.exports = async (req, res) => {
     });
     const aiReview = await reviewReportWithAi({ title, eventSnapshot, errorType, message });
     const report = await createReport({
+      fingerprint,
       eventId,
       title,
       eventSnapshot,
@@ -312,6 +323,7 @@ module.exports = async (req, res) => {
     });
   } catch (error) {
     console.error("[report] API error:", error.message);
-    return sendJson(res, 500, { error: "回報送出失敗" });
+    if (error.code === "DUPLICATE_REPORT") return sendJson(res, 409, { error: "已收到相同回報" });
+    return sendJson(res, error.code === "STORAGE_UNAVAILABLE" ? 503 : 500, { error: "回報送出失敗" });
   }
 };

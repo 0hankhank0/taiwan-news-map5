@@ -70,7 +70,7 @@ jobs:
           // this exact host-label check. Do not use a substring/endsWith allowlist.
           const hostname = preview.hostname.toLowerCase();
           const validPreview = preview.protocol === "https:"
-            && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+\.vercel\.app$/.test(hostname)
+            && /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.vercel\.app$/.test(hostname)
             && preview.pathname === "/"
             && !preview.search
             && !preview.hash

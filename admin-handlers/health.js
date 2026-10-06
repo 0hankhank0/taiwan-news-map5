@@ -1,6 +1,6 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { isAuthorized } = require("../admin-auth");
-const { getCachedEvents, getEventCacheStatus, getRefreshLog } = require("../event-store");
+const { getOfficialEvents, getEventCacheStatus, getRefreshLog } = require("../event-store");
 const { getReports } = require("../report-store");
 
 function sendJson(res, status, payload) {
@@ -51,7 +51,7 @@ module.exports = async (req, res) => {
   const auth = isAuthorized(req);
   if (!auth.ok) return sendJson(res, auth.status, { error: auth.error });
 
-  const rawEvents = await getCachedEvents();
+  const rawEvents = await getOfficialEvents();
   const events = normalizeEventsForFrontend(rawEvents);
   const cache = await getEventCacheStatus();
   const reports = await getReports();

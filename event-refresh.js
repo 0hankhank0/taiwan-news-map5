@@ -97,6 +97,9 @@ const DEFAULT_RSS_SOURCES = [
 ];
 
 const RSS_TIMEOUT_MS = 2200;
+const ACTIVITY_DEFAULT_DURATION_MS = 24 * 60 * 60 * 1000;
+const ACTIVITY_ENDED_GRACE_MS = 6 * 60 * 60 * 1000;
+const ACTIVITY_FUTURE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const TDX_TIMEOUT_MS = 1800;
 const AZURE_OPENAI_TIMEOUT_MS = 5000;
 const MAX_NEWS_FOR_AI = Number(process.env.MAX_NEWS_FOR_AI || DEFAULT_AI_CONTEXT_LIMIT);
@@ -329,8 +332,26 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
     return (feed.items || []).map((item) => ({ ...item, fetchedAt, feedUrl: item.feedUrl || rssUrl }));
   } catch (error) {
     console.warn(`[cron] RSS fetch failed for ${rssUrl}:`, error.message);
-    return [];
+    throw error;
   }
+}
+
+async function fetchRssFeeds(startedAt, feedUrls = DEFAULT_RSS_SOURCES) {
+  const results = await Promise.allSettled(feedUrls.map((url) => fetchOneRssFeed(url, startedAt)));
+  const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const failedCount = results.filter((result) => result.status === "rejected").length;
+  items.collector = {
+    status: failedCount ? (failedCount === results.length ? "failed" : "warning") : "success",
+    reason: failedCount ? `RSS provider_unavailable: ${failedCount}/${results.length} feeds failed` : null,
+    successfulSubrequestCount: results.length - failedCount,
+    failedSubrequestCount: failedCount,
+    subrequests: results.map((result, index) => ({
+      source: feedUrls[index], status: result.status === "fulfilled" ? "success" : "failed",
+      count: result.status === "fulfilled" ? result.value.length : 0,
+      reason: result.status === "rejected" ? cleanRefreshLogError(result.reason?.message) : null,
+    })),
+  };
+  return items;
 }
 
 async function fetchTDXAccessToken(startedAt) {
@@ -877,9 +898,22 @@ async function bestEffortTelemetry(operation, work) {
 function inferEventStatus(event, now = Date.now()) {
   const startAt = parseEventTime(event.startsAt || event.startAt);
   const endAt = parseEventTime(event.endsAt || event.endAt || event.expiresAt);
+  if (event.eventKind === "activity" || (!event.eventKind && event.category === "activity")) {
+    const interval = getActivityInterval(startAt, parseEventTime(event.endsAt || event.endAt));
+    if (interval) {
+      if (interval.end + ACTIVITY_ENDED_GRACE_MS < now) return "expired";
+      return interval.start > now ? "upcoming" : "active";
+    }
+  }
   if (endAt && endAt < now) return "expired";
   if (startAt && startAt > now) return "upcoming";
   return "active";
+}
+
+function getActivityInterval(start, end) {
+  if (start === null && end === null) return null;
+  if (start !== null && end !== null && end < start) return null;
+  return { start: start ?? end - ACTIVITY_DEFAULT_DURATION_MS, end: end ?? start + ACTIVITY_DEFAULT_DURATION_MS };
 }
 
 function inferImpact(event) {
@@ -1179,11 +1213,12 @@ function parseKktixMeta(item) {
   const timeLine = readKktixMetaLine(text, ["\u6642\u9593", "Time"]);
   const locationLine = readKktixMetaLine(text, ["\u5730\u9ede", "\u5730\u5740", "Location", "Venue"]);
   const [startText, endText] = timeLine.split(/\s*~\s*/);
+  const startAt = parseKktixDate(startText);
   const locationParts = locationLine.split(/\s*\/\s*/).map((part) => part.trim()).filter(Boolean);
   return {
     timeLine,
-    startAt: parseKktixDate(startText),
-    endAt: parseKktixDate(endText || startText),
+    startAt,
+    endAt: parseKktixDate(endText) ?? (startAt === null ? null : startAt + ACTIVITY_DEFAULT_DURATION_MS),
     venue: locationParts[0] || "",
     address: locationParts[1] || locationParts[0] || "",
     location: locationLine,
@@ -1264,13 +1299,13 @@ async function fetchKktixActivityEvents(startedAt) {
     for (const item of (feed.items || []).slice(0, 60)) {
       const meta = parseKktixMeta(item);
       if (!item.title || !item.link || !meta.endAt) continue;
-      if (meta.endAt < now) continue;
+      if (meta.endAt + ACTIVITY_ENDED_GRACE_MS < now || (meta.startAt && meta.endAt < meta.startAt)) continue;
       if (meta.startAt && meta.startAt > windowEnd) continue;
 
       const cityInfo = inferCityFromText(`${meta.address} ${meta.location} ${item.title} ${item.contentSnippet || ""}`);
       if (!cityInfo?.city || !Number.isFinite(cityInfo.lat) || !Number.isFinite(cityInfo.lng)) continue;
 
-      const expiresAt = Math.min(meta.endAt + 2 * 60 * 60 * 1000, now + 30 * 24 * 60 * 60 * 1000);
+      const expiresAt = meta.endAt + ACTIVITY_ENDED_GRACE_MS;
       const title = String(item.title || "").trim().slice(0, 120);
       const content = [
         meta.timeLine ? `Time: ${meta.timeLine}` : "",
@@ -1320,10 +1355,12 @@ async function fetchKktixActivityEvents(startedAt) {
 }
 
 function parseICultureDate(value = "") {
-  const match = String(value || "").trim().match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  const text = String(value || "").trim();
+  if (/[zZ]$|[+-]\d{2}:?\d{2}$/.test(text)) return parseEventTime(text);
+  const match = text.match(/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?)?$/);
   if (!match) return null;
-  const [, year, month, day, hour = "0", minute = "0", second = "0"] = match;
-  const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}+08:00`);
+  const [, year, month, day, hour = "0", minute = "0", second = "0", fraction = "0"] = match;
+  const timestamp = Date.parse(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${minute.padStart(2, "0")}:${second.padStart(2, "0")}.${fraction.padEnd(3, "0")}+08:00`);
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
@@ -1386,8 +1423,8 @@ async function fetchCultureActivityEvents(startedAt, options = {}) {
       if (!uid || !title) continue;
       for (const show of getICultureShowInfo(activity)) {
         const startsAt = parseICultureDate(show?.time ?? show?.startTime ?? show?.startDate);
-        const endsAt = parseICultureDate(show?.endTime ?? show?.endtime) || startsAt;
-        if (!startsAt || !endsAt || endsAt < now || startsAt > windowEnd) continue;
+        const endsAt = parseICultureDate(show?.endTime ?? show?.endtime) ?? (startsAt === null ? null : startsAt + ACTIVITY_DEFAULT_DURATION_MS);
+        if (!startsAt || !endsAt || endsAt < startsAt || endsAt + ACTIVITY_ENDED_GRACE_MS < now || startsAt > windowEnd) continue;
         const lat = Number(show?.latitude ?? show?.lat);
         const lng = Number(show?.longitude ?? show?.lng ?? show?.lon);
         const address = locationText(show?.location ?? show?.address);
@@ -1404,7 +1441,7 @@ async function fetchCultureActivityEvents(startedAt, options = {}) {
           category: "activity", url: sourceUrl, sourceUrl, address, venue, location: address || venue,
           lat, lng, city, district: extractDistrict(address), source: "iCulture", sourceName: "iCulture",
           eventFingerprint: `iculture:${dedupeKey}`, startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString(),
-          expiresAt: Math.min(endsAt + 2 * 60 * 60 * 1000, windowEnd), createdAt: now,
+          expiresAt: endsAt + ACTIVITY_ENDED_GRACE_MS, createdAt: now,
         }));
         if (events.length >= ICULTURE_MAX_EVENTS) break;
       }
@@ -1457,10 +1494,7 @@ function extractZipJson(buffer) {
 }
 
 function parseTourismDate(value) {
-  const text = String(value || "").trim();
-  if (!text) return null;
-  const timestamp = Date.parse(text);
-  return Number.isFinite(timestamp) ? timestamp : null;
+  return parseICultureDate(value);
 }
 
 function normalizeTourismEvent(item, now = Date.now()) {
@@ -1471,10 +1505,11 @@ function normalizeTourismEvent(item, now = Date.now()) {
   const postalAddress = item?.PostalAddress;
   const address = locationText(postalAddress);
   const locatedCities = Array.isArray(item?.LocatedCities) ? item.LocatedCities.join(" ") : String(item?.LocatedCities || "");
-  const startsAt = parseTourismDate(item?.StartDateTime);
-  const endsAt = parseTourismDate(item?.EndDateTime);
+  const interval = getActivityInterval(parseTourismDate(item?.StartDateTime), parseTourismDate(item?.EndDateTime));
+  if (!interval) return null;
+  const { start: startsAt, end: endsAt } = interval;
   const status = String(item?.EventStatus || "").trim().toLowerCase();
-  if (!id || !title || !isValidTaiwanCoord(lat, lng) || (endsAt && endsAt < now) || /end|ended|closed|結束/.test(status)) return null;
+  if (!id || !title || !isValidTaiwanCoord(lat, lng) || endsAt + ACTIVITY_ENDED_GRACE_MS < now || startsAt > now + ACTIVITY_FUTURE_WINDOW_MS || /end|ended|closed|cancel|expired|resolved|cleared|結束/.test(status)) return null;
   const city = inferTaiwanCityFromText(`${locatedCities} ${address} ${title}`) || inferCityFromText(`${locatedCities} ${address} ${title}`)?.city;
   if (!city) return null;
   const images = Array.isArray(item?.Images) ? item.Images : [];
@@ -1488,7 +1523,7 @@ function normalizeTourismEvent(item, now = Date.now()) {
     image, images, eventFingerprint: `tourism-events:${id}`,
     startsAt: startsAt ? new Date(startsAt).toISOString() : null,
     endsAt: endsAt ? new Date(endsAt).toISOString() : null,
-    expiresAt: endsAt || (startsAt ? startsAt + 30 * 24 * 60 * 60 * 1000 : now + 30 * 24 * 60 * 60 * 1000),
+    expiresAt: endsAt + ACTIVITY_ENDED_GRACE_MS,
     // UpdateTime is source metadata; the activity interval is represented by
     // StartDateTime/EndDateTime and must not be treated as publication time.
     publishedAt: null, updatedAt: item?.UpdateTime || null, createdAt: now, fetchedAt: now, tourismEvent: {
@@ -2336,7 +2371,8 @@ async function fetchDefaultSources(mode, startedAt, options = {}) {
   }
 
   if (includeNews) {
-    sources.__collectorResults.rss = await runCollector("RSS", async () => (await Promise.all(DEFAULT_RSS_SOURCES.map((url) => fetchOneRssFeed(url, startedAt)))).flat()); sources.rssItems = sources.__collectorResults.rss.items;
+    sources.__collectorResults.rss = await runCollector("RSS", () => fetchRssFeeds(startedAt), { requestCount: DEFAULT_RSS_SOURCES.length }); sources.rssItems = sources.__collectorResults.rss.items;
+    if (["failed", "warning"].includes(sources.__collectorResults.rss.status)) sourceFailure("rss", sources.__collectorResults.rss.reason);
     sources.ruleBasedEvents = extractRuleBasedEvents(sources.rssItems);
     const aiNewsCandidates = selectAiNewsCandidates(sources.rssItems, sources.ruleBasedEvents);
     const rssRecords = sources.ruleBasedEvents.diagnostics?.rssRecords || [];
@@ -2782,6 +2818,7 @@ module.exports = {
   buildKktixResponseDiagnostic,
   buildSourceFailureAlert,
   fetchDefaultSources,
+  fetchRssFeeds,
   isGenericCmsNotice,
   isDuplicateEvent,
   mergeRefreshEvents,

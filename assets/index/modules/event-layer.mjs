@@ -37,6 +37,8 @@ export function parseTaipeiEventTime(value) {
 }
 
 export function isActivityEvent(event = {}) {
+    const kind = String(event.eventKind || "").trim().toLowerCase();
+    if (kind) return kind === "activity";
     const category = String(event.groupCategory || event.category || event.type || "").trim().toLowerCase();
     if (ACTIVITY_CATEGORIES.has(category)) return true;
     return ACTIVITY_KEYWORDS.test([event.title, event.content, event.summary, event.description].filter(Boolean).join(" "));

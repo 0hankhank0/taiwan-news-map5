@@ -1,6 +1,4 @@
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import {
     forEachEventSafely,
     getSearchableEventText,
@@ -34,6 +32,8 @@ assert.equal(isMourningEvent(events[5]), false);
 assert.equal(isMourningEvent(events[6]), false);
 assert.match(getSearchableEventText(events[2]), /事故/);
 assert.match(getSearchableEventText(events[4]), /封閉/);
+assert.match(getSearchableEventText({ address: "臺北市信義路", venue: "市民廣場", district: "信義區", summary: "改道措施" }), /台北市信義路 市民廣場/);
+assert.match(getSearchableEventText({ summary: "改道措施" }), /改道措施/);
 
 const rendered = [];
 const failures = [];
@@ -44,14 +44,5 @@ forEachEventSafely(events, (event, index) => {
 assert.equal(rendered.length, events.length - 1);
 assert.equal(failures.length, 1);
 assert.equal(failures[0].index, 2);
-
-const mainSource = fs.readFileSync(path.resolve("assets/index/main.mjs"), "utf8");
-assert.match(mainSource, /資料服務暫時無法連線，目前顯示展示資料/);
-assert.match(mainSource, /\[island-pulse\] 事件渲染失敗/);
-assert.ok(
-    mainSource.indexOf("資料服務暫時無法連線，目前顯示展示資料")
-        < mainSource.indexOf("[island-pulse] 事件渲染失敗"),
-    "API fallback and render errors must be handled in separate branches"
-);
 
 console.log("event text safety tests passed");

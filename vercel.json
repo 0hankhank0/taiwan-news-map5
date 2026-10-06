@@ -6,6 +6,10 @@
   },
   "rewrites": [
     {
+      "source": "/api/payment-callback",
+      "destination": "/api/create-payment.js?paymentCallback=1"
+    },
+    {
       "source": "/api/events",
       "destination": "/api/events.js"
     },

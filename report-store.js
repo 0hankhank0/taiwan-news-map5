@@ -1,4 +1,4 @@
-const { getCachedValue, setCachedValue } = require("./event-store");
+const { getDurableValue: getCachedValue, mutateDurableValue } = require("./event-store");
 
 const REPORTS_ALL_KEY = "reports:all";
 const REPORTS_MAX_ITEMS = Number(process.env.REPORTS_MAX_ITEMS || 1000);
@@ -25,7 +25,7 @@ async function writeAllReports(reports) {
   const nextReports = normalizeReportList(reports)
     .sort((a, b) => Date.parse(b.createdAt || "") - Date.parse(a.createdAt || ""))
     .slice(0, REPORTS_MAX_ITEMS);
-  await setCachedValue(REPORTS_ALL_KEY, nextReports);
+  await mutateDurableValue(REPORTS_ALL_KEY, () => nextReports);
   return nextReports;
 }
 
@@ -38,7 +38,7 @@ async function readEventReportIds(eventId) {
 async function writeEventReportIds(eventId, reportIds) {
   if (!eventId) return;
   const uniqueIds = [...new Set((reportIds || []).map(String).filter(Boolean))].slice(0, REPORTS_MAX_ITEMS);
-  await setCachedValue(getReportsByEventKey(eventId), uniqueIds);
+  await mutateDurableValue(getReportsByEventKey(eventId), () => uniqueIds);
 }
 
 function createReportId() {
@@ -70,6 +70,7 @@ async function addEventReportCounts(reports) {
 async function createReport(input) {
   const timestamp = nowIso();
   const report = {
+    fingerprint: input.fingerprint || null,
     reportId: input.reportId || createReportId(),
     eventId: String(input.eventId || "").trim(),
     title: String(input.title || "").trim(),
@@ -89,12 +90,12 @@ async function createReport(input) {
     resolvedAt: input.resolvedAt || null,
   };
 
-  const reports = await readAllReports();
-  reports.unshift(report);
-  await writeAllReports(reports);
-
-  const eventReportIds = await readEventReportIds(report.eventId);
-  await writeEventReportIds(report.eventId, [report.reportId, ...eventReportIds]);
+  await mutateDurableValue(REPORTS_ALL_KEY, current => {
+    const reports = normalizeReportList(current);
+    if (report.fingerprint && reports.some(item => item.fingerprint === report.fingerprint && Date.parse(item.createdAt) > Date.now() - 86400000)) throw Object.assign(new Error("Duplicate report"), { code: "DUPLICATE_REPORT" });
+    return [report, ...reports].slice(0, REPORTS_MAX_ITEMS);
+  });
+  await mutateDurableValue(getReportsByEventKey(report.eventId), current => [report.reportId, ...(Array.isArray(current) ? current : [])].slice(0, REPORTS_MAX_ITEMS));
 
   return report;
 }
@@ -113,14 +114,16 @@ async function getReport(reportId) {
 }
 
 async function updateReport(reportId, patch = {}) {
-  const reports = await readAllReports();
+  let next;
+  await mutateDurableValue(REPORTS_ALL_KEY, currentRows => {
+  const reports = normalizeReportList(currentRows);
   const index = reports.findIndex((report) => String(report.reportId) === String(reportId));
-  if (index < 0) return null;
+  if (index < 0) return reports;
 
   const current = reports[index];
   const nextStatus = patch.status && REPORT_STATUSES.has(patch.status) ? patch.status : current.status;
   const shouldStampResolved = ["accepted", "rejected", "resolved"].includes(nextStatus);
-  const next = {
+  next = {
     ...current,
     status: nextStatus,
     adminNote: typeof patch.adminNote === "string" ? patch.adminNote : current.adminNote,
@@ -129,8 +132,9 @@ async function updateReport(reportId, patch = {}) {
   };
 
   reports[index] = next;
-  await writeAllReports(reports);
-  return next;
+  return reports;
+  });
+  return next || null;
 }
 
 async function getPublicReportSummary() {

@@ -25,8 +25,7 @@ node --check event-normalizer.js
 node --check location-resolver.js
 node --check api\events.js
 node --check api\cron.js
-node --check api\admin-events.js
-node --check api\health.js
+node --check api\admin.js
 npm run test:location
 npm run test:admin
 ```
@@ -53,11 +52,13 @@ For notifications and support:
 - `ECPAY_MERCHANT_ID`
 - `ECPAY_HASH_KEY`
 - `ECPAY_HASH_IV`
+- `PAYMENT_BASE_URL` (your public HTTPS origin for payment callbacks)
+- `EVENT_STORE_MODE=supabase`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` for the Supabase event store
 
 ## Post Deploy Smoke Test
 
 - `/` loads and still shows beta wording.
 - `/api/events` returns `200`.
 - `/api/health` without token returns `401`.
-- `/api/health?token=...` returns `200` and does not expose secret values.
+- `/api/health` with `Authorization: Bearer <REPORT_ADMIN_TOKEN>` returns `200` and does not expose secret values.
 - `/admin-events.html`, `/admin-reports.html`, `/admin-health.html` load.

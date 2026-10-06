@@ -41,6 +41,46 @@ function event(id, hoursAgo, extra = {}) { return { id, title:`事件 ${id} 測�
       await deepPage.goto(`http://127.0.0.1:${port}${pathname}`,{waitUntil:'domcontentloaded'});
       return deepPage;
     }
+    const originalEvent = { ...events[0] };
+    assert.equal(await page.locator('#data-trust-panel').getAttribute('data-status'), 'ready', 'successful fetch leaves the loading state');
+    async function refreshFromSettings() {
+      await page.click('#settings-btn');
+      await page.waitForSelector('#settings-modal.visible');
+      await page.click('#settings-refresh-btn');
+      await page.click('#settings-close-btn');
+    }
+    Object.assign(events[0], { title: `${originalEvent.title} 修正版`, category: 'accident', city: '臺北市', address: '臺北獨有測試巷' });
+    await refreshFromSettings();
+    await page.waitForFunction(() => document.querySelector('.event-card-v2')?.textContent.includes('修正版'));
+    await page.selectOption('#city-filter', '台北');
+    assert.equal(await page.locator('.event-card-v2').count(), 4, 'city filter matches both 臺北 and 台北');
+    await page.click('[data-category="accident"]');
+    assert.equal(await page.locator('.event-card-v2').count(), 1, 'category changes render even when id and updatedAt stay unchanged');
+    await page.click('[data-category="all"]');
+    await page.selectOption('#city-filter', 'all');
+    await page.fill('#event-search', '台北獨有測試巷');
+    await page.waitForFunction(() => document.querySelectorAll('.event-card-v2').length === 1);
+    assert.match(await page.locator('.event-card-v2').textContent(), /修正版/, 'search includes addresses and normalizes 臺／台');
+    await page.fill('#event-search', '');
+    delete events[0].address; Object.assign(events[0], originalEvent);
+    await refreshFromSettings();
+    await page.waitForFunction(() => !document.querySelector('.event-card-v2')?.textContent.includes('修正版') && document.querySelectorAll('.event-card-v2').length === 5);
+    await page.evaluate(() => { window.__originalDateNow = Date.now; Date.now = () => window.__originalDateNow() + 8 * 86400000; });
+    await refreshFromSettings();
+    await page.waitForFunction(() => document.querySelectorAll('.event-card-v2').length === 0);
+    await page.evaluate(() => { Date.now = window.__originalDateNow; });
+    await refreshFromSettings();
+    await page.waitForSelector('.event-card-v2');
+    assert.equal(await page.locator('.event-card-v2').count(), 5, 'unchanged responses reapply time filters');
+    await page.route('**/api/events', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"unavailable"}' }));
+    await refreshFromSettings();
+    await page.waitForFunction(() => document.getElementById('data-trust-panel')?.dataset.status === 'error');
+    assert.equal(await page.locator('.event-card-v2').count(), 5, 'failed refresh keeps real cached events');
+    assert.match(await page.locator('#data-trust-panel').textContent(), /顯示 5 \/ 11 筆/, 'error state keeps the visible and total counts');
+    assert.equal(await page.locator('.event-card-v2[data-event-id="m1"]').count(), 0, 'failed refresh never injects demo events');
+    await page.unroute('**/api/events');
+    await refreshFromSettings();
+    await page.waitForFunction(() => document.getElementById('data-trust-panel')?.dataset.status === 'ready');
     const deepPage = await openDeepLink('/event/h2'); await deepPage.waitForFunction(()=>Boolean(window.__mapboxTestMap?.lastFly) && document.querySelector('.mapboxgl-popup')); assert.deepEqual(await deepPage.evaluate(()=>window.__mapboxTestMap.lastFly.center),[121.56,25.04],'event route flies to the requested coordinates'); assert.equal(await deepPage.locator('.mapboxgl-popup').count(),1,'event route opens the requested popup'); assert.equal(await deepPage.locator('.event-card-v2.requested-event-card[data-event-id="h2"]').count(),1,'event route visibly selects the matching card'); const firstFly = await deepPage.evaluate(()=>JSON.stringify(window.__mapboxTestMap.lastFly)); await deepPage.waitForTimeout(300); assert.equal(await deepPage.evaluate(()=>JSON.stringify(window.__mapboxTestMap.lastFly)),firstFly,'background refresh does not refocus an already focused event');
     const oldPage = await openDeepLink('/event/h30'); await oldPage.waitForFunction(()=>Boolean(window.__mapboxTestMap?.lastFly) && document.querySelector('.mapboxgl-popup')); assert.equal(await oldPage.locator('.event-card-v2[data-event-id="h30"]').count(),1,'an event outside the default 24h filter remains renderable from its deep link');
     const chinesePage = await openDeepLink('/event/Miaoli_disaster_%E6%B0%B4%E9%9B%B2%E7%80%91%E5%B8%83'); await chinesePage.waitForFunction(()=>Boolean(window.__mapboxTestMap?.lastFly) && document.querySelector('.mapboxgl-popup')); assert.deepEqual(await chinesePage.evaluate(()=>window.__mapboxTestMap.lastFly.center),[120.87,24.44],'Chinese event IDs are decoded from the event pathname');

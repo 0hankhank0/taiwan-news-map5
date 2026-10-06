@@ -29,12 +29,13 @@ export function createEventDataManager({ fetchEvents, onState, intervalMs = 3000
   async function refresh({ manual = false } = {}) {
     if (inFlight) return inFlight;
     emit({ phase: "loading", manual });
-    inFlight = Promise.resolve().then(fetchEvents).then((events) => {
+    inFlight = Promise.resolve().then(fetchEvents).then((result) => {
+      const events = Array.isArray(result) ? result : result?.events;
       if (!Array.isArray(events)) throw new Error("Invalid event response");
       const updatedAt = new Date().toISOString(); const fingerprint = eventFingerprint(events);
       const unchanged = fingerprint === lastFingerprint;
       lastFingerprint = fingerprint; lastSuccessAt = Date.now(); writeEventCache(events, updatedAt, storage);
-      emit({ phase: "success", events, updatedAt, unchanged, manual });
+      emit({ phase: "success", events, response: Array.isArray(result) ? null : result?.response, updatedAt, unchanged, manual });
       return events;
     }).catch((error) => {
       const cached = readEventCache(storage);

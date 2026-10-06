@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const { isAuthorized } = require("../admin-auth");
 const { SUBMISSION_STATUSES, createSubmission, listSubmissions, updateSubmission, addSubmissionReport, getSubmissionReportSummary, getAuditLog, hasValidTaiwanCoordinates } = require("../submission-store");
-const { getCachedValue, setCachedValue, getCachedEvents } = require("../event-store");
+const { getCachedEvents, reserveCachedCounter } = require("../event-store");
 const { getRequestQuery } = require("../request-query");
 
 // Keep historical values readable for old records and API clients; the public form only offers public-impact categories.
@@ -17,17 +17,15 @@ const validUrl = (value) => { try { const url = new URL(value); return url.proto
 function clientKey(req) { return crypto.createHash("sha256").update(String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown")).digest("hex").slice(0, 24); }
 async function checkRate(req) {
   const key = `submission:rate:${clientKey(req)}`;
-  const count = Number(await getCachedValue(key) || 0);
-  if (count >= RATE_LIMIT) return false;
-  await setCachedValue(key, count + 1, { ex: RATE_WINDOW_SECONDS });
-  return true;
+  const result = await reserveCachedCounter(key, 1, { budget: RATE_LIMIT, ex: RATE_WINDOW_SECONDS });
+  if (result?.reason === "coordination_unavailable" || !result) throw Object.assign(new Error("Storage unavailable"), { code: "STORAGE_UNAVAILABLE" });
+  return result.allowed;
 }
 async function checkReportRate(req) {
   const key = `submission-report:rate:${clientKey(req)}`;
-  const count = Number(await getCachedValue(key) || 0);
-  if (count >= REPORT_RATE_LIMIT) return false;
-  await setCachedValue(key, count + 1, { ex: RATE_WINDOW_SECONDS });
-  return true;
+  const result = await reserveCachedCounter(key, 1, { budget: REPORT_RATE_LIMIT, ex: RATE_WINDOW_SECONDS });
+  if (result?.reason === "coordination_unavailable" || !result) throw Object.assign(new Error("Storage unavailable"), { code: "STORAGE_UNAVAILABLE" });
+  return result.allowed;
 }
 function normalizeInput(body) {
   const title = text(body.title, 160), description = text(body.description, 2000), category = text(body.category, 40), sourceType = text(body.sourceType, 40);
@@ -44,16 +42,27 @@ function normalizeInput(body) {
   if (["news_report", "official_notice"].includes(sourceType) && !sourceUrl) throw new Error("A source URL is required for news reports and official notices");
   if (sourceType === "eyewitness" && !hasValidTaiwanCoordinates(latitude, longitude)) throw new Error("Eyewitness submissions require valid Taiwan coordinates");
   if (sourceType === "eyewitness" && description.length < 30) throw new Error("Eyewitness descriptions must be at least 30 characters");
-  return { title, description, category, sourceType, publicImpactConfirmed: true, eventStartTime: text(body.eventStartTime, 40) || null, eventEndTime: text(body.eventEndTime, 40) || null, address: text(body.address, 240), latitude, longitude, sourceUrl, contactInfo: text(body.contactInfo, 200), evidenceUrls };
+  const eventStartTime = normalizeSubmissionTime(body.eventStartTime), eventEndTime = normalizeSubmissionTime(body.eventEndTime);
+  if (eventStartTime && eventEndTime && Date.parse(eventEndTime) < Date.parse(eventStartTime)) throw new Error("Event end must follow start");
+  return { title, description, category, sourceType, publicImpactConfirmed: true, eventStartTime, eventEndTime, address: text(body.address, 240), latitude, longitude, sourceUrl, contactInfo: text(body.contactInfo, 200), evidenceUrls };
+}
+function normalizeSubmissionTime(value) {
+  const raw = text(value, 40);
+  if (!raw) return null;
+  if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(raw)) throw new Error("Invalid event time");
+  const withTime = raw.length === 10 ? `${raw}T00:00:00` : raw;
+  const timestamp = Date.parse(/(?:Z|[+-]\d{2}:\d{2})$/.test(withTime) ? withTime : `${withTime}+08:00`);
+  if (!Number.isFinite(timestamp)) throw new Error("Invalid event time");
+  return new Date(timestamp).toISOString();
 }
 function automaticExpiration(submission) {
   const created = Date.parse(submission.createdAt) || Date.now();
   const startsAt = Date.parse(submission.eventStartTime || "");
   const endsAt = Date.parse(submission.eventEndTime || "");
-  if (Number.isFinite(endsAt)) return new Date(endsAt + 2 * 60 * 60 * 1000).toISOString();
+  if (Number.isFinite(endsAt)) return new Date(endsAt + (submission.category === "activity" ? 6 : 2) * 60 * 60 * 1000).toISOString();
   if (submission.category === "traffic") return new Date(created + 24 * 60 * 60 * 1000).toISOString();
   if (["construction", "public_facility"].includes(submission.category)) return new Date(created + 72 * 60 * 60 * 1000).toISOString();
-  if (submission.category === "activity") return new Date((Number.isFinite(startsAt) ? startsAt : created) + 24 * 60 * 60 * 1000).toISOString();
+  if (submission.category === "activity") return new Date((Number.isFinite(startsAt) ? startsAt : created) + 30 * 60 * 60 * 1000).toISOString();
   return null;
 }
 function comparableTitle(value) { return text(value, 160).toLowerCase().replace(/\s+/g, "").slice(0, 24); }
@@ -118,7 +127,7 @@ async function handleSubmissionAuditLog(req, res) {
         && (dateTo === null || (Number.isFinite(time) && time <= dateTo));
     }).sort((a, b) => Date.parse(b.actionTime) - Date.parse(a.actionTime));
     return res.status(200).json({ logs: logs.slice(offset, offset + limit), total: logs.length, limit, offset });
-  } catch (error) { return res.status(400).json({ error: error.message || "Invalid query" }); }
+  } catch (error) { return res.status(error.code === "STORAGE_UNAVAILABLE" ? 503 : 400).json({ error: error.code === "STORAGE_UNAVAILABLE" ? "Submission service unavailable" : error.message || "Invalid query" }); }
 }
 async function handleSubmissionReport(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -132,9 +141,6 @@ async function handleSubmissionReport(req, res) {
   if (!submission) return res.status(404).json({ error: "Submission not found" });
   if (submission.status !== "approved" || submission.hiddenByReports) return res.status(409).json({ error: "Submission is not reportable" });
   const reporterHash = clientKey(req);
-  const duplicateKey = `submission-report:duplicate:${submissionId}:${reporterHash}`;
-  if (await getCachedValue(duplicateKey)) return res.status(409).json({ error: "You already reported this submission" });
-  await setCachedValue(duplicateKey, true, { ex: 60 * 60 * 24 * 30 });
   await addSubmissionReport({ reportId: `srep_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`, submissionId, reporterHash, reason, note, createdAt: new Date().toISOString() });
   const summary = await getSubmissionReportSummary(submissionId);
   let hidden = false;
@@ -189,7 +195,7 @@ async function moderate(submission) {
   } finally { clearTimeout(timer); }
 }
 
-module.exports = async (req, res) => {
+const handleSubmission = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*"); res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS"); res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization"); res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") return res.status(204).end();
   if (isSubmissionAuditLogRoute(req)) return handleSubmissionAuditLog(req, res);
@@ -220,7 +226,7 @@ module.exports = async (req, res) => {
         longitude: updated.longitude,
         publicationNotice: null,
       });
-    } catch (error) { return res.status(400).json({ error: error.message || "Invalid submission" }); }
+    } catch (error) { return res.status(error.code === "STORAGE_UNAVAILABLE" ? 503 : 400).json({ error: error.code === "STORAGE_UNAVAILABLE" ? "Submission service unavailable" : error.message || "Invalid submission" }); }
   }
   if (req.method === "PATCH") {
     const auth = isAuthorized(req); if (!auth.ok) return res.status(auth.status).json({ error: auth.error });
@@ -236,8 +242,13 @@ module.exports = async (req, res) => {
   }
   return res.status(405).json({ error: "Method not allowed" });
 };
+module.exports = async (req, res) => {
+  try { return await handleSubmission(req, res); }
+  catch (error) { console.error("[submission] request failed:", error.code || error.name); return res.status(error.code === "DUPLICATE_REPORT" ? 409 : 503).json({ error: error.code === "DUPLICATE_REPORT" ? error.message : "Submission service unavailable" }); }
+};
 
 module.exports.decidePublication = decidePublication;
 module.exports.automaticExpiration = automaticExpiration;
+module.exports.normalizeSubmissionTime = normalizeSubmissionTime;
 module.exports.REPORT_REASONS = REPORT_REASONS;
 module.exports.hasValidTaiwanCoordinates = hasValidTaiwanCoordinates;

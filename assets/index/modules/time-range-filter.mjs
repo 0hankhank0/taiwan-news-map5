@@ -1,4 +1,4 @@
-import { getActivityLifecycle } from "./event-layer.mjs";
+import { getActivityLifecycle, parseTaipeiEventTime } from "./event-layer.mjs";
 
 const RANGE_HOURS = Object.freeze({ "6h": 6, "24h": 24, "3d": 72, "7d": 168 });
 
@@ -8,7 +8,7 @@ export function getEventTime(event = {}) {
     const fields = ["occurredAt", "eventAt", "happenedAt", "publishedAt", "timestamp", "time"];
     for (const field of fields) {
         const value = event[field];
-        const time = typeof value === "number" ? value : Date.parse(value);
+        const time = parseTaipeiEventTime(value);
         if (Number.isFinite(time)) return { field, time };
     }
     return null;

@@ -34,6 +34,7 @@ import {
 } from "./modules/alert-zones.mjs";
 import { findPublishedSubmission, getRequestedSubmissionId, removeSubmissionQuery } from "./modules/submission-focus.mjs";
 import { createEventDataManager } from "./modules/event-data-manager.mjs";
+import { normalizeFilterText } from "./modules/filters.mjs";
 import { trackEvent } from "./modules/analytics.mjs";
 import {
     buildStatsSummary,
@@ -1959,7 +1960,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) { noteDropped(ev, "commuteCategory"); return false; }
             if(activeCategory!=="all" && mappedCategory!==activeCategory) { noteDropped(ev, "category"); return false; }
             if(cityFilter!=="all"){
-                if(!normalizeText(ev.city).toLowerCase().includes(cityFilter.toLowerCase())) { noteDropped(ev, "city"); return false; }
+                if(!normalizeFilterText(ev.city).includes(normalizeFilterText(cityFilter))) { noteDropped(ev, "city"); return false; }
             }
             if(searchKeyword){
                 const hay=getSearchableEventText(ev);
@@ -2454,7 +2455,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
             if (!Array.isArray(data)) throw new Error("Invalid event response");
-            return data;
+            return { events: data, response };
         },
         onState: async (state) => {
             const mobileRefreshState = document.getElementById("event-refresh-state-mobile");
@@ -2475,17 +2476,19 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             }
             if (state.phase === "success") {
                 const next = deduplicateEvents(state.events.map(normalizeDisplayEvent));
-                const unchanged = JSON.stringify(next.map((event) => [event.id, event.updatedAt])) === JSON.stringify(parsedEvents.map((event) => [event.id, event.updatedAt]));
                 parsedEvents = next;
-                if (!unchanged) { reportSummaryByEvent = {}; renderCategoryButtons(); renderEvents(); }
+                if (!state.unchanged) reportSummaryByEvent = {};
+                // Time windows and activity lifecycles change even when the response does not.
+                renderCategoryButtons(); renderEvents();
+                dataTrust.updateFromResponse(parsedEvents, state.response, document.querySelectorAll(".event-card-v2").length);
                 try { await syncReportSummary(); focusRequestedSubmission(); focusRequestedEvent(); } catch (error) { console.warn("report summary refresh failed", error); }
             } else if (state.phase === "error") {
-                dataTrust.updateError("事件資料暫時無法更新");
                 if (!parsedEvents.length && state.cached) { parsedEvents = deduplicateEvents(state.cached.events.map(normalizeDisplayEvent)); renderCategoryButtons(); renderEvents(); }
                 else if (!parsedEvents.length) {
                     reportSummaryByEvent = {}; renderCategoryButtons(); renderEvents();
                     if (eventList) eventList.innerHTML = '<div class="empty-state" role="status"><strong>事件資料暫時無法載入</strong><p>請稍後再試，或使用重新整理按鈕。</p><button type="button" class="btn btn-primary" data-action="manual-refresh-empty">重新整理</button></div>';
                 }
+                dataTrust.updateError(state.cached ? "資料暫時無法更新，目前顯示先前資料" : "事件資料暫時無法更新", document.querySelectorAll(".event-card-v2").length);
             }
         }
     });
@@ -2503,45 +2506,6 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         setStatus("正在抓取事件資料...");
         renderLoadingState();
         return eventDataManager.refresh();
-        let res;
-        let list;
-        try {
-            res = await fetch("/api/events");
-            const raw = await res.text();
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const data = JSON.parse(raw);
-            list = Array.isArray(data) ? data : [];
-        } catch (error) {
-            console.warn("資料服務暫時無法連線，目前顯示展示資料", error);
-            parsedEvents=deduplicateEvents(MOCK_EVENTS.map(normalizeDisplayEvent));
-            reportSummaryByEvent = {};
-            renderCategoryButtons(); renderEvents();
-            dataTrust.updateError("資料服務暫時無法連線，目前顯示展示資料");
-            setStatus("展示模式：顯示範例資料");
-            return parsedEvents;
-        }
-
-        const normalizedEvents = [];
-        list.forEach((event, index) => {
-            try {
-                normalizedEvents.push(normalizeDisplayEvent(event));
-            } catch (error) {
-                console.error("[island-pulse] event normalization failed", { index, event, error });
-            }
-        });
-        parsedEvents = deduplicateEvents(normalizedEvents);
-
-        try {
-            await syncReportSummary();
-            renderCategoryButtons();
-            renderEvents();
-            focusRequestedSubmission(); focusRequestedEvent();
-            dataTrust.updateFromResponse(parsedEvents, res, document.querySelectorAll(".event-card-v2").length);
-        } catch (error) {
-            console.error("[island-pulse] 事件渲染失敗", error);
-            setStatus("事件資料已取得，但部分事件無法顯示");
-        }
-        return parsedEvents;
     }
 
     // ── CITY SYNC ────────────────────────────────────────────
@@ -2787,7 +2751,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
     }
 
     function handleSearch(e){
-        searchKeyword=e.target.value.trim().toLowerCase();
+        searchKeyword=normalizeFilterText(e.target.value);
         renderEvents();
     }
 

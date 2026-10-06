@@ -1,3 +1,5 @@
+import { normalizeFilterText } from "./filters.mjs";
+
 export function safeText(value, fallback = "") {
     if (typeof value === "string") return value;
     if (value === null || value === undefined) return fallback;
@@ -42,10 +44,9 @@ export function isMourningEvent(ev = {}) {
 }
 
 export function getSearchableEventText(ev = {}) {
-    return [ev?.title, ev?.content, ev?.city, ev?.source]
+    return normalizeFilterText([ev?.title, ev?.content, ev?.summary, ev?.address, ev?.venue, ev?.city, ev?.district, ev?.source, ev?.sourceName]
         .map(value => safeText(value))
-        .join(" ")
-        .toLowerCase();
+        .join(" "));
 }
 
 export function forEachEventSafely(events, renderEvent, onError = console.error) {

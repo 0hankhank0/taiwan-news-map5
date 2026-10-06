@@ -1,67 +1,55 @@
-const ecpay_aio_nodejs = require('ecpay_aio_nodejs');
+const crypto = require("crypto");
+const { mutateDurableValue } = require("../event-store");
+const { getRequestQuery } = require("../request-query");
 
-module.exports = async function (req, res) {
-  // 只接受 POST 請求
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  try {
-    const { ECPAY_MERCHANT_ID, ECPAY_HASH_KEY, ECPAY_HASH_IV } = process.env;
-
-    // 檢查是否有讀到環境變數
-    if (!ECPAY_MERCHANT_ID || !ECPAY_HASH_KEY || !ECPAY_HASH_IV) {
-      throw new Error('伺服器遺失綠界金流的環境變數 (請檢查 Vercel Settings)');
-    }
-
-    const { amount, itemName } = req.body;
-    if (!amount) throw new Error('沒有收到贊助金額');
-
-    // 🌟 修正重點：把三把鑰匙包裝進 MercProfile 物件中
-    const options = {
-      OperationMode: 'Production', // 你的帳號已經審核過，用正式環境
-      MercProfile: {
-        MerchantID: ECPAY_MERCHANT_ID,
-        HashKey: ECPAY_HASH_KEY,
-        HashIV: ECPAY_HASH_IV,
-      },
-      IgnorePayment: [], // 不隱藏任何付款方式
-      IsProjectContractor: false,
-    };
-
-    const create = new ecpay_aio_nodejs(options);
-
-    // 產生精準的 YYYY/MM/DD HH:mm:ss 台北時間 (防 Vercel 時區錯亂)
-    const d = new Date();
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    const twTime = new Date(utc + (3600000 * 8)); // 轉台灣時間 UTC+8
-    
-    const pad = (n) => (n < 10 ? '0' + n : n);
-    const tradeDate = `${twTime.getFullYear()}/${pad(twTime.getMonth() + 1)}/${pad(twTime.getDate())} ${pad(twTime.getHours())}:${pad(twTime.getMinutes())}:${pad(twTime.getSeconds())}`;
-
-    // 設定訂單參數
-    const MerchantTradeNo = 'MAP' + Date.now(); 
-    const host = req.headers.host || 'taiwan-map.bobaboba.me';
-    
-    const base_param = {
-      MerchantTradeNo: MerchantTradeNo,
-      MerchantTradeDate: tradeDate,
-      TotalAmount: amount.toString(),
-      TradeDesc: '支持台灣新聞事件地圖專案',
-      ItemName: itemName || '地圖維護與伺服器營運贊助',
-      ReturnURL: `https://${host}/api/payment-callback`,
-      OrderResultURL: `https://${host}/`, 
-      ChoosePayment: 'ALL',
-      EncryptType: '1',
-    };
-
-    // 產生自動提交的 HTML 表單
-    const html = create.payment_client.aio_check_out_all(base_param);
-    res.status(200).send(html);
-
-  } catch (error) {
-    // 發生錯誤時，把真實原因印在 Vercel 後台，並傳回給前端
-    console.error("❌ 金流產生失敗詳細原因:", error.message);
-    res.status(500).json({ error: error.message });
-  }
+// ECPay SHA256 CheckMacValue (.NET URL encoding), without logging HashKey/IV.
+function checkMacValue(parameters, key, iv) {
+  const pairs = Object.keys(parameters).filter(name => name !== "CheckMacValue").sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+  const raw = `HashKey=${key}&${pairs.map(name => `${name}=${parameters[name]}`).join("&")}&HashIV=${iv}`;
+  const encoded = encodeURIComponent(raw).replace(/%20/g, "+").replace(/'/g, "%27").replace(/~/g, "%7E").toLowerCase();
+  return crypto.createHash("sha256").update(encoded).digest("hex").toUpperCase();
 }
+const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+module.exports = async (req, res) => {
+  const callback = String(req.url || "").split("?")[0] === "/api/payment-callback" || getRequestQuery(req).paymentCallback === "1";
+  res.setHeader("Cache-Control", "no-store");
+  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  try {
+    const { ECPAY_MERCHANT_ID: merchantId, ECPAY_HASH_KEY: key, ECPAY_HASH_IV: iv } = process.env;
+    if (!merchantId || !key || !iv) throw new Error("Payment configuration missing");
+    const body = typeof req.body === "string" ? Object.fromEntries(new URLSearchParams(req.body)) : req.body || {};
+    if (callback) {
+      if (Object.values(body).some(value => typeof value !== "string")) return res.status(400).send("0|Invalid parameters");
+      const received = String(body.CheckMacValue || "");
+      const expected = checkMacValue(body, key, iv);
+      if (!/^[A-F0-9]{64}$/.test(received) || !crypto.timingSafeEqual(Buffer.from(received), Buffer.from(expected)) || body.MerchantID !== merchantId) return res.status(400).send("0|Invalid signature");
+      const tradeNo = String(body.MerchantTradeNo || "");
+      if (!/^MAP[a-f0-9]{16}$/.test(tradeNo)) return res.status(400).send("0|Invalid order");
+      await mutateDurableValue(`payments:${tradeNo}`, order => {
+        if (!order || Number(body.TradeAmt) !== order.amount || body.SimulatePaid !== "0") throw Object.assign(new Error("Payment does not match order"), { code: "INVALID_PAYMENT" });
+        if (order.status === "paid") {
+          if (order.providerTradeNo !== body.TradeNo) throw Object.assign(new Error("Conflicting payment"), { code: "INVALID_PAYMENT" });
+          return order;
+        }
+        return { ...order, status: body.RtnCode === "1" ? "paid" : "failed", providerTradeNo: body.TradeNo, resultCode: body.RtnCode, paidAt: body.RtnCode === "1" ? new Date().toISOString() : null };
+      });
+      return res.status(200).send("1|OK");
+    }
+    const amount = Number(body.amount);
+    if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000000) return res.status(400).json({ error: "Invalid amount" });
+    const origin = new URL(process.env.PAYMENT_BASE_URL || "https://taiwan-map.bobaboba.me");
+    if (origin.protocol !== "https:" || origin.username || origin.password) throw new Error("Invalid payment origin");
+    const tradeNo = `MAP${crypto.randomBytes(8).toString("hex")}`;
+    const date = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 19).replace(/-/g, "/").replace("T", " ");
+    const params = { MerchantID: merchantId, MerchantTradeNo: tradeNo, MerchantTradeDate: date, PaymentType: "aio", TotalAmount: String(amount), TradeDesc: "支持台灣新聞事件地圖專案", ItemName: String(body.itemName || "地圖維護與伺服器營運贊助").slice(0, 200), ReturnURL: `${origin.origin}/api/payment-callback`, OrderResultURL: `${origin.origin}/`, ChoosePayment: "ALL", EncryptType: "1" };
+    params.CheckMacValue = checkMacValue(params, key, iv);
+    await mutateDurableValue(`payments:${tradeNo}`, () => ({ tradeNo, amount, status: "pending", createdAt: new Date().toISOString() }));
+    const endpoint = process.env.ECPAY_OPERATION_MODE === "Test" ? "https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5" : "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
+    return res.status(200).send(`<form id="ecpay" method="post" action="${endpoint}">${Object.entries(params).map(([name, value]) => `<input type="hidden" name="${name}" value="${escapeHtml(value)}">`).join("")}</form><script>document.getElementById("ecpay").submit()</script>`);
+  } catch (error) {
+    console.error("[payment] failed:", error.code || error.name);
+    if (callback) return res.status(error.code === "INVALID_PAYMENT" ? 400 : 503).send("0|Payment processing failed");
+    return res.status(503).json({ error: "Payment service unavailable" });
+  }
+};
+module.exports.checkMacValue = checkMacValue;
