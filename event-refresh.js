@@ -318,6 +318,23 @@ function getRemainingTime(startedAt) {
   return Math.max(0, SOFT_DEADLINE_MS * 4 - (Date.now() - startedAt));
 }
 
+function rssText(value) {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  // xml2js uses objects with a null prototype for attributed XML nodes.
+  // Empty nodes have attributes ($) but no text (_); never coerce the object.
+  if (value && typeof value._ === "string") return value._;
+  return "";
+}
+
+function normalizeRssItem(item = {}) {
+  const normalized = { ...item };
+  for (const field of ["title", "content", "contentSnippet", "summary", "link", "url", "source", "sourceUrl", "feedUrl", "guid", "id", "isoDate", "pubDate", "publishedAt", "fetchedAt"]) {
+    if (field in normalized) normalized[field] = rssText(normalized[field]);
+  }
+  return normalized;
+}
+
 async function fetchOneRssFeed(rssUrl, startedAt) {
   try {
     const xmlResponse = await fetchResponse(rssUrl, {
@@ -329,7 +346,7 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
     });
     const feed = await parser.parseString(await xmlResponse.text());
     const fetchedAt = new Date().toISOString();
-    return (feed.items || []).map((item) => ({ ...item, fetchedAt, feedUrl: item.feedUrl || rssUrl }));
+    return (feed.items || []).map((item) => ({ ...normalizeRssItem(item), fetchedAt, feedUrl: rssText(item.feedUrl) || rssUrl }));
   } catch (error) {
     console.warn(`[cron] RSS fetch failed for ${rssUrl}:`, error.message);
     throw error;
@@ -1041,6 +1058,7 @@ function classifyRuleLocationRejection(location = {}) {
 }
 
 function extractRuleBasedEvents(newsItems) {
+  newsItems = newsItems.map(normalizeRssItem);
   const seen = new Set();
   const diagnostics = {
     ruleInputCount: newsItems.length, ruleBasedCandidatesBeforeFilter: 0,
@@ -1153,6 +1171,7 @@ function rssItemIdentity(item = {}) {
 }
 
 function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
+  newsItems = newsItems.map(normalizeRssItem);
   const successfulRuleItems = new Set(
     ruleBasedEvents
       .map((event) => String(event.url || event.sourceUrl || event.link || "").trim())
@@ -2649,10 +2668,17 @@ async function runEventRefresh(options = {}) {
   const mode = ["news", "traffic"].includes(options.mode) ? options.mode : "news";
   const runId = String(options.runId || `refresh-${startedAt}-${Math.random().toString(36).slice(2, 8)}`);
   const trigger = ["scheduled", "manual", "unknown"].includes(options.trigger) ? options.trigger : "unknown";
+  let stage;
+  const enterStage = (value) => {
+    stage = value;
+    if (typeof options.onStage === "function") options.onStage(value);
+  };
 
   try {
     console.log(`[event-refresh] start runId=${runId} mode=${mode}`);
+    enterStage("collect_sources");
     const sources = await collectRefreshSources(mode, startedAt, { ...options, runId });
+    enterStage("normalize_events");
     const geocodingStats = { geocodingAttempts: 0, geocodingHits: 0 };
     const finalEvents = await enrichEventLocations(normalizeFinalEvents([
       ...sources.tdxEvents,
@@ -2665,9 +2691,11 @@ async function runEventRefresh(options = {}) {
       skipExternalGeocoding: options.skipExternalGeocoding,
     });
 
+    enterStage("read_existing_events");
     const existingEvents = Array.isArray(options.existingEvents)
       ? options.existingEvents
       : await getOfficialEvents();
+    enterStage("merge_events");
     const activeEvents = mergeRefreshBuckets(existingEvents, finalEvents, mode, sources, now);
     const existingKeys = new Set(existingEvents.map(refreshItemKey));
     const persistence = {
@@ -2682,16 +2710,19 @@ async function runEventRefresh(options = {}) {
     let buckets = { traffic: 0, news: 0, activities: 0 };
 
     if (options.write !== false) {
+      enterStage("persist_events");
       await setOfficialEvents(activeEvents, cacheOptions);
       // Published refresh output is already canonical in events:official.
       // Candidates are pending review items only; never clone the whole event
       // payload (raw source, tourism object, and images) into KV.
+      enterStage("write_buckets");
       buckets = await writeEventBucketsToStore(activeEvents, cacheOptions);
       persistence.eventsWritten = activeEvents.length;
       persistence.eventsInserted = persistence.records.filter((record) => record.inserted).length;
       persistence.eventsUpdated = persistence.records.filter((record) => record.updated).length;
       persistence.records.forEach((record) => { record.persisted = true; });
     }
+    enterStage("build_summary");
     const finalRssUrls = new Set(finalEvents.map((event) => String(event.url || event.sourceUrl || "").trim()).filter(Boolean));
     const activeRssUrls = new Set(activeEvents.map((event) => String(event.url || event.sourceUrl || "").trim()).filter(Boolean));
     (sources.ruleBasedEvents.diagnostics?.rssRecords || []).forEach((record) => {
@@ -2779,7 +2810,7 @@ async function runEventRefresh(options = {}) {
       await bestEffortTelemetry("saveRefreshRunDetail:error", () => saveRefreshRunDetail({ runId, trigger, mode, status: "error", startedAt: new Date(startedAt).toISOString(), completedAt, cacheWritten: false, error: safeError, sources: {}, pipeline: {}, finalEvents: [] }));
       await bestEffortTelemetry("notifyRefreshAlert:failure", () => notifyRefreshAlert("refresh_failure", "抓取執行失敗：" + safeError));
     }
-    console.error("[event-refresh] failed:", error.message);
+    console.error("[event-refresh] failed:", { runId, mode, stage, error: cleanRefreshLogError(error?.message) });
     throw error;
   }
 }

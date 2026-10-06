@@ -108,21 +108,30 @@ module.exports = async (req, res) => {
     });
   }
 
+  let stage = "collect_sources";
   try {
-    const result = await runEventRefresh({ runId, mode, startedAt, trigger: "scheduled" });
+    const result = await runEventRefresh({ runId, mode, startedAt, trigger: "scheduled", onStage: (value) => { stage = value; } });
     const { events, ...summary } = result;
     return sendJson(res, 200, {
       ...summary,
       skippedByLock: false,
     });
   } catch (error) {
-    console.error("[cron] Handler failed:", error.message);
+    // Only fixed diagnostic values enter the response: provider errors can
+    // contain credentials, request URLs, or private database details.
+    const errorCode = ["CANONICAL_PERSISTENCE_FAILED", "STORAGE_UNAVAILABLE", "KV_WRITE_FAILED"].includes(error?.code)
+      ? error.code
+      : error instanceof TypeError ? "TYPE_ERROR"
+      : error instanceof ReferenceError ? "REFERENCE_ERROR" : "REFRESH_FAILED";
+    console.error("[cron] Handler failed:", { runId, mode, stage, errorCode });
     return sendJson(res, 500, {
       success: false,
       skippedByLock: false,
       runId,
       durationMs: Date.now() - startedAt,
       error: "Cron execution failed",
+      stage,
+      errorCode,
     });
   } finally {
     try {
