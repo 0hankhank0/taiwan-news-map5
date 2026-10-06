@@ -101,7 +101,9 @@ const ACTIVITY_DEFAULT_DURATION_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_ENDED_GRACE_MS = 6 * 60 * 60 * 1000;
 const ACTIVITY_FUTURE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const TDX_TIMEOUT_MS = 1800;
-const AZURE_OPENAI_TIMEOUT_MS = 5000;
+// Structured output for a news batch often takes longer than five seconds.
+// The caller still caps this by the remaining refresh deadline.
+const AZURE_OPENAI_TIMEOUT_MS = Math.min(20000, Math.max(1000, Number(process.env.AZURE_OPENAI_TIMEOUT_MS) || 15000));
 const MAX_NEWS_FOR_AI = Number(process.env.MAX_NEWS_FOR_AI || DEFAULT_AI_CONTEXT_LIMIT);
 const AI_ARTICLE_CONTEXT_TIMEOUT_MS = Number(process.env.AI_ARTICLE_CONTEXT_TIMEOUT_MS || DEFAULT_ARTICLE_TIMEOUT_MS);
 const SOFT_DEADLINE_MS = 7000;
@@ -1602,26 +1604,50 @@ function requireAzureOpenAiConfig() {
 
 function azureOpenAiErrorForStatus(status) {
   if (status === 401) return "Azure OpenAI authentication failed (HTTP 401)";
+  if (status === 403) return "Azure OpenAI access denied: check resource access and network rules (HTTP 403)";
+  if (status === 404) return "Azure OpenAI deployment or endpoint not found (HTTP 404)";
+  if (status === 400) return "Azure OpenAI invalid request: check API version and deployment capabilities (HTTP 400)";
   if (status === 429) return "Azure OpenAI rate limit or quota exceeded (HTTP 429)";
   return `Azure OpenAI request failed (HTTP ${Number.isInteger(status) ? status : "unknown"})`;
 }
 
 async function createAzureOpenAiChatCompletion(body, timeoutMs = AZURE_OPENAI_TIMEOUT_MS) {
   const config = requireAzureOpenAiConfig();
+  const startedAt = Date.now();
+  const requestTimeoutMs = Math.max(800, timeoutMs);
+  const signal = AbortSignal.timeout(requestTimeoutMs);
   let response;
+  let completion;
   try {
     response = await fetch(config.url, {
       method: "POST",
       headers: config.headers,
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(Math.max(800, timeoutMs)),
+      signal,
     });
-  } catch {
-    throw new Error("Azure OpenAI request failed");
+    if (response.ok) completion = await response.json();
+  } catch (cause) {
+    const timedOut = signal.aborted || ["TimeoutError", "AbortError"].includes(cause?.name);
+    const transportCode = cause?.cause?.code || cause?.code;
+    const code = timedOut ? "AZURE_OPENAI_TIMEOUT"
+      : transportCode === "ENOTFOUND" || transportCode === "EAI_AGAIN" ? "AZURE_OPENAI_DNS_ERROR"
+      : transportCode === "ERR_INVALID_URL" ? "AZURE_OPENAI_INVALID_ENDPOINT"
+      : cause instanceof SyntaxError ? "AZURE_OPENAI_INVALID_RESPONSE" : "AZURE_OPENAI_CONNECTION_ERROR";
+    const error = new Error(timedOut ? `Azure OpenAI request timed out after ${requestTimeoutMs}ms` : `Azure OpenAI request failed (${code})`);
+    error.code = code;
+    console.warn("[cron] Azure OpenAI request", { outcome: "failed", code, timeoutMs: requestTimeoutMs, durationMs: Date.now() - startedAt });
+    throw error;
   }
 
-  if (!response.ok) throw new Error(azureOpenAiErrorForStatus(response.status));
-  return response.json();
+  if (!response.ok) {
+    const error = new Error(azureOpenAiErrorForStatus(response.status));
+    error.code = "AZURE_OPENAI_HTTP_ERROR";
+    error.httpStatus = response.status;
+    console.warn("[cron] Azure OpenAI request", { outcome: "failed", code: error.code, httpStatus: response.status, durationMs: Date.now() - startedAt });
+    throw error;
+  }
+  console.info("[cron] Azure OpenAI request", { outcome: "success", timeoutMs: requestTimeoutMs, durationMs: Date.now() - startedAt });
+  return completion;
 }
 
 function parseAiJsonCompletion(completion) {
@@ -1792,7 +1818,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
           },
         },
       },
-    }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 300)));
+    }, Math.max(800, Math.min(AZURE_OPENAI_TIMEOUT_MS, getRemainingTime(startedAt) - 8000)));
 
     const parsed = parseAiJsonCompletion(completion);
     const extracted = Array.isArray(parsed?.events) ? parsed.events : [];
@@ -1811,6 +1837,7 @@ async function extractAiEventsWithContext(newsItems, startedAt = Date.now()) {
     return normalized;
   } catch (error) {
     console.error("[cron] Azure OpenAI context extraction failed:", error.message);
+    error.aiContextPrepared = simplifiedNews.length;
     throw error;
   }
 }
@@ -2327,7 +2354,7 @@ async function runCollector(name, work, options = {}) {
     if (!Array.isArray(items)) throw new Error(`${name} returned an invalid response`);
     const detail = items.collector || {}; return collectorResult(detail.status || "success", detail.reason || null, startedAt, items, { requestCount: Math.max(1, Number(options.requestCount) || 1), subrequests: detail.subrequests || [], successfulSubrequestCount: detail.successfulSubrequestCount || 0, failedSubrequestCount: detail.failedSubrequestCount || 0, cacheRetained: Boolean(detail.cacheRetained), snapshotId: detail.snapshotId || null, lastSuccessfulFetch: detail.lastSuccessfulFetch || null, staticLayer: detail.staticLayer || null, aiContextPrepared: Number(detail.aiContextPrepared) || 0, aiExtracted: Number(detail.aiExtracted) || 0, aiNormalized: Number(detail.aiNormalized) || 0, aiRejectedInvalidRequired: Number(detail.aiRejectedInvalidRequired) || 0, aiRejectedMissingEvidence: Number(detail.aiRejectedMissingEvidence) || 0, aiRejectedLowConfidence: Number(detail.aiRejectedLowConfidence) || 0, aiRejectedMissingLocationText: Number(detail.aiRejectedMissingLocationText) || 0, aiRejectedNoCityFallback: Number(detail.aiRejectedNoCityFallback) || 0 });
   } catch (error) {
-    return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1) });
+    return collectorResult("failed", cleanRefreshLogError(error?.message) || `${name} failed`, startedAt, [], { error: cleanRefreshLogError(error?.stack || error?.message), requestCount: Math.max(1, Number(options.requestCount) || 1), aiContextPrepared: Math.max(0, Number(error?.aiContextPrepared) || 0) });
   }
 }
 
