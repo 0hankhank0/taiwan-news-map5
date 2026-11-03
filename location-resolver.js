@@ -293,13 +293,13 @@ function downgradeDuplicateFallbackLocations(events = []) {
 
   return events.map((event, index) => {
     if (!downgradeIndexes.has(index)) return event;
-    return withLocationQuality(cityFallbackLocation(
+    return { ...event, ...withLocationQuality(cityFallbackLocation(
       normalizeCity(event.city),
       normalizeText(event.district),
       { lat: Number(event.lat), lng: Number(event.lng) },
       normalizeText(event.locationQuery),
       "duplicate-fallback-center"
-    ), event);
+    ), event) };
   });
 }
 

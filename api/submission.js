@@ -76,7 +76,7 @@ function decidePublication(submission, analysis, isDuplicate) {
   return { status: "pending_admin", approvalMethod: null, riskLevel: ["low", "medium", "high"].includes(analysis?.risk_level) ? analysis.risk_level : "medium", publicationNotice: null };
 }
 function publicSubmission(submission) {
-  const { contactInfo, aiReviewResult, reviewNote, reportSummary, previousStatus, hiddenByReports, reportHiddenAt, ...safe } = submission;
+  const { eventOverrides, contactInfo, aiReviewResult, reviewNote, reportSummary, previousStatus, hiddenByReports, reportHiddenAt, ...safe } = submission;
   return safe;
 }
 function isSubmissionReportRoute(req) {

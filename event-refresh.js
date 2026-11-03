@@ -2211,7 +2211,7 @@ function isFreshEvent(event, now = Date.now()) {
 }
 
 function normalizedOccurrenceText(value) {
-  return String(value || "").toLowerCase().replace(/[\s\W_]+/g, "");
+  return String(value || "").toLowerCase().replace(/[\s\p{P}\p{S}_]+/gu, "");
 }
 
 // A schedule is part of an activity's identity. This merges duplicate source
@@ -2273,7 +2273,7 @@ function mergeRefreshEvents(existingEvents, newEvents, now = Date.now()) {
   // PBS is a snapshot-backed source: a successful current snapshot is
   // authoritative, so stale PBS entries must not survive a refresh.
   const hasPbsSnapshot = Array.isArray(newEvents) && newEvents.some((event) => event?.source === "pbs");
-  const mergedEvents = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => !hasPbsSnapshot || event?.source !== "pbs");
+  const mergedEvents = (Array.isArray(existingEvents) ? existingEvents : []).filter((event) => !hasPbsSnapshot || event?.source !== "pbs" || event.categorySource === "manual" || event.statusSource === "manual");
 
   for (const newEvent of (Array.isArray(newEvents) ? newEvents : [])) {
     if (!isDuplicateEvent(newEvent, mergedEvents)) {
@@ -2283,6 +2283,7 @@ function mergeRefreshEvents(existingEvents, newEvents, now = Date.now()) {
 
     const existing = findDuplicateForMerge(newEvent, mergedEvents);
     if (existing) {
+      if (existing.categorySource === "manual" || existing.statusSource === "manual") continue;
       if ((newEvent.title || "").length > (existing.title || "").length) existing.title = newEvent.title;
       if ((newEvent.content || "").length > (existing.content || "").length) existing.content = newEvent.content;
       if (Number(newEvent.locationConfidence || 0) > Number(existing.locationConfidence || 0)) {
@@ -2309,7 +2310,7 @@ function sourceWasFullyRefreshed(sources, name) {
 }
 
 function shouldReplaceExistingEvent(event, mode, sources) {
-  if (event?.categorySource === "manual") return false;
+  if (event?.categorySource === "manual" || event?.statusSource === "manual") return false;
   const provider = `${event?.source || ""} ${event?.sourceName || ""}`.toLowerCase();
   if (mode === "traffic") {
     if (!provider.includes("tdx")) return false;

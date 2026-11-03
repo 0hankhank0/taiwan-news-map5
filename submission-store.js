@@ -89,6 +89,7 @@ async function getPublicMapSubmissionEvents() {
       locationQuality: "high",
       locationDisplayMode: "point",
       locationConfidence: 1,
+      ...(submission.eventOverrides || {}),
     }));
 }
 async function readSubmissionReports() { return safeList(await getCachedValue(SUBMISSION_REPORTS_KEY)); }
@@ -122,7 +123,7 @@ async function updateSubmission(submissionId, patch, actor = {}) {
   if (!next) return null;
   if (next.status === "approved" || previous.status === "approved" || previous.hiddenByReports) {
     const event = (await getPublicMapSubmissionEvents()).find(item => item.submissionId === submissionId);
-    await syncSubmissionEvent(submissionId, event ? { ...event, status: "active" } : null);
+    await syncSubmissionEvent(submissionId, event ? { ...event, status: event.status === "approved" ? "active" : event.status } : null);
   }
   await mutateDurableValue(AUDIT_LOG_KEY, logs => [{ auditId: id("audit"), actorId: actor.id || "system", actorRole: actor.role || "system", action: actor.action || "update", submissionId, actionTime: next.updatedAt, previousStatus: previous.status, newStatus: next.status, changedFields: Object.keys(patch), reviewNote: String(patch.reviewNote || ""), requestId: actor.requestId || "" }, ...safeList(logs)].slice(0, MAX_ITEMS));
   return next;

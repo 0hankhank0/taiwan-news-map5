@@ -393,7 +393,9 @@ function normalizeEventsForFrontend(value) {
 
   return normalizedEvents
     .filter((event) => {
-      const key = normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();
+      const key = event.eventKind === "activity"
+        ? JSON.stringify([event.title, event.venue || event.address || event.city, event.startsAt, event.endsAt])
+        : normalizeText(event.eventFingerprint || `${event.city}:${event.groupCategory}:${event.title}`).toLowerCase();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

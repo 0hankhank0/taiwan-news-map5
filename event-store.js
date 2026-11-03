@@ -466,7 +466,7 @@ async function getOfficialEvents() {
   // Submission review state is authoritative even if a cross-store sync failed.
   const { getPublicMapSubmissionEvents } = require("./submission-store");
   const submissions = await getPublicMapSubmissionEvents();
-  return [...rows.filter(row => !row.submissionId && !String(row.id || "").startsWith("submission:")), ...submissions.map(row => ({ ...row, status: "active" }))];
+  return [...rows.filter(row => !row.submissionId && !String(row.id || "").startsWith("submission:")), ...submissions.map(row => ({ ...row, status: row.status === "approved" ? "active" : row.status }))];
 }
 async function readOfficialEvents() {
   if (process.env.EVENT_STORE_MODE === "supabase") {
@@ -521,8 +521,20 @@ async function updateOfficialEvent(eventId, patch = {}, actor = "admin") {
   const normalizedPatch = normalizeEventPatch(patch);
   const categoryChanged = normalizedPatch.category !== undefined || normalizedPatch.secondaryTags !== undefined;
   const next = { ...current, ...normalizedPatch, updatedAt: now, statusSource: "manual", categorySource: categoryChanged ? "manual" : current.categorySource, categoryReviewedAt: categoryChanged ? now : current.categoryReviewedAt, categoryReviewedBy: categoryChanged ? actor : current.categoryReviewedBy, sourceTrace: buildSourceTrace(current), adminReview: { ...(current.adminReview || {}), adminNote: normalizedPatch.adminNote ?? current.adminReview?.adminNote ?? "", actor, updatedAt: now } };
-  events[index] = next;
-  await setOfficialEvents(events);
+  if (current.submissionId) {
+    const { listSubmissions, updateSubmission } = require("./submission-store");
+    const submission = (await listSubmissions({ limit: 1000 })).find(item => item.submissionId === current.submissionId);
+    if (!submission) return null;
+    await updateSubmission(current.submissionId, { eventOverrides: {
+      ...(submission.eventOverrides || {}), ...normalizedPatch,
+      statusSource: "manual", categorySource: next.categorySource,
+      categoryReviewedAt: next.categoryReviewedAt, categoryReviewedBy: next.categoryReviewedBy,
+      adminReview: next.adminReview,
+    } }, { id: actor, role: "admin", action: "event_update" });
+  } else {
+    events[index] = next;
+    await setOfficialEvents(events);
+  }
   if (categoryChanged) {
     const log = await getCachedValue(EVENT_REVIEW_LOG_KEY);
     await setCachedValue(EVENT_REVIEW_LOG_KEY, [{ action: "category_updated", eventId: String(eventId), previousCategory: current.category, nextCategory: next.category, previousTags: current.secondaryTags || [], nextTags: next.secondaryTags || [], changedAt: now, changedBy: actor }, ...(Array.isArray(log) ? log : [])].slice(0, 1000));
