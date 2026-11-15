@@ -95,18 +95,12 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         all:      { text: "全部事件", icon: "fa-list", color: "#64748B" },
         traffic:  { text: "交通", icon: "fa-car-burst", color: "#2F80ED" },
         disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#C0392B" },
-        accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
+        accident: { text: "意外與治安", icon: "fa-kit-medical", color: "#F97316" },
         activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
-        crime:    { text: "社會治安", icon: "fa-shield-halved", color: "#A34A52" },
-        politics: { text: "政治公共", icon: "fa-landmark", color: "#6B5D9B" },
-        livelihood: { text: "民生生活", icon: "fa-house", color: "#437769" },
-        medical:  { text: "醫療健康", icon: "fa-heart-pulse", color: "#AF456F" },
-        education: { text: "教育校園", icon: "fa-school", color: "#4D7191" },
-        economy:  { text: "產業經濟", icon: "fa-chart-line", color: "#82663E" },
-        culture:  { text: "文化娛樂", icon: "fa-masks-theater", color: "#8B5987" },
-        international: { text: "國際事件", icon: "fa-globe", color: "#3B7385" },
-        other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
+        other:    { text: "一般新聞", icon: "fa-circle-info", color: "#64748B" }
     };
+
+    const DETAILED_NEWS_CATEGORIES = new Set(["crime", "politics", "livelihood", "medical", "education", "economy", "culture", "international"]);
 
     const VIDEO_DEMO_CORE_EVENTS = [
         {
@@ -401,12 +395,14 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         if (ev?.eventKind === "activity") return "activity";
         if (ev?.eventKind === "news") {
             const category = ev.category || ev.groupCategory || "other";
-            return Object.hasOwn(CATEGORY_CONFIG, category) && !["activity", "all"].includes(category) ? category : "other";
+            const isNewsCategory = DETAILED_NEWS_CATEGORIES.has(category)
+                || (Object.hasOwn(CATEGORY_CONFIG, category) && category !== "activity" && category !== "all");
+            return isNewsCategory ? category : "other";
         }
         if (typeof ev === "string" && Object.hasOwn(CATEGORY_CONFIG, ev)) return ev;
         if (ev && typeof eventDisplay.resolveGroupCategory === "function") {
             const shared = eventDisplay.resolveGroupCategory(ev);
-            if (shared !== "other" && Object.hasOwn(CATEGORY_CONFIG, shared)) return shared;
+            if (shared !== "other" && (Object.hasOwn(CATEGORY_CONFIG, shared) || DETAILED_NEWS_CATEGORIES.has(shared))) return shared;
         }
         const raw = normalizeText(typeof ev === "string" ? ev : (ev?.category || ev?.groupCategory || ev?.type || "other")).toLowerCase();
         const mapConfig = CATEGORY_MAP.normal || {};
@@ -432,17 +428,23 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             originalCategory,
             category: groupCategory,
             groupCategory,
-            displayCategory: getCategoryVisual(groupCategory)?.text || "其他"
+            displayCategory: getCategoryVisual(groupCategory).text
         };
+    }
+
+    function getMapCategory(category) {
+        if (category === "crime") return "accident";
+        return Object.hasOwn(CATEGORY_CONFIG, category) ? category : "other";
     }
 
     function getCategoryVisual(category) {
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
-        const mappedCat = inferEventGroupCategory(category);
-        const c = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
+        const mappedCat = getMapCategory(category);
+        const c = config[mappedCat];
+        const text = currentMapMode === "commute" && mappedCat === "accident" ? "意外" : c.text;
         const meta = CAT_META[mappedCat] || CAT_META.other;
-        return { ...c, mappedCat, meta, color: c.color };
+        return { ...c, text, mappedCat, meta };
     }
 
     function shouldPinPulse(ev, severity) {
@@ -1323,7 +1325,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             ? "全部"
             : (getCategoryVisual(activeCategory)?.text || activeCategory);
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
-        const categoryCount = new Set(events.map(ev => inferEventGroupCategory(ev)).filter(Boolean)).size;
+        const categoryCount = new Set(events.map(ev => getMapCategory(inferEventGroupCategory(ev)))).size;
 
         [
             ["sidebar-summary-count", String(events.length)],
@@ -1910,15 +1912,12 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
 
     // ── FILTERS ─────────────────────────────────────────────
     function renderCategoryButtons(){
-        const isOnline = currentMapMode === "online";
         const isCommute = currentMapMode === "commute";
-        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const order = isCommute ? ["all", "traffic", "accident", "disaster"] : FIXED_CATEGORY_ORDER;
 
         if (isCommute && !order.includes(activeCategory)) activeCategory = "all";
         catFilters.innerHTML = order.map(cat=>{
-            const mappedCat = inferEventGroupCategory(cat);
-            const c = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
+            const c = getCategoryVisual(cat);
             const isActive = activeCategory===cat;
             const svg = CAT_SVG[cat]||CAT_SVG.other;
             return `<button class="filter-chip filter-chip-v2${isActive?" active":""}" data-category="${escapeAttribute(cat)}"
@@ -1972,7 +1971,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) { noteDropped(ev, "mapBounds"); return false; }
 
             if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) { noteDropped(ev, "commuteCategory"); return false; }
-            if(activeCategory!=="all" && mappedCategory!==activeCategory) { noteDropped(ev, "category"); return false; }
+            if(activeCategory!=="all" && getMapCategory(mappedCategory)!==activeCategory) { noteDropped(ev, "category"); return false; }
             if(cityFilter!=="all"){
                 if(!normalizeFilterText(ev.city).includes(normalizeFilterText(cityFilter))) { noteDropped(ev, "city"); return false; }
             }
@@ -2244,7 +2243,6 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         events = filterEventsByNearby(events);
         events = includeRequestedEvent(events);
         const isOnline = currentMapMode === "online";
-        const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const isMobile = isMobileViewport();
         const markerLimit = VIDEO_DEMO_ROUTE ? VIDEO_DEMO_MARKER_LIMIT : (isMobile ? MOBILE_MARKER_LIMIT : Infinity);
         const cardLimit = VIDEO_DEMO_ROUTE ? VIDEO_DEMO_CARD_LIMIT : (isMobile ? MOBILE_CARD_LIMIT : Infinity);
@@ -2284,16 +2282,15 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             const shouldRenderCard = index < cardLimit || isRequestedEvent;
             if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
-            const cat = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
+            const catVisual = getCategoryVisual(mappedCat);
             const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
             const displayContent = (isOnline && ev.twOnlineContent) ? ev.twOnlineContent : (ev.content || "沒有摘要");
             const severity = getEventSeverity(ev);
-            const markerStyle = resolveMarkerStyle(ev, cat.color);
+            const markerStyle = resolveMarkerStyle(ev, catVisual.color);
 
-            const catVisual = getCategoryVisual(mappedCat);
             const pinPulse = shouldPinPulse(ev, severity);
             const popupHtml = buildPopupHtml(ev, displayTitle, displayContent, markerStyle);
 
