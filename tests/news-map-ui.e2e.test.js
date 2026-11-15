@@ -35,6 +35,21 @@ function event(id, hoursAgo, extra = {}) { return { id, title:`事件 ${id} 測�
     await originalAction.dispatchEvent('click'); assert.equal(await page.evaluate(()=>window.__mapboxTestMap.lastFly || null),null,'original link does not focus the card');
     await moreAction.click(); assert.equal(await moreAction.getAttribute('aria-expanded'),'true'); await actionCard.locator('[data-action="open-report"]').click(); await page.waitForSelector('#report-modal.visible'); assert.equal(await page.evaluate(()=>window.__mapboxTestMap.lastFly || null),null,'report action does not focus the card'); await page.click('#report-cancel-btn');
     await primaryAction.click(); await page.waitForFunction(()=>Boolean(window.__mapboxTestMap.lastFly)); const popupShareAction = page.locator('.mapboxgl-popup [data-action="share-event"]'); assert.equal(await popupShareAction.count(), 1, 'marker detail popup includes a share action'); await popupShareAction.click(); await page.waitForFunction(() => window.__sharedEvents.length === 2); console.log('ui e2e: default');
+    const cityCard = page.locator('.event-card-v2[data-event-id="city"]');
+    const cityAction = cityCard.getByRole("button", { name: /查看縣市範圍/ });
+    await cityAction.click();
+    assert.deepEqual(await page.evaluate(() => window.__mapboxTestMap.lastFly.center), [120, 23]);
+    assert.equal(await page.evaluate(() => window.__mapboxTestMap.lastFly.zoom), 10);
+    assert.equal(await page.locator(".mapboxgl-popup").count(), 1, "selecting a second event replaces the previous popup");
+    assert.match(await page.locator(".mapboxgl-popup").textContent(), /事件 city/);
+    assert.equal(await page.locator('.event-card-v2[data-event-id="unknown"] [data-action="focus-event"]').count(), 0, "events without a location offer no map action");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await actionCard.locator(".card-v2-title").click();
+    await page.waitForSelector("#news-sidebar.drawer-collapsed");
+    assert.deepEqual(await page.evaluate(() => window.__mapboxTestMap.lastFly.center), [121.56, 25.04]);
+    assert.match(await page.locator(".mapboxgl-popup").textContent(), /事件 h2/);
+    await page.locator("#news-sidebar").evaluate(sidebar => sidebar.classList.remove("drawer-collapsed"));
+    await page.setViewportSize({ width: 1440, height: 900 });
     async function openDeepLink(pathname) {
       const deepPage = await context.newPage();
       await deepPage.route('https://api.mapbox.com/mapbox-gl-js/**/mapbox-gl.js', r => r.fulfill({contentType:'application/javascript',body:MAPBOX_STUB})); await deepPage.route('https://api.mapbox.com/mapbox-gl-js/**/mapbox-gl.css', r => r.fulfill({contentType:'text/css',body:''})); await deepPage.route(/https:\/\/(fonts|cdnjs)\./, r => r.fulfill({contentType:'text/css',body:''})); await deepPage.route('**/_vercel/insights/script.js', r => r.fulfill({contentType:'application/javascript',body:''}));

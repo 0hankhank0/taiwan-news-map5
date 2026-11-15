@@ -835,7 +835,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             </div>`;
     }
 
-    function buildEventCardHtml(ev, displayTitle, displayContent, catVisual) {
+    function buildEventCardHtml(ev, displayTitle, displayContent, catVisual, mapActionLabel) {
         const city = normalizeText(ev.city) || "未知城市";
         const eventIdAttr = escapeAttribute(ev.id || "");
         const sourceUrl = sanitizeExternalUrl(ev.url);
@@ -895,7 +895,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             <div class="card-v2-extra card-footer">
                 ${sourcesHtml}
                 <div class="card-actions" aria-label="事件操作">
-                    <button type="button" class="card-action-btn card-action-btn--primary" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="在地圖查看 ${escapeAttribute(displayTitle)}">在地圖查看</button>
+                    ${mapActionLabel ? `<button type="button" class="card-action-btn card-action-btn--primary" data-action="focus-event" data-event-id="${eventIdAttr}" aria-label="${mapActionLabel} ${escapeAttribute(displayTitle)}">${mapActionLabel}</button>` : ""}
                     <div class="card-action-group">
                         ${sourceUrl ? `<a href="${sourceUrlAttr}" target="_blank" rel="noreferrer" class="card-action-btn card-action-btn--link"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>查看原文</a>` : ""}
                         <button type="button" class="card-action-btn card-action-btn--share" data-action="share-event" data-event-id="${eventIdAttr}" aria-label="分享 ${escapeAttribute(displayTitle)}"><i class="fa-solid fa-share-nodes" aria-hidden="true"></i><span class="share-label">分享</span></button>
@@ -1006,6 +1006,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
     let appliedMapBounds = null;
     let mapBoundsDirty = false;
     let suppressMapBoundsPrompt = false;
+    let mapBoundsPromptTimer;
     let isTaiwanMode = true;
     let twGeoJSON = null;
     let activePopup = null;
@@ -1288,8 +1289,9 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
     function tryParseJson(t,fb){ try{ return t ? JSON.parse(t) : fb; }catch{ return fb; } }
     function flyToLatLng(latlng, zoom, duration=800){
         suppressMapBoundsPrompt = true;
+        window.clearTimeout(mapBoundsPromptTimer);
         map.flyTo({ center:[latlng[1], latlng[0]], zoom, duration, essential:true });
-        window.setTimeout(() => { suppressMapBoundsPrompt = false; }, Math.max(0, Number(duration) || 0) + 120);
+        mapBoundsPromptTimer = window.setTimeout(() => { suppressMapBoundsPrompt = false; }, Math.max(0, Number(duration) || 0) + 120);
     }
     function closeActivePopup(){
         if(activePopup){
@@ -2266,12 +2268,15 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             const isRequestedEvent = String(ev.id || "") === requestedEventId;
             const shouldRenderMarker = index < markerLimit || ev.submissionId === requestedSubmissionId || isRequestedEvent;
             const locationPresentation = getLocationPresentation(ev);
-            const canRenderMarker = shouldRenderMarker && locationPresentation.marker && (locationPresentation.mode === "city_area" || shouldRenderLocationMarker(ev));
+            const latlng = [Number(ev.lat), Number(ev.lng)];
+            const isCityArea = locationPresentation.mode === "city_area";
+            const canRenderMarker = shouldRenderMarker && locationPresentation.marker && (isCityArea
+                ? isValidTaiwanCoord(...latlng)
+                : shouldRenderLocationMarker(ev));
             const shouldRenderCard = index < cardLimit || isRequestedEvent;
             if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
             const cat = config[mappedCat]||config.other;
-            const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker
             const displayTitle = (isOnline && ev.twOnlineTitle) ? ev.twOnlineTitle : (ev.title || "未命名事件");
@@ -2358,17 +2363,24 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             if (isRequestedEvent) card.classList.add("requested-event-card");
             if (ev.source === "user_submission") card.classList.add("submission-card");
             card.style.setProperty("--card-color", catVisual.color);
-            card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual);
+            const mapActionLabel = popup ? (isCityArea ? "查看縣市範圍" : "在地圖查看") : "";
+            card.innerHTML = buildEventCardHtml(ev, displayTitle, displayContent, catVisual, mapActionLabel);
+
+            function focusOnMap() {
+                if (!popup) return;
+                if (isMobileViewport()) {
+                    newsSidebar.classList.add("drawer-collapsed");
+                    scheduleMapResize();
+                }
+                closeActivePopup();
+                const zoom = isCityArea ? 10 : (ev.source === "TDX CMS" ? 14 : 13);
+                flyToLatLng(latlng, zoom, 450);
+                popup.setLngLat([latlng[1], latlng[0]]).addTo(map);
+            }
 
             card.querySelector('[data-action="focus-event"]')?.addEventListener("click", (event) => {
                 event.stopPropagation();
-                if (popup && locationPresentation.flyTo) {
-                    flyToLatLng(latlng, ev.source === "TDX CMS" ? 14 : 13, 800);
-                    popup.addTo(map);
-                    if (window.innerWidth < 768) newsSidebar.classList.add("drawer-collapsed");
-                } else {
-                    setStatus("此事件位置待確認，無法在地圖上精準定位");
-                }
+                focusOnMap();
             });
 
             card.addEventListener("click",e=>{
@@ -2379,14 +2391,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
                     sourceType: String(ev.source || "unknown"),
                     deviceLayout: window.innerWidth < 768 ? "mobile" : "desktop"
                 });
-                closeActivePopup();
-                if (popup && locationPresentation.flyTo) {
-                    flyToLatLng(latlng, ev.source==="TDX CMS"?14:13, 800);
-                    popup.addTo(map);
-                } else {
-                    setStatus("此事件定位待確認，未顯示精準地圖標記");
-                }
-                if(window.innerWidth<768) newsSidebar.classList.add("drawer-collapsed");
+                focusOnMap();
             });
 
             const reportBtn=card.querySelector("[data-report]");
