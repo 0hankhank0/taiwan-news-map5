@@ -3,6 +3,7 @@ const { getOfficialEvents, getEventCacheStatus } = require("../event-store");
 const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
 const { getRequestQuery } = require("../request-query");
+const { getNcdrAlerts } = require("../ncdr-alerts");
 function publicEvent(event = {}) {
   const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","occurredAt","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
   fields.push("verifiedStatus", "reviewState", "severity");
@@ -44,6 +45,16 @@ module.exports = async (req, res) => {
   // This route is intentionally shared with the events function to stay within
   // Vercel Hobby's function limit; the rewrite preserves the public endpoint.
   const query = getRequestQuery(req);
+  if (query.ncdrAlerts === "1") {
+    try {
+      const alerts = (await getNcdrAlerts()).filter(alert => Date.parse(alert.expiresAt) > Date.now());
+      res.setHeader("Cache-Control", "s-maxage=60");
+      return res.status(200).json({ alerts });
+    } catch {
+      res.setHeader("Cache-Control", "no-store");
+      return res.status(503).json({ error: "NCDR alerts unavailable" });
+    }
+  }
   if (String(req.url || "").includes("/api/integrations/events/status") || query.integrationStatus === "1") {
     res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ integrations: await getEventIntegrationStatuses() });

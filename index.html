@@ -63,7 +63,7 @@
     <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.css" />
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.12.0/mapbox-gl.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
-    <link rel="stylesheet" href="/assets/index/index.css?v=submit-entry-2">
+    <link rel="stylesheet" href="/assets/index/index.css?v=ncdr-alerts-1">
 </head>
 <body>
 
@@ -366,12 +366,20 @@
     <section id="map-stage">
         <div id="map"></div>
         <aside id="map-help-card" class="map-help-card" role="status">點擊地圖事件，查看新聞發生位置與摘要。<button id="map-help-close" type="button" aria-label="關閉提示">×</button></aside>
-        <div class="map-area-actions"><button id="search-map-area-btn" type="button" hidden>搜尋這個地圖區域</button><button id="clear-map-area-btn" type="button" hidden>清除地圖範圍</button></div>
+        <div class="map-area-actions">
+            <button id="search-map-area-btn" type="button" hidden>搜尋這個地圖區域</button>
+            <button id="clear-map-area-btn" type="button" hidden>清除地圖範圍</button>
+            <button id="ncdr-alert-toggle" type="button" aria-expanded="false" aria-controls="ncdr-alert-panel">官方示警</button>
+            <section id="ncdr-alert-panel" class="ncdr-alert-panel" aria-label="官方示警" hidden>
+                <p id="ncdr-alert-status" role="status"></p>
+                <ul id="ncdr-alert-list"></ul>
+            </section>
+        </div>
     </section>
 </main>
 
 <script src="/event-content-filter.js?v=event-filter-4"></script>
 <script src="/event-display.js?v=shared-display-2"></script>
-<script src="/assets/index/main.js?v=video-demo-18"></script>
+<script src="/assets/index/main.js?v=ncdr-alerts-1"></script>
 </body>
 </html>

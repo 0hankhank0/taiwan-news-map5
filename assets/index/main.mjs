@@ -1,5 +1,6 @@
 import { eventDisplay } from "./modules/event-display-adapter.mjs";
 import { createDataTrustController } from "./modules/data-trust.mjs";
+import { initNcdrAlertLayer } from "./modules/ncdr-alert-layer.mjs";
 import {
     bindDelegatedActions,
     escapeAttribute,
@@ -1076,6 +1077,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         center: [taiwanView.center[1], taiwanView.center[0]],
         zoom: taiwanView.zoom
     });
+    const attachNcdrFallbackMap = initNcdrAlertLayer(map);
 
     map.on('style.load', () => {
         setMapLanguageToChinese();
@@ -1129,6 +1131,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             attribution: '© OpenStreetMap'
         }).addTo(fallbackMap);
         window._fallbackMap = fallbackMap;
+        attachNcdrFallbackMap(fallbackMap);
         // 把原本的 markers 重新打在 fallbackMap 上 (這部分需要額外邏輯，但先按照指示實作結構)
         if (parsedEvents.length) {
             parsedEvents.filter(shouldShowRealtimeEvent).filter(ev => shouldRenderLocationMarker(ev)).forEach(ev => {
