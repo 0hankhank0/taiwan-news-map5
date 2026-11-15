@@ -1,10 +1,12 @@
 const { NEWS_CATEGORIES } = require("./event-categories");
 
+const PUBLIC_CASE_ANALYSIS = /(?:公安|工安|建案|鄰損|大直案).{0,20}(?:法律疑點|法律分析|責任歸屬)/;
+
 const NEWS_RULES = [
   ["politics", "選舉、選戰或政治評論", /政見發表|候選人|選舉|選戰|選情|選前|掃街拜票|競選|造勢|政黨輪替|黨紀|立法院|[市縣]議會/],
-  ["politics", "公共案件的法律分析", /(?:公安|工安|建案|鄰損|大直案).{0,20}(?:法律疑點|責任歸屬)|法律疑點|法律分析/],
+  ["politics", "公共案件的法律分析", PUBLIC_CASE_ANALYSIS],
   ["disaster", "天氣或天然災害", /地震|颱風|豪雨|暴雨|淹水|土石流|坍方|坍塌道路|道路坍塌|落石|停班停課/],
-  ["crime", "刑案、違法行為或司法追蹤", /縱火|蓄意放火|詐騙|詐欺|竊盜|偷竊|搶劫|性侵|性騷擾|殺人|槍擊|持刀(?:砍|傷|襲)|毒品|通緝犯|共諜|遭(?:逮捕|起訴)|偵辦刑案/],
+  ["crime", "刑案、違法行為或司法追蹤", /縱火|蓄意放火|詐騙|詐欺|竊盜|偷竊|搶劫|性侵|性騷擾|殺人|槍擊|持刀(?:砍|傷|襲)|毒品|通緝犯|遭(?:逮捕|起訴)|(?:偵辦|查辦)(?:刑案|共諜案)|共諜案.{0,12}(?:起訴|判刑|偵辦|約談)/],
   ["accident", "道路或運輸工具事故", /車禍|交通事故|道路事故|(?:汽車|機車|轎車|貨車|拖板車|砂石車|遊覽車|小客車|公車|客運).{0,10}(?:追撞|對撞|相撞|擦撞|自撞|翻覆|撞上|起火)|追撞|對撞|自撞|翻車|摔車|連環撞|列車.{0,12}出軌/],
   ["accident", "火警、受傷或現場救援", /火警|火災|失火|起火|氣爆|工安事故|職災|墜樓|墜落|溺水|摔傷|跌傷|高山症|登山.{0,10}失聯|(?:吊掛|受困|山難|落海|落水).{0,10}救援/],
   ["livelihood", "民生服務或生活設施", /停水|停電|限水|水質異常|民生物資|(?:運動中心|壘球場|運動館|全民館).{0,16}(?:啟用|開幕)/],
@@ -17,9 +19,14 @@ const NEWS_RULES = [
 ];
 
 const POLITICAL_CONTEXT = NEWS_RULES[0][2];
-const PUBLIC_ACTION = /車禍|交通事故|追撞|摔傷|火災|火警|氣爆|縱火|持刀|槍擊|停水|停電|封路|封街|交通管制/;
-const NON_INCIDENT_CONTEXT = /演練|演習|救援賽|防災宣導|事故預防|預防事故/;
-const LEGAL_FOLLOW_UP = /法律疑點|法律分析|責任歸屬/;
+const INCIDENT_CATEGORIES = new Set(["disaster", "crime", "traffic", "accident"]);
+const SIMULATION = /演練|演習|救援賽/;
+const ACTUAL_HARM = /(?:演練|演習|比賽)(?:中|時|期間).{0,24}(?:摔傷|跌傷|墜落|送醫|受傷|昏迷|死亡)|(?:意外|不慎).{0,10}(?:摔傷|跌傷|墜落|送醫|受傷)|真的.{0,6}(?:受傷|起火|火警|送醫)/;
+const PREVENTION = /事故預防|預防事故|防災宣導|交通安全宣導|防詐(?:宣導|講座|課程)|(?:詐騙|性騷擾|火災|車禍).{0,6}(?:防治|防制|預防|宣導|統計)/;
+const BACKGROUND = /(?:事故|火災|車禍|地震|氣爆|災情).{0,10}(?:回顧|周年|週年|紀念|紀錄片)|(?:回顧|紀念).{0,10}(?:事故|火災|車禍|地震|氣爆)|(?:防災|抗震|防震|減災)(?:教育|展覽|課程|講座)/;
+const NATURAL_HAZARD = /淹水|土石流|坍方|坍塌道路|道路坍塌|落石|(?:發生|規模|有感)地震|地震.{0,10}(?:震度|餘震|倒塌)|停班停課/;
+const WEATHER_CAUSE = /(?:因|受)(?:強烈)?(?:颱風|豪雨|暴雨)|(?:颱風|豪雨|暴雨|地震).{0,12}(?:造成|導致|引發|釀|致)/;
+const NEGATED_INCIDENT = /(?:並無|並未|未有|沒有|並非|不是)(?:發生)?(?:地震|火警|火災|車禍|交通事故|道路事故|淹水|土石流|坍方|氣爆)/g;
 const OUTLET_SECTIONS = { politics: "politics", life: "livelihood", business: "economy", entertainment: "culture", sports: "culture", international: "international" };
 
 function outletCategory(event) {
@@ -36,34 +43,52 @@ function outletCategory(event) {
   }
 }
 
-function matchNewsRules(text) {
-  // Scheduled drills and competitions often name the emergency they simulate.
-  const contextOnly = NON_INCIDENT_CONTEXT.test(text);
-  const hasPublicAction = PUBLIC_ACTION.test(text);
-  return NEWS_RULES.find(([category, , pattern]) => {
-    if (category === "politics" && hasPublicAction && !LEGAL_FOLLOW_UP.test(text)) return false;
-    if (contextOnly && ["disaster", "crime", "traffic", "accident"].includes(category)) return false;
-    return pattern.test(text);
+function matchNewsRules(text, lead = "") {
+  const evidence = text.replace(NEGATED_INCIDENT, "");
+  const contextOnly = PREVENTION.test(text) || BACKGROUND.test(text);
+  const simulation = SIMULATION.test(text);
+  if (simulation && ACTUAL_HARM.test(evidence)) return ["accident", "演習或比賽中發生實際傷害"];
+  const matches = NEWS_RULES.filter(([category, , pattern]) => {
+    if (INCIDENT_CATEGORIES.has(category) && (contextOnly || simulation)) return false;
+    return pattern.test(INCIDENT_CATEGORIES.has(category) ? evidence : text);
   });
+  const incident = matches.find(([category]) => INCIDENT_CATEGORIES.has(category));
+  if (!incident || contextOnly) return matches[0];
+
+  const physicalAccident = matches.find(([category]) => category === "accident" || category === "crime");
+  const weatherIsBackground = incident[0] === "disaster" && physicalAccident
+    && !NATURAL_HAZARD.test(evidence) && !WEATHER_CAUSE.test(`${evidence} ${lead}`);
+  if (PUBLIC_CASE_ANALYSIS.test(text) && !/今[日天]|剛剛|稍早|現場仍/.test(text)) return matches[0];
+  return weatherIsBackground ? physicalAccident : incident;
 }
 
 function classifyNewsCategory(event = {}) {
   const title = String(event.title || "").normalize("NFKC");
   const summary = String(event.summary || event.content || "").normalize("NFKC").slice(0, 350);
-  const headline = matchNewsRules(title);
-  if (headline) return { category: headline[0], categoryReason: headline[1] };
-
-  const section = outletCategory(event);
   // Google News RSS summaries often concatenate several linked headlines.
   // Those can describe different events and are unsafe classification input.
   const sourceUrl = String(event.sourceUrl || event.url || event.link || "");
   const isAggregatedSummary = /^https?:\/\/news\.google\.com\//i.test(sourceUrl);
   const lead = isAggregatedSummary ? "" : summary.split(/[。！？!?\n]/u, 1)[0];
-  if (section && !PUBLIC_ACTION.test(lead)) {
+  const headline = matchNewsRules(title, lead);
+  if (headline && INCIDENT_CATEGORIES.has(headline[0])) {
+    return { category: headline[0], categoryReason: headline[1] };
+  }
+  // A festival, candidate or school can be the setting for a real incident.
+  // Read the lead when the headline describes the setting without the action.
+  const contextualHeadline = PREVENTION.test(title) || SIMULATION.test(title) || BACKGROUND.test(title) || /法律疑點|法律分析|責任歸屬/.test(title);
+  const context = contextualHeadline ? undefined : matchNewsRules(lead);
+  if (context && INCIDENT_CATEGORIES.has(context[0])) {
+    return { category: context[0], categoryReason: context[1] };
+  }
+  if (headline || context) {
+    const [category, categoryReason] = headline || context;
+    return { category, categoryReason };
+  }
+  const section = outletCategory(event);
+  if (section && !INCIDENT_CATEGORIES.has(section)) {
     return { category: section, categoryReason: "來源新聞版面" };
   }
-  const context = matchNewsRules(lead);
-  if (context) return { category: context[0], categoryReason: context[1] };
   if (!isAggregatedSummary && POLITICAL_CONTEXT.test(summary)) {
     return { category: "politics", categoryReason: "摘要中的政治脈絡" };
   }

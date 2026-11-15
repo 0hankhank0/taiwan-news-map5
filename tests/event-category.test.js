@@ -3,6 +3,7 @@ const categories = require("../shared/event-categories");
 const { normalizeEvent } = require("../event-normalizer");
 const { normalizeFinalEvents } = require("../event-refresh");
 const { resolveGroupCategory } = require("../event-display");
+const { classifyNewsCategory } = require("../shared/news-category-rules");
 
 assert.equal(categories.normalizeEventCategory("criminal"), "crime");
 assert.equal(categories.normalizeEventCategory("weather"), "disaster");
@@ -73,5 +74,31 @@ assert.equal(normalizeFinalEvents([{ ...ai, categoryConfidence: null }]).length,
 assert.equal(normalizeEvent({ ...rss, category: "activity", eventKind: undefined }).eventKind, "news");
 assert.equal(normalizeFinalEvents([{ ...rss, category: "activity", eventKind: undefined }])[0].eventKind, "news");
 assert.equal(normalizeEvent({ ...rss, source: "iCulture", eventKind: "activity", category: "activity" }).category, "activity");
+
+const accuracyCases = [
+  ["台北市颱風天兩車追撞", "警方初判駕駛分心。", "accident"],
+  ["台北市颱風天兩車追撞", "豪雨造成路樹倒塌，兩車為閃避樹幹而追撞。", "disaster"],
+  ["台北市路樹倒塌封閉兩車道", "外側車道暫停通行。", "traffic"],
+  ["台北市颱風引發坍方封路", "", "disaster"],
+  ["台北市校園地震演習", "演練包含模擬火警及人員撤離。", "other"],
+  ["台北市校園地震演習中學生不慎受傷", "校方安排學生就醫。", "accident"],
+  ["警方辦防詐講座 解析網購詐騙手法", "向民眾宣導如何查證。", "other"],
+  ["警方逮捕網購詐騙集團", "被害者已報案。", "crime"],
+  ["法律分析：性侵案件的證據如何判斷", "法院審理既有案件。", "crime"],
+  ["台北市演唱會場外傳出狀況", "散場時有兩車在場外追撞。", "accident"],
+  ["台北市演唱會周邊交通管制", "場館公布交通疏導措施。", "traffic"],
+  ["台北市傳巨響 消防局證實並未發生氣爆", "目前正在確認聲音來源。", "other"],
+  ["車禍十週年回顧 出版紀錄片", "", "other"],
+  ["名人私生活惹議 又被影射是共諜", "", "other"],
+  ["檢方偵辦共諜案並約談三人", "", "crime"],
+];
+for (const [title, content, category] of accuracyCases) {
+  assert.equal(classifyNewsCategory({ title, content }).category, category, title);
+  assert.equal(normalizeEvent({ ...rss, title, content }).category, category, title);
+}
+
+for (const sourceCategory of ["traffic", "disaster", "crime", "accident"]) {
+  assert.equal(classifyNewsCategory({ title: "地方專訪", sourceCategory }).category, "other");
+}
 
 console.log("event category tests passed");
