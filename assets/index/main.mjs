@@ -97,6 +97,14 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         disaster: { text: "災害", icon: "fa-triangle-exclamation", color: "#C0392B" },
         accident: { text: "意外", icon: "fa-kit-medical", color: "#F97316" },
         activity: { text: "活動", icon: "fa-users", color: "#22C55E" },
+        crime:    { text: "社會治安", icon: "fa-shield-halved", color: "#A34A52" },
+        politics: { text: "政治公共", icon: "fa-landmark", color: "#6B5D9B" },
+        livelihood: { text: "民生生活", icon: "fa-house", color: "#437769" },
+        medical:  { text: "醫療健康", icon: "fa-heart-pulse", color: "#AF456F" },
+        education: { text: "教育校園", icon: "fa-school", color: "#4D7191" },
+        economy:  { text: "產業經濟", icon: "fa-chart-line", color: "#82663E" },
+        culture:  { text: "文化娛樂", icon: "fa-masks-theater", color: "#8B5987" },
+        international: { text: "國際事件", icon: "fa-globe", color: "#3B7385" },
         other:    { text: "其他", icon: "fa-circle-info", color: "#64748B" }
     };
 
@@ -390,9 +398,15 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
 
     function inferEventGroupCategory(ev) {
         if (String(ev || "").toLowerCase() === "all") return "all";
+        if (ev?.eventKind === "activity") return "activity";
+        if (ev?.eventKind === "news") {
+            const category = ev.category || ev.groupCategory || "other";
+            return Object.hasOwn(CATEGORY_CONFIG, category) && !["activity", "all"].includes(category) ? category : "other";
+        }
+        if (typeof ev === "string" && Object.hasOwn(CATEGORY_CONFIG, ev)) return ev;
         if (ev && typeof eventDisplay.resolveGroupCategory === "function") {
             const shared = eventDisplay.resolveGroupCategory(ev);
-            if (shared !== "other" && ["traffic", "disaster", "accident", "activity"].includes(shared)) return shared;
+            if (shared !== "other" && Object.hasOwn(CATEGORY_CONFIG, shared)) return shared;
         }
         const raw = normalizeText(typeof ev === "string" ? ev : (ev?.category || ev?.groupCategory || ev?.type || "other")).toLowerCase();
         const mapConfig = CATEGORY_MAP.normal || {};
@@ -426,7 +440,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
         const mappedCat = inferEventGroupCategory(category);
-        const c = config[mappedCat] || config.other;
+        const c = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
         const meta = CAT_META[mappedCat] || CAT_META.other;
         return { ...c, mappedCat, meta, color: c.color };
     }
@@ -972,7 +986,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         }
     };
 
-    const FIXED_CATEGORY_ORDER = ["all", "traffic", "disaster", "accident", "activity", "other"];
+    const FIXED_CATEGORY_ORDER = Object.keys(CATEGORY_CONFIG);
 
     const SOURCE_CONFIG = {
         "TDX CMS": { text:"TDX 即時路況", shortText:"TDX",  bg:"rgba(15,118,110,0.2)", color:"#5eead4" },
@@ -1904,7 +1918,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         if (isCommute && !order.includes(activeCategory)) activeCategory = "all";
         catFilters.innerHTML = order.map(cat=>{
             const mappedCat = inferEventGroupCategory(cat);
-            const c = config[mappedCat]||config.other;
+            const c = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
             const isActive = activeCategory===cat;
             const svg = CAT_SVG[cat]||CAT_SVG.other;
             return `<button class="filter-chip filter-chip-v2${isActive?" active":""}" data-category="${escapeAttribute(cat)}"
@@ -2270,7 +2284,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             const shouldRenderCard = index < cardLimit || isRequestedEvent;
             if (!canRenderMarker && !shouldRenderCard) return;
             const mappedCat = inferEventGroupCategory(ev);
-            const cat = config[mappedCat]||config.other;
+            const cat = config[mappedCat] || CATEGORY_CONFIG[mappedCat] || config.other;
             const latlng = [Number(ev.lat),Number(ev.lng)];
 
             // Marker

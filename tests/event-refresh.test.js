@@ -228,12 +228,13 @@ async function call(handler, req) {
   ]);
   assert(ruleEvents.every((event) => event.eventKind === "news"));
   assert.equal(ruleEvents.find((event) => event.url.endsWith("shoushan")).city, "高雄市");
-  assert.equal(ruleEvents.find((event) => event.url.endsWith("activity")).category, "activity");
+  assert.equal(ruleEvents.find((event) => event.url.endsWith("activity")).category, "culture");
   assert.equal(ruleEvents.diagnostics.ruleRejectedNoReliableLocation, 1);
   assert.equal(ruleEvents.diagnostics.ruleRejectedInstitutional, 1);
   assert.equal(ruleEvents.diagnostics.ruleDeduplicated, 1);
   const finalizedRuleActivity = eventRefresh.normalizeFinalEvents([ruleEvents.find((event) => event.url.endsWith("activity"))]);
   assert.equal(finalizedRuleActivity[0].eventKind, "news");
+  assert.equal(finalizedRuleActivity[0].category, "culture");
 
   // This fixture mirrors a large RSS refresh: enough safely located reports
   // should survive the first pass, while the existing 40-item safety cap stays
