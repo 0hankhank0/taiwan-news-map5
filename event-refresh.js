@@ -38,7 +38,7 @@ const {
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 const { notifyRefreshAlert } = require("./refresh-alerts");
 const { getActivePbsEvents, getPbsSyncState } = require("./supabase-pbs-repository");
-const { resolveEventCategory } = require("./shared/event-category-decision");
+const { resolveEventCategory, classifyRssCategory, isRssNews } = require("./shared/event-category-decision");
 
 const Parser = require("rss-parser");
 const os = require("os");
@@ -305,17 +305,6 @@ const CITY_ALIASES = [
   { keywords: ["\u9023\u6c5f", "\u99ac\u7956", "Lienchiang"], city: "Lienchiang", lat: 26.1602, lng: 119.9517 },
 ];
 
-const CATEGORY_KEYWORDS = [
-  { category: "traffic", keywords: ["\u8eca\u798d", "\u4e8b\u6545", "\u585e\u8eca", "\u58c5\u585e", "\u5c01\u9589", "\u6539\u9053", "\u9053\u8def", "\u570b\u9053", "\u7701\u9053", "\u4ea4\u901a"] },
-  { category: "disaster", keywords: ["\u5730\u9707", "\u98b1\u98a8", "\u8c6a\u96e8", "\u6df9\u6c34", "\u571f\u77f3\u6d41", "\u707d\u5bb3", "\u505c\u73ed", "\u505c\u8ab2"] },
-  { category: "fire", keywords: ["\u706b\u8b66", "\u706b\u707d", "\u8d77\u706b", "\u71c3\u71d2"] },
-  { category: "police", keywords: ["\u8b66\u65b9", "\u8b66\u5bdf", "\u902e\u6355", "\u7aca\u76dc", "\u8a50\u9a19", "\u5211\u6848"] },
-  { category: "construction", keywords: ["\u65bd\u5de5", "\u5de5\u7a0b", "\u5c01\u8def", "\u9053\u8def\u65bd\u5de5", "\u7ba1\u5236"] },
-  { category: "activity", keywords: ["\u6d3b\u52d5", "\u5c55\u89bd", "\u6f14\u5531\u6703", "\u5e02\u96c6", "\u8cfd\u4e8b", "\u8b1b\u5ea7", "\u796d\u5178"] },
-  { category: "politics", keywords: ["\u7acb\u6cd5\u9662", "\u5e02\u8b70\u6703", "\u7e23\u8b70\u6703", "\u9078\u8209", "\u653f\u7b56", "\u6297\u8b70"] },
-  { category: "finance", keywords: ["\u80a1\u5e02", "\u532f\u7387", "\u7269\u50f9", "\u6295\u8cc7", "\u8ca1\u5831"] },
-  { category: "social", keywords: ["\u793e\u5340", "\u6c11\u773e", "\u516c\u76ca", "\u7cfe\u7d1b", "\u751f\u6d3b"] },
-];
 function getRemainingTime(startedAt) {
   return Math.max(0, SOFT_DEADLINE_MS * 4 - (Date.now() - startedAt));
 }
@@ -1012,12 +1001,6 @@ function inferCityFromText(text) {
   return { city: matched.city, lat: matched.lat ?? fallback?.lat, lng: matched.lng ?? fallback?.lng };
 }
 
-function inferCategoryFromText(text) {
-  const sourceText = String(text || "");
-  const matched = CATEGORY_KEYWORDS.find(({ keywords }) => keywords.some((keyword) => sourceText.includes(keyword)));
-  return matched?.category || "other";
-}
-
 function isInstitutionalNewsText(text = "") {
   return isLowRealtimeEvent(cleanNewsText(text));
 }
@@ -1123,13 +1106,12 @@ function extractRuleBasedEvents(newsItems) {
       return {
         title: title.slice(0, 120),
         content: content || title,
-        category: inferCategoryFromText(combinedText),
+        ...classifyRssCategory({ title, content, sourceUrl: item.link, eventKind: "news", source: "RSS" }),
         // RSS entries describe news, even when the article mentions an event
         // or does not contain a schedule.  Keep that contract explicit so the
         // legacy `category: activity` compatibility path cannot hide it from
         // the news layer.
         eventKind: "news",
-        categorySource: "rule",
         url: String(item.link || ""),
         sourceUrl: String(item.link || ""),
         publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
@@ -1849,24 +1831,21 @@ function applyCategoryDecision(event = {}) {
   // activity-related words but is never an activity merely because it has no
   // startsAt/endsAt schedule.  Preserve the old category fallback only when a
   // producer did not supply an explicit kind.
-  if (event.eventKind === "activity" || (!event.eventKind && event.category === "activity")) return { ...event, eventKind: "activity", categorySource: event.categorySource || "official" };
-  const officialCategory = /tdx|pbs|official alert/.test(source) ? "traffic" : (event.categorySource === "official" ? event.category : "");
+  if (event.eventKind === "activity" || (!event.eventKind && event.category === "activity" && !isRssNews(event))) return { ...event, eventKind: "activity", categorySource: event.categorySource || "official" };
+  if (isRssNews(event) && event.categorySource !== "official" && event.categorySource !== "ai") {
+    return { ...event, ...classifyRssCategory(event), eventKind: "news", autoPublish: true };
+  }
+  const officialCategory = /tdx|pbs/.test(source) ? "traffic" : (event.categorySource === "official" || event.eventKind === "official_alert" ? event.category : "");
   const ruleCategory = event.categorySource === "rule" ? event.category : "";
   const decision = resolveEventCategory({
     officialCategory,
     ruleCategory,
-    aiCategory: event.category,
+    category: event.category,
     categoryConfidence: event.categoryConfidence,
     categoryReason: event.categoryReason,
     secondaryTags: event.secondaryTags,
     sourceCategory: event.sourceCategory,
   });
-  // A rule-classified RSS article can legitimately have no more specific
-  // news taxonomy than "other".  It is still publishable news, not an
-  // activity pending a schedule.
-  if (event.eventKind === "news" && source.includes("rss") && decision.category === "other") {
-    return { ...event, ...decision, eventKind: "news", category: "other", categorySource: "rule", reviewState: "reviewed", autoPublish: true };
-  }
   return { ...event, ...decision, eventKind: event.eventKind || (/tdx|pbs/.test(source) ? "traffic_data" : "news") };
 }
 

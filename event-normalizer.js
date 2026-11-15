@@ -2,6 +2,8 @@ const locationResolver = require("./location-resolver");
 const eventDisplay = require("./event-display");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 const eventCategories = require("./shared/event-categories");
+const { inferRelatedCategories } = require("./shared/news-category-rules");
+const { classifyRssCategory, isRssNews } = require("./shared/event-category-decision");
 
 const CMS_DIRECT_EVENT_PATTERN = /事故|車禍|壅塞|回堵|封閉|封路|管制|施工|改道|坍方|落石|淹水|積水|號誌|車道|匝道|交流道|排除|拖吊|救援|警察|消防|救護|緊急|故障車|拋錨|障礙物|掉落物|塞車|車多|禁止通行|單線|雙向|邊坡|土石流|停電|停水|closure|closed|accident|congestion|construction|flood|rockfall|debris/i;
 const CMS_GENERIC_NOTICE_PATTERN = /小心駕駛|安全駕駛|請小心|注意安全|保持車距|請保持|請減速|減速慢行|勿疲勞|疲勞駕駛|酒後不開車|開車不喝酒|嚴禁酒駕|請繫安全帶|繫安全帶|天候不佳|雨天路滑|路況資訊|收聽警廣|旅途平安|祝.*平安|遵守交通規則|請勿超速|勿超速|注意車前|請開大燈|開亮頭燈|drive safely|safe driving|slow down|seat belt|weather|rainy|road information/i;
@@ -269,6 +271,15 @@ function normalizeEvent(event, index = 0) {
   const content = normalizeText(event.content || event.summary || event.description || event.text || title);
   if (!title && !content) return null;
 
+  // Existing RSS cache rows can carry categories from older rules.
+  const recategorize = isRssNews(event) && !["manual", "official", "ai"].includes(event.categorySource);
+  if (recategorize) {
+    const decision = classifyRssCategory({ ...event, title, content });
+    if (decision.category !== event.category) {
+      event = { ...event, impact: undefined, advice: undefined };
+    }
+    event = { ...event, ...decision, eventKind: "news" };
+  }
   const eventKind = eventCategories.inferEventKind(event);
   const normalizedCategory = eventCategories.normalizeEventCategory(event.category || event.type, event);
   // Keep non-news layers explicit; news always uses the shared fixed taxonomy.
@@ -297,6 +308,7 @@ function normalizeEvent(event, index = 0) {
     category: rawCategory,
     rawCategory,
     groupCategory,
+    relatedCategories: inferRelatedCategories({ ...event, title, content, category: rawCategory, eventKind }),
     eventKind,
     categoryConfidence: eventCategories.normalizeCategoryConfidence(event.categoryConfidence),
     categoryReason: normalizeText(event.categoryReason || ""),

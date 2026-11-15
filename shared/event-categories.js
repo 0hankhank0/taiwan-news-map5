@@ -22,7 +22,8 @@
   const LEGACY_CATEGORIES = Object.freeze({
     criminal: "crime", police: "crime", "治安": "crime", "犯罪": "crime",
     weather: "disaster", climate: "disaster", earthquake: "disaster", typhoon: "disaster",
-    health: "medical", school: "education", business: "economy", entertainment: "culture",
+    health: "medical", school: "education", business: "economy", finance: "economy", tech: "economy",
+    life: "livelihood", entertainment: "culture",
     construction: "traffic", roadwork: "traffic", road: "traffic", congestion: "traffic", jam: "traffic",
     incident: "accident", safety: "accident", publicsafety: "accident", "public-safety": "accident"
   });
@@ -55,6 +56,7 @@
   }
 
   function normalizeCategoryConfidence(value) {
+    if (value === null || value === undefined || value === "") return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : null;
   }
@@ -65,7 +67,8 @@
     const source = clean(`${event.source || ""} ${event.sourceName || ""}`);
     const category = clean(event.category || event.type);
     if (source.includes("tdx") || source.includes("pbs")) return "traffic_data";
-    if (category === "activity" || source.includes("kktix") || source.includes("iculture")) return "activity";
+    if (source.includes("kktix") || source.includes("iculture") || source.includes("tourism events")) return "activity";
+    if (category === "activity" && !/\brss\b/.test(source)) return "activity";
     if (source.includes("submission") || event.submissionId) return "submission";
     return "news";
   }

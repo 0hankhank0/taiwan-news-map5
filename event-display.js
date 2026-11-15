@@ -16,9 +16,9 @@
     publicsafety: "accident",
     "public-safety": "accident",
     criminal: "accident",
-    crime: "accident",
+    crime: "crime",
     police: "accident",
-    medical: "accident",
+    medical: "medical",
     fire: "accident",
     disaster: "disaster",
     earthquake: "disaster",
@@ -30,6 +30,12 @@
     market: "activity",
     exhibition: "activity",
     sports: "activity",
+    politics: "politics",
+    livelihood: "livelihood",
+    education: "education",
+    economy: "economy",
+    culture: "culture",
+    international: "international",
     news: "other",
     other: "other",
   };
@@ -84,6 +90,12 @@
       typeof input === "string" ? input : (input?.groupCategory || input?.category || input?.type || "other"),
       "other"
     ).toLowerCase().replace(/_/g, "-");
+    if (input?.eventKind === "activity") return "activity";
+    if (input?.eventKind === "news") {
+      // The API already classified the article. In particular, "other" is a
+      // deliberate result and a mention of an event cannot turn news into one.
+      return CATEGORY_GROUPS[raw] === raw && raw !== "activity" ? raw : "other";
+    }
     const text = eventText(input);
     if (["traffic", "construction", "roadwork", "road", "congestion", "jam"].includes(raw)
       && /(車禍|交通事故|追撞|擦撞|對撞|自撞|撞上|翻車|摔車|肇事|事故.*(傷|死|送醫)|死亡|傷亡)/.test(text)) {
@@ -150,18 +162,18 @@
   function deriveEventImpact(event, category = resolveGroupCategory(event)) {
     const text = eventText(event);
     if (category === "activity") return "活動期間周邊可能有人潮與交通變化。";
-    if (category === "traffic" || /施工|封路|管制|壅塞|塞車/.test(text)) return "周邊道路可能壅塞或受管制影響。";
+    if (category === "traffic" || (event?.eventKind !== "news" && /施工|封路|管制|壅塞|塞車/.test(text))) return "周邊道路可能壅塞或受管制影響。";
     if (category === "accident") return "現場周邊通行與安全可能受影響。";
-    if (category === "disaster" || /火災|淹水|坍方|地震|停電|停水/.test(text)) return "周邊民生、交通或安全可能受影響。";
+    if (category === "disaster" || (event?.eventKind !== "news" && /火災|淹水|坍方|地震|停電|停水/.test(text))) return "周邊民生、交通或安全可能受影響。";
     return "此事件可能影響周邊活動與通行。";
   }
 
   function deriveEventAdvice(event, category = resolveGroupCategory(event)) {
     const text = eventText(event);
     if (category === "activity") return "前往前請確認活動頁公告、交通方式與入場時間。";
-    if (category === "traffic" || /封閉|管制|壅塞|塞車|改道/.test(text)) return "行經附近請放慢車速，必要時提前改道。";
+    if (category === "traffic" || (event?.eventKind !== "news" && /封閉|管制|壅塞|塞車|改道/.test(text))) return "行經附近請放慢車速，必要時提前改道。";
     if (category === "accident") return "避開事故現場，依警方或現場人員指揮通行。";
-    if (category === "disaster" || /火災|淹水|坍方|土石流|地震/.test(text)) return "避免靠近危險區域，留意官方最新公告。";
+    if (category === "disaster" || (event?.eventKind !== "news" && /火災|淹水|坍方|土石流|地震/.test(text))) return "避免靠近危險區域，留意官方最新公告。";
     return "前往附近前先確認最新資訊。";
   }
 

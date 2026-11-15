@@ -1,4 +1,5 @@
 const categories = require("./event-categories");
+const { classifyNewsCategory } = require("./news-category-rules");
 
 const CATEGORY_SOURCES = new Set(["manual", "official", "rule", "ai", "fallback"]);
 
@@ -8,7 +9,8 @@ function plain(value, max) {
 
 function validateAiCategoryResult(input = {}) {
   const rawCategory = String(input.category || "").trim().toLowerCase();
-  const confidence = Number(input.categoryConfidence);
+  const rawConfidence = input.categoryConfidence;
+  const confidence = rawConfidence === null || rawConfidence === "" || typeof rawConfidence === "boolean" ? NaN : Number(rawConfidence);
   const categoryReason = plain(input.categoryReason, 180);
   if (!Object.prototype.hasOwnProperty.call(categories.NEWS_CATEGORIES, rawCategory)) return { valid: false, reason: "invalid_category" };
   if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return { valid: false, reason: "invalid_confidence" };
@@ -18,11 +20,11 @@ function validateAiCategoryResult(input = {}) {
 
 function resolveEventCategory(input = {}) {
   const manual = categories.normalizeEventCategory(input.manualCategory);
-  if (input.manualCategory && manual !== "other") return { category: manual, categorySource: "manual", reviewState: "reviewed", autoPublish: true };
+  if (manual !== "other" || String(input.manualCategory || "").trim().toLowerCase() === "other") return { category: manual, categorySource: "manual", reviewState: "reviewed", autoPublish: true };
   const official = categories.normalizeEventCategory(input.officialCategory);
   if (input.officialCategory && official !== "other") return { category: official, categorySource: "official", reviewState: "reviewed", autoPublish: true };
   const rule = categories.normalizeEventCategory(input.ruleCategory);
-  if (input.ruleCategory && rule !== "other") return { category: rule, categorySource: "rule", reviewState: "reviewed", autoPublish: true };
+  if (input.ruleCategory && rule !== "other") return { category: rule, categorySource: "rule", reviewState: "unreviewed", autoPublish: true };
   const validated = input.aiResult || validateAiCategoryResult(input);
   if (validated.valid) {
     const result = { ...validated.value, categorySource: "ai" };
@@ -31,4 +33,20 @@ function resolveEventCategory(input = {}) {
   return { category: "other", categorySource: "fallback", reviewState: "pending_review", autoPublish: false, categoryError: validated.reason || "ai_unavailable" };
 }
 
-module.exports = { CATEGORY_SOURCES, validateAiCategoryResult, resolveEventCategory };
+function isRssNews(event = {}) {
+  return (!event.eventKind || event.eventKind === "news")
+    && [event.source, event.sourceName].some((source) => /^rss(?:$|[\s:-])/i.test(String(source || "").trim()));
+}
+
+function classifyRssCategory(event) {
+  const result = classifyNewsCategory(event);
+  return {
+    ...result,
+    categorySource: result.category === "other" ? "fallback" : "rule",
+    categoryConfidence: null,
+    reviewState: event.adminReview || event.categorySource === "manual" || event.statusSource === "manual"
+      ? event.reviewState : "unreviewed",
+  };
+}
+
+module.exports = { CATEGORY_SOURCES, validateAiCategoryResult, resolveEventCategory, isRssNews, classifyRssCategory };

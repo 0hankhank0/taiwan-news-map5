@@ -3,6 +3,11 @@ function normalizeQueryValue(value) {
 }
 function normalizeFilterText(value) { return normalizeQueryValue(value).toLowerCase().replace(/臺/g, "台"); }
 
+function matchesEventCategory(event, category) {
+  return [event.category, event.groupCategory, ...(Array.isArray(event.relatedCategories) ? event.relatedCategories : [])]
+    .some((value) => normalizeQueryValue(value).toLowerCase() === category);
+}
+
 function applyEventQueryFilters(events, query = {}) {
   const category = normalizeQueryValue(query.category).toLowerCase();
   const status = normalizeQueryValue(query.status).toLowerCase();
@@ -13,10 +18,7 @@ function applyEventQueryFilters(events, query = {}) {
 
   let filtered = Array.isArray(events) ? events : [];
   if (category && category !== "all") {
-    filtered = filtered.filter((event) =>
-      String(event.category || "").toLowerCase() === category
-      || String(event.groupCategory || "").toLowerCase() === category
-    );
+    filtered = filtered.filter((event) => matchesEventCategory(event, category));
   }
   if (status && status !== "all") {
     filtered = filtered.filter((event) => String(event.status || "").toLowerCase() === status);
@@ -77,6 +79,7 @@ function getEventStatusSummary(events, cacheStatus) {
 
 module.exports = {
   applyEventQueryFilters,
+  matchesEventCategory,
   getEventStatusSummary,
   getEventTimestamp,
   normalizeQueryValue,
