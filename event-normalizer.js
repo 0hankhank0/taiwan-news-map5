@@ -2,6 +2,7 @@ const locationResolver = require("./location-resolver");
 const eventDisplay = require("./event-display");
 const { classifyEventVisibility, isLowRealtimeEvent } = require("./event-content-filter");
 const eventCategories = require("./shared/event-categories");
+const { inferRelatedCategories } = require("./shared/news-category-rules");
 const { classifyRssCategory, isRssNews } = require("./shared/event-category-decision");
 
 const CMS_DIRECT_EVENT_PATTERN = /事故|車禍|壅塞|回堵|封閉|封路|管制|施工|改道|坍方|落石|淹水|積水|號誌|車道|匝道|交流道|排除|拖吊|救援|警察|消防|救護|緊急|故障車|拋錨|障礙物|掉落物|塞車|車多|禁止通行|單線|雙向|邊坡|土石流|停電|停水|closure|closed|accident|congestion|construction|flood|rockfall|debris/i;
@@ -307,6 +308,7 @@ function normalizeEvent(event, index = 0) {
     category: rawCategory,
     rawCategory,
     groupCategory,
+    relatedCategories: inferRelatedCategories({ ...event, title, content, category: rawCategory, eventKind }),
     eventKind,
     categoryConfidence: eventCategories.normalizeCategoryConfidence(event.categoryConfidence),
     categoryReason: normalizeText(event.categoryReason || ""),

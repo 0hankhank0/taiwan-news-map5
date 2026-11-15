@@ -3,6 +3,7 @@ const categories = require("../shared/event-categories");
 const { normalizeEvent } = require("../event-normalizer");
 const { normalizeFinalEvents } = require("../event-refresh");
 const { resolveGroupCategory } = require("../event-display");
+const { applyEventQueryFilters } = require("../event-query");
 const { classifyNewsCategory } = require("../shared/news-category-rules");
 
 assert.equal(categories.normalizeEventCategory("criminal"), "crime");
@@ -100,5 +101,43 @@ for (const [title, content, category] of accuracyCases) {
 for (const sourceCategory of ["traffic", "disaster", "crime", "accident"]) {
   assert.equal(classifyNewsCategory({ title: "地方專訪", sourceCategory }).category, "other");
 }
+
+const floodClosure = normalizeEvent({
+  ...rss, title: "豪雨造成台北市道路封閉", content: "道路淹水，雙向封閉。"
+});
+assert.equal(floodClosure.category, "disaster");
+assert.deepEqual(floodClosure.relatedCategories, ["traffic"]);
+for (const category of ["traffic", "disaster", "all"]) {
+  assert.deepEqual(applyEventQueryFilters([floodClosure], { category }).map(({ id }) => id), [floodClosure.id]);
+}
+assert.deepEqual(applyEventQueryFilters([floodClosure], { category: "crime" }), []);
+
+const overlappingCases = [
+  ["台北市住宅火警 周邊道路交通管制", "外側車道封閉。", "accident", ["traffic"]],
+  ["台北市住宅火警 消防局說明未封路", "無須封路。", "accident", []],
+  ["颱風天台北市兩車追撞", "警方初判駕駛分心。", "accident", []],
+  ["豪雨倒樹釀台北市兩車追撞", "主線車道封閉。", "disaster", ["traffic", "accident"]],
+  ["台北市地震演習 模擬道路封閉", "", "other", []],
+];
+for (const [title, content, category, related] of overlappingCases) {
+  const result = normalizeEvent({ ...rss, title, content });
+  assert.equal(result.category, category, title);
+  assert.deepEqual(result.relatedCategories, related, title);
+}
+
+assert.deepEqual(normalizeEvent({
+  ...rss, category: "crime", categorySource: "manual", title: "台北市槍擊案 周邊道路封閉"
+}).relatedCategories, []);
+assert.deepEqual(normalizeEvent({
+  ...rss, source: "PBS", eventKind: "traffic_data", title: "台北市淹水道路封閉"
+}).relatedCategories, ["disaster"]);
+assert.deepEqual(normalizeEvent({
+  ...rss, source: "iCulture", eventKind: "activity", category: "activity",
+  title: "台北市年節活動", content: "周邊道路交通管制。"
+}).relatedCategories, ["traffic"]);
+assert.deepEqual(normalizeEvent({
+  ...rss, title: "台北市住宅火警", content: "另一篇新聞：國道車道封閉。",
+  sourceUrl: "https://news.google.com/rss/articles/example"
+}).relatedCategories, []);
 
 console.log("event category tests passed");

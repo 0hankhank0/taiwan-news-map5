@@ -33,7 +33,7 @@ import {
     updateAlertZone
 } from "./modules/alert-zones.mjs";
 import { findPublishedSubmission, getRequestedSubmissionId, removeSubmissionQuery } from "./modules/submission-focus.mjs";
-import { createEventDataManager } from "./modules/event-data-manager.mjs";
+import { createEventDataManager } from "./modules/event-data-manager.mjs?v=category-overlap-1";
 import { normalizeFilterText } from "./modules/filters.mjs";
 import { trackEvent } from "./modules/analytics.mjs";
 import {
@@ -437,6 +437,13 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         return Object.hasOwn(CATEGORY_CONFIG, category) ? category : "other";
     }
 
+    function getEventMapCategories(event) {
+        const primary = inferEventGroupCategory(event);
+        const related = Array.isArray(event.relatedCategories) ? event.relatedCategories : [];
+        const sourceCategory = event.eventKind === "traffic_data" && event.originalCategory === "traffic" ? "traffic" : undefined;
+        return [...new Set([primary, ...related, sourceCategory].filter(Boolean).map(getMapCategory))];
+    }
+
     function getCategoryVisual(category) {
         const isOnline = currentMapMode === "online";
         const config = isOnline ? TW_ONLINE_CATEGORIES : CATEGORY_CONFIG;
@@ -700,6 +707,10 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
         return `<span class="cat-badge-v2" style="background:rgba(${meta.rgba},0.15);border:1px solid rgba(${meta.rgba},0.3);color:${meta.tint};"><span class="badge-svg-icon">${svg}</span>${escapeHtml(text)}</span>`;
     }
 
+    function makeEventCategoryBadges(event) {
+        return getEventMapCategories(event).map(makeCatBadgeV2).join("");
+    }
+
     function makeSrcBadgeV2(source) {
         const normalized = normalizeSource(source);
         const c = SOURCE_CONFIG[normalized] || SOURCE_CONFIG.default;
@@ -817,7 +828,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
                 <div class="popup-header">
                     <div>
                         <div class="popup-header-meta">
-                            ${makeCatBadgeV2(ev.category)}
+                            ${makeEventCategoryBadges(ev)}
                             <span class="popup-location-tag">${escapeHtml(city)}</span>
                             ${makeLocationPrecisionTag(ev, "popup-location-tag")}
                             ${activityTag}
@@ -896,7 +907,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
                     <span class="city-tag">${LOC_PIN_SVG}${escapeHtml(city)}</span>
                     <span class="card-source-meta">來源：${escapeHtml(preview.sourceSummary)}</span>
                     ${makeLocationPrecisionTag(ev, "time-tag")}
-                    ${makeCatBadgeV2(ev.category)}
+                    ${makeEventCategoryBadges(ev)}
                     ${activityTag}
                     ${timeHtml}
                     ${reportTag}
@@ -1325,7 +1336,7 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             ? "全部"
             : (getCategoryVisual(activeCategory)?.text || activeCategory);
         const cityCount = new Set(events.map(ev => normalizeText(ev.city)).filter(Boolean)).size;
-        const categoryCount = new Set(events.map(ev => getMapCategory(inferEventGroupCategory(ev)))).size;
+        const categoryCount = new Set(events.flatMap(getEventMapCategories)).size;
 
         [
             ["sidebar-summary-count", String(events.length)],
@@ -1970,8 +1981,9 @@ import { isDuplicateEvent as isDuplicateDisplayEvent } from "./modules/event-ded
             if (!VIDEO_DEMO_ROUTE && !isWithinTimeRange(ev, activeTimeRange) && !lifecycleOverridesTimeRange) { noteDropped(ev, "timeRange"); return false; }
             if (appliedMapBounds && !isEventInBounds(ev, appliedMapBounds)) { noteDropped(ev, "mapBounds"); return false; }
 
-            if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory)) { noteDropped(ev, "commuteCategory"); return false; }
-            if(activeCategory!=="all" && getMapCategory(mappedCategory)!==activeCategory) { noteDropped(ev, "category"); return false; }
+            const categories = getEventMapCategories(ev);
+            if(currentMapMode === "commute" && !commuteCategories.has(mappedCategory) && !ev.relatedCategories?.some(category => commuteCategories.has(category))) { noteDropped(ev, "commuteCategory"); return false; }
+            if(activeCategory!=="all" && !categories.includes(activeCategory)) { noteDropped(ev, "category"); return false; }
             if(cityFilter!=="all"){
                 if(!normalizeFilterText(ev.city).includes(normalizeFilterText(cityFilter))) { noteDropped(ev, "city"); return false; }
             }

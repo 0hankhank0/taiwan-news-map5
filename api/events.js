@@ -1,10 +1,10 @@
 const { normalizeEventsForFrontend } = require("../event-normalizer");
 const { getOfficialEvents, getEventCacheStatus } = require("../event-store");
-const { applyEventQueryFilters, getEventStatusSummary } = require("../event-query");
+const { applyEventQueryFilters, getEventStatusSummary, matchesEventCategory } = require("../event-query");
 const { getEventIntegrationStatuses } = require("../integration-store");
 const { getRequestQuery } = require("../request-query");
 function publicEvent(event = {}) {
-  const fields = ["id","submissionId","title","content","summary","category","groupCategory","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","occurredAt","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
+  const fields = ["id","submissionId","title","content","summary","category","groupCategory","relatedCategories","eventKind","categorySource","secondaryTags","categoryConfidence","categoryReason","sourceCategory","address","venue","city","district","lat","lng","source","sourceName","sourceUrl","url","occurredAt","startsAt","endsAt","expiresAt","status","publishedAt","updatedAt","createdAt","fetchedAt","locationPrecision","locationQuality","locationDisplayMode","locationConfidence","publicationNotice"];
   fields.push("verifiedStatus", "reviewState", "severity");
   const result = Object.fromEntries(fields.filter((key) => event[key] !== undefined).map((key) => [key, event[key]]));
   if (event.sourceTrace && typeof event.sourceTrace === "object") {
@@ -18,7 +18,7 @@ function apiFilterDiagnostics(events = [], query = {}, returned = []) {
   const count = Array.isArray(events) ? events.length : 0;
   const normalize = (value) => String(Array.isArray(value) ? value[0] : value || "").trim().toLowerCase();
   const category = normalize(query.category), status = normalize(query.status);
-  const categoryRows = category && category !== "all" ? events.filter((event) => String(event.category || "").toLowerCase() === category || String(event.groupCategory || "").toLowerCase() === category) : events;
+  const categoryRows = category && category !== "all" ? events.filter((event) => matchesEventCategory(event, category)) : events;
   const statusRows = status && status !== "all" ? categoryRows.filter((event) => String(event.status || "").toLowerCase() === status) : categoryRows;
   const afterQuery = applyEventQueryFilters(events, query).length;
   return {

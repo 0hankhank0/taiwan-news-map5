@@ -62,7 +62,7 @@ function matchNewsRules(text, lead = "") {
   return weatherIsBackground ? physicalAccident : incident;
 }
 
-function classifyNewsCategory(event = {}) {
+function getNewsEvidence(event) {
   const title = String(event.title || "").normalize("NFKC");
   const summary = String(event.summary || event.content || "").normalize("NFKC").slice(0, 350);
   // Google News RSS summaries often concatenate several linked headlines.
@@ -70,6 +70,39 @@ function classifyNewsCategory(event = {}) {
   const sourceUrl = String(event.sourceUrl || event.url || event.link || "");
   const isAggregatedSummary = /^https?:\/\/news\.google\.com\//i.test(sourceUrl);
   const lead = isAggregatedSummary ? "" : summary.split(/[。！？!?\n]/u, 1)[0];
+  return { title, summary, lead, isAggregatedSummary };
+}
+
+const TRAFFIC_IMPACT = /塞車|車流回堵|封路|封街|交通管制|(?:道路|國道|省道|車道|隧道|路口|路段|匝道|交流道|[台臺]\d+線|捷運|台鐵|臺鐵|高鐵|列車|航班).{0,14}(?:封閉|封鎖|管制|改道|壅塞|中斷|停駛|誤點|取消)|(?:雙向|單向|全線).{0,5}(?:封閉|封鎖|中斷)/;
+const UNCERTAIN_TRAFFIC = /未(?:實施|進行)?(?:封路|封街|封閉|管制|改道|停駛)|(?:不影響|尚未|並未|沒有|無須|無需|可能|預計視情況|過去曾).{0,18}(?:封閉|封路|封街|管制|壅塞|回堵|改道|中斷|停駛|交通)/g;
+const ROAD_ACCIDENT = NEWS_RULES.find(([category]) => category === "accident")[2];
+
+function inferRelatedCategories(event) {
+  const { category, eventKind, categorySource } = event;
+  if (categorySource === "manual" || (!INCIDENT_CATEGORIES.has(category) && eventKind !== "activity")) return [];
+
+  const { title, lead } = getNewsEvidence(event);
+  const evidence = [title, lead].filter((text) => (
+    !SIMULATION.test(text) && !PREVENTION.test(text) && !BACKGROUND.test(text)
+  )).map((text) => text.replace(NEGATED_INCIDENT, "").replace(UNCERTAIN_TRAFFIC, ""));
+  const related = [];
+
+  if (category !== "traffic" && evidence.some((text) => TRAFFIC_IMPACT.test(text))) {
+    related.push("traffic");
+  }
+  if (category === "disaster" && evidence.some((text) => ROAD_ACCIDENT.test(text))) {
+    related.push("accident");
+  }
+  // For a road-feed record, the road impact is the provider's primary category.
+  if (eventKind === "traffic_data" && category === "traffic") {
+    const cause = evidence.map((text) => matchNewsRules(text)?.[0]).find((value) => value && value !== "traffic");
+    if (INCIDENT_CATEGORIES.has(cause)) related.push(cause);
+  }
+  return related;
+}
+
+function classifyNewsCategory(event = {}) {
+  const { title, summary, lead, isAggregatedSummary } = getNewsEvidence(event);
   const headline = matchNewsRules(title, lead);
   if (headline && INCIDENT_CATEGORIES.has(headline[0])) {
     return { category: headline[0], categoryReason: headline[1] };
@@ -95,4 +128,4 @@ function classifyNewsCategory(event = {}) {
   return { category: "other", categoryReason: "標題與摘要缺少明確的分類依據" };
 }
 
-module.exports = { classifyNewsCategory };
+module.exports = { classifyNewsCategory, inferRelatedCategories };

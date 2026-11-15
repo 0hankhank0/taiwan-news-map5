@@ -5,6 +5,7 @@ export function eventFingerprint(events) {
   const number = (input) => Number.isFinite(Number(input)) ? Number(input) : null;
   return JSON.stringify((Array.isArray(events) ? events : []).map((event) => ({
     id: value(event?.id), title: value(event?.title), category: value(event?.category), groupCategory: value(event?.groupCategory),
+    relatedCategories: Array.isArray(event?.relatedCategories) ? [...event.relatedCategories].sort() : [],
     status: value(event?.status), lat: number(event?.lat), lng: number(event?.lng),
     locationQuality: value(event?.locationQuality), locationPrecision: value(event?.locationPrecision),
     publishedAt: value(event?.publishedAt), updatedAt: value(event?.updatedAt), startsAt: value(event?.startsAt), endsAt: value(event?.endsAt),
