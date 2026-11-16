@@ -1029,7 +1029,7 @@ function newsDiagnosticRecord(item = {}, patch = {}) {
   const content = cleanNewsText(item.contentSnippet || item.content || item.summary || "");
   return {
     source: String(item.source || "RSS").slice(0, 120),
-    sourceId: String(item.link || item.url || item.guid || item.id || "").slice(0, 500),
+    sourceId: String(item.guid || item.id || item.link || "").slice(0, 500),
     title: String(item.title || "").trim().slice(0, 120),
     publishedAt: item.isoDate || item.pubDate || item.publishedAt || null,
     feedUrl: String(item.feedUrl || item.sourceUrl || "").split("?")[0].slice(0, 500),
