@@ -260,6 +260,36 @@ async function call(handler, req) {
   assert.equal(aiCandidates.some((item) => item.link.endsWith("/37")), true);
   assert.equal(aiCandidates.diagnostics.aiExcludedByRuleSuccess, largeRuleEvents.length);
   assert.equal(aiCandidates.diagnostics.aiCandidateCapped, 40);
+  const selectionTime = Date.UTC(2026, 10, 16, 12);
+  const olderTime = new Date(selectionTime - 2 * 60 * 60 * 1000).toISOString();
+  const recentTime = new Date(selectionTime - 60 * 60 * 1000).toISOString();
+  const worksite = {
+    title: "台中后里工地怪手翻覆　司機受困無生命跡象",
+    contentSnippet: "台中市后里區后科路二段拆除工地發生怪手翻覆，司機受困。",
+    link: "https://example.test/rss/worksite", isoDate: olderTime,
+  };
+  const crash = {
+    title: "台中新社小客車翻落15公尺深山谷　男駕駛幸運無傷",
+    contentSnippet: "台中市新社區龍安橋附近一輛自小客車翻落山谷。",
+    link: "https://example.test/rss/crash", isoDate: olderTime,
+  };
+  const newerGeneralNews = Array.from({ length: 40 }, (_, index) => ({
+    title: `台南市第 ${index + 1} 號市集即將開幕`,
+    contentSnippet: "台南市中西區將舉行週末市集。",
+    guid: `market:${index}`, link: `https://example.test/rss/market/${index}`, isoDate: recentTime,
+  }));
+  const publishedNews = eventRefresh.extractRuleBasedEvents([...newerGeneralNews, worksite, crash], selectionTime);
+  assert.equal(publishedNews.length, 40);
+  const mapEvents = eventRefresh.normalizeFinalEvents(publishedNews);
+  const { applyEventQueryFilters } = require("../event-query");
+  assert.deepEqual(applyEventQueryFilters(mapEvents, { category: "accident" }).map((event) => event.url), [worksite.link, crash.link]);
+  assert.equal(publishedNews.diagnostics.rssRecords.find((item) => item.sourceId === newerGeneralNews.at(-1).link).reason, "ruleCandidateLimit");
+  const unlocatedAccident = { title: "民宅火警　消防員趕往現場", link: "https://example.test/rss/unlocated-fire", isoDate: olderTime };
+  assert.equal(eventRefresh.extractRuleBasedEvents([unlocatedAccident], selectionTime).length, 0);
+  const aiPriority = eventRefresh.selectAiNewsCandidates([...newerGeneralNews, unlocatedAccident], [], selectionTime);
+  assert.equal(aiPriority[0].link, unlocatedAccident.link);
+  assert.equal(aiPriority.length, 18);
+
   const pipelineDiagnostics = eventRefresh.getRssAiPipelineDiagnostics({
     rssItems: largeRssFixture,
     ruleBasedEvents: largeRuleEvents,
