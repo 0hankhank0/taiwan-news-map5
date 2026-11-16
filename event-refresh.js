@@ -92,11 +92,16 @@ const AZURE_OPENAI_CONFIG_KEYS = Object.freeze([
 
 const DEFAULT_RSS_SOURCES = [
   "https://news.ltn.com.tw/rss/all.xml",
+  "https://news.ltn.com.tw/rss/society.xml",
   "https://udn.com/rssfeed/news/2/6638?ch=news",
   "https://news.google.com/rss?hl=zh-TW&gl=TW&ceid=TW:zh-Hant",
 ];
 
 const RSS_TIMEOUT_MS = 2200;
+const RULE_NEWS_LIMIT = 40;
+const RULE_ACCIDENT_SLOTS = 12;
+const AI_ACCIDENT_SLOTS = 6;
+const RECENT_NEWS_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_DEFAULT_DURATION_MS = 24 * 60 * 60 * 1000;
 const ACTIVITY_ENDED_GRACE_MS = 6 * 60 * 60 * 1000;
 const ACTIVITY_FUTURE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
@@ -346,7 +351,15 @@ async function fetchOneRssFeed(rssUrl, startedAt) {
 
 async function fetchRssFeeds(startedAt, feedUrls = DEFAULT_RSS_SOURCES) {
   const results = await Promise.allSettled(feedUrls.map((url) => fetchOneRssFeed(url, startedAt)));
-  const items = results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+  const stories = new Map();
+  for (const result of results) {
+    if (result.status !== "fulfilled") continue;
+    for (const item of result.value) {
+      const identity = rssItemIdentity(item);
+      if (!stories.has(identity)) stories.set(identity, item);
+    }
+  }
+  const items = [...stories.values()];
   const failedCount = results.filter((result) => result.status === "rejected").length;
   items.collector = {
     status: failedCount ? (failedCount === results.length ? "failed" : "warning") : "success",
@@ -1042,9 +1055,25 @@ function classifyRuleLocationRejection(location = {}) {
   return "unknown";
 }
 
-function extractRuleBasedEvents(newsItems) {
+function selectRecentNews(items, limit, reservedSlots, isAccident, now) {
+  const ranked = items.map((item) => ({
+    item,
+    publishedAt: parseEventTime(item.isoDate || item.pubDate || item.publishedAt) ?? 0,
+  })).sort((left, right) => right.publishedAt - left.publishedAt);
+  const priority = new Set(ranked.filter(({ item, publishedAt }) => (
+    publishedAt >= now - RECENT_NEWS_MS && publishedAt <= now && isAccident(item)
+  )).slice(0, Math.min(limit, reservedSlots)));
+  const ordered = [...priority, ...ranked.filter((entry) => !priority.has(entry))];
+  return {
+    selected: ordered.slice(0, limit).map(({ item }) => item),
+    capped: ordered.slice(limit).map(({ item }) => item),
+  };
+}
+
+function extractRuleBasedEvents(newsItems, now = Date.now()) {
   newsItems = newsItems.map(normalizeRssItem);
   const seen = new Set();
+  const candidateRecords = new Map();
   const diagnostics = {
     ruleInputCount: newsItems.length, ruleBasedCandidatesBeforeFilter: 0,
     ruleRejectedNoReliableLocation: 0, ruleRejectedInstitutional: 0, ruleDeduplicated: 0, ruleCapped: 0,
@@ -1103,7 +1132,7 @@ function extractRuleBasedEvents(newsItems) {
       diagnostics.rulePassedCount += 1;
       diagnostics.rssRecords.push(newsDiagnosticRecord(item, { stage: "rule", outcome: "passed", reason: "ruleSuccess", city: location.city, locationText: location.locationQuery || "", resolverReason: location.locationSource || "", rulePassed: true }));
 
-      return {
+      const event = {
         title: title.slice(0, 120),
         content: content || title,
         ...classifyRssCategory({ title, content, sourceUrl: item.link, eventKind: "news", source: "RSS" }),
@@ -1121,15 +1150,19 @@ function extractRuleBasedEvents(newsItems) {
         city: location.city,
         source: "RSS",
       };
+      candidateRecords.set(event, diagnostics.rssRecords.at(-1));
+      return event;
     })
     .filter(Boolean);
-  diagnostics.ruleCapped = Math.max(0, candidates.length - 40);
-  // Capping is an existing behavior; annotate the omitted records without changing it.
-  candidates.slice(40).forEach((candidate) => {
-    const record = diagnostics.rssRecords.find((item) => item.sourceId === String(candidate.url || ""));
-    if (record) { record.outcome = "capped"; record.reason = "ruleCandidateLimit"; }
-  });
-  const result = candidates.slice(0, 40);
+  const { selected: result, capped } = selectRecentNews(
+    candidates, RULE_NEWS_LIMIT, RULE_ACCIDENT_SLOTS, (event) => event.category === "accident", now
+  );
+  diagnostics.ruleCapped = capped.length;
+  for (const candidate of capped) {
+    const record = candidateRecords.get(candidate);
+    record.outcome = "capped";
+    record.reason = "ruleCandidateLimit";
+  }
   Object.defineProperty(result, "diagnostics", { value: diagnostics, enumerable: false });
   return result;
 }
@@ -1154,7 +1187,7 @@ function rssItemIdentity(item = {}) {
   return `text:${String(item.title || "").trim().toLowerCase()}:${cleanNewsText(item.contentSnippet || item.content || "").slice(0, 80).toLowerCase()}`;
 }
 
-function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
+function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = [], now = Date.now()) {
   newsItems = newsItems.map(normalizeRssItem);
   const successfulRuleItems = new Set(
     ruleBasedEvents
@@ -1163,12 +1196,16 @@ function selectAiNewsCandidates(newsItems = [], ruleBasedEvents = []) {
       .map((url) => `url:${url}`)
   );
 
-  // AI is a focused fallback for RSS items that the deterministic extractor
-  // could not safely place.  Preserve feed order and the bounded context cap.
   const eligible = newsItems.filter((item) => !successfulRuleItems.has(rssItemIdentity(item)));
-  const limit = Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT);
-  const result = eligible.slice(0, limit);
-  const capped = eligible.slice(limit);
+  const limit = Math.max(0, Math.min(MAX_NEWS_FOR_AI, DEFAULT_AI_CONTEXT_LIMIT));
+  const isAccident = (item) => classifyRssCategory({
+    title: item.title,
+    content: cleanNewsText(item.contentSnippet || item.content || item.summary || ""),
+    sourceUrl: item.link || item.url,
+    eventKind: "news",
+    source: "RSS",
+  }).category === "accident";
+  const { selected: result, capped } = selectRecentNews(eligible, limit, AI_ACCIDENT_SLOTS, isAccident, now);
   Object.defineProperty(result, "diagnostics", {
     value: {
       aiExcludedByRuleSuccess: newsItems.length - eligible.length,

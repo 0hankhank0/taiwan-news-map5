@@ -26,7 +26,7 @@ const refresh = require("../event-refresh");
     // Exercise the real collector wiring while mocking every upstream request.
     const sources = await refresh.fetchDefaultSources("news", Date.now(), { skipAi: true });
     assert.equal(sources.__collectorResults.rss.status, "failed");
-    assert.match(sources.__sourceFailures.rss, /3\/3 feeds failed/);
+    assert.match(sources.__sourceFailures.rss, /4\/4 feeds failed/);
     const now = Date.now();
     const result = await refresh.runEventRefresh({ mode: "news", write: false, sourceData: sources, skipExternalGeocoding: true, existingEvents: [{
       id: "retained-rss", title: "台北道路事故", source: "RSS", eventKind: "news", category: "traffic",
@@ -36,7 +36,10 @@ const refresh = require("../event-refresh");
     assert.ok(result.events.some((event) => event.id === "retained-rss"), "failed collection retains existing fresh news");
 
     global.fetch = async () => new Response(xml);
-    assert.equal((await refresh.fetchRssFeeds(Date.now(), urls)).collector.status, "success");
+    const overlapping = await refresh.fetchRssFeeds(Date.now(), urls);
+    assert.equal(overlapping.collector.status, "success");
+    assert.equal(overlapping.length, 1, "overlapping feeds consume one candidate slot");
+    assert.deepEqual(overlapping.collector.subrequests.map(({ count }) => count), [1, 1]);
     global.fetch = async () => new Response(xml.replace(/<item>.*<\/item>/, ""));
     const empty = await refresh.fetchRssFeeds(Date.now(), urls);
     assert.equal(empty.length, 0);
