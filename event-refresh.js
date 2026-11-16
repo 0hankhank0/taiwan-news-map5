@@ -109,7 +109,7 @@ const AI_ARTICLE_CONTEXT_TIMEOUT_MS = Number(process.env.AI_ARTICLE_CONTEXT_TIME
 const SOFT_DEADLINE_MS = 7000;
 const TDX_PUBLIC_SOURCE_LIMIT = 2;
 const TDX_STATIC_CACHE_MS = 1000 * 60 * Number(process.env.TDX_STATIC_CACHE_MINUTES || 1440);
-const TDX_LIVE_CACHE_MS = 1000 * 60 * Number(process.env.TDX_LIVE_CACHE_MINUTES || 55);
+const TDX_LIVE_CACHE_MS = 1000 * 60 * Number(process.env.TDX_LIVE_CACHE_MINUTES || 220);
 const TDX_CONSTRUCTION_CACHE_MS = 1000 * 60 * Number(process.env.TDX_CONSTRUCTION_CACHE_MINUTES || 720);
 const TDX_BACKOFF_MS = 1000 * 60 * Number(process.env.TDX_BACKOFF_MINUTES || 60);
 const TDX_STATIC_CACHE_KEY = "tdx:static_cms";
@@ -117,7 +117,9 @@ const TDX_LIVE_CACHE_KEY = "tdx:live_cms_events";
 const TDX_CONSTRUCTION_CACHE_KEY = "tdx:construction_events";
 const TDX_FETCH_LOCK_KEYS = Object.freeze({ live: "tdx:lock:live", static: "tdx:lock:static", construction: "tdx:lock:construction" });
 const TDX_FETCH_LOCK_TTLS = Object.freeze({ live: 55 * 60, static: 23 * 60 * 60, construction: 11 * 60 * 60 });
-const TDX_DAILY_REQUEST_BUDGET = Number(process.env.TDX_DAILY_REQUEST_BUDGET || 220);
+// Six live polls (8 each), one static poll (8), two construction polls (5 each), and two token renewals use up to 68 requests per day.
+// Keep the hard application ceiling at 2,232 attempts in a 31-day month.
+const TDX_MAX_DAILY_REQUEST_BUDGET = 72;
 const TDX_FAILURE_BACKOFF_MS = 15 * 60 * 1000;
 const TDX_PARTIAL_BACKOFF_MS = 30 * 60 * 1000;
 const GEOCODING_CACHE_PREFIX = "geocode:v2:";
@@ -673,8 +675,14 @@ function secondsUntilTaipeiBudgetExpiry(now = Date.now()) {
   return Math.max(1, Math.ceil((nextMidnightTaipei + 60 * 60 * 1000 - now) / 1000));
 }
 
+function getTdxDailyRequestBudget() {
+  const configuredBudget = Number(process.env.TDX_DAILY_REQUEST_BUDGET?.trim() || TDX_MAX_DAILY_REQUEST_BUDGET);
+  if (!Number.isFinite(configuredBudget)) return TDX_MAX_DAILY_REQUEST_BUDGET;
+  return Math.min(TDX_MAX_DAILY_REQUEST_BUDGET, Math.max(0, Math.floor(configuredBudget)));
+}
+
 async function reserveTdxRequest() {
-  const budget = Math.max(0, Number(process.env.TDX_DAILY_REQUEST_BUDGET || TDX_DAILY_REQUEST_BUDGET) || 0);
+  const budget = getTdxDailyRequestBudget();
   const reservation = await reserveCachedCounter(getTaipeiTdxBudgetKey(), 1, { budget, ex: secondsUntilTaipeiBudgetExpiry() });
   const used = reservation?.used || 0;
   const blocked = !reservation?.allowed;
@@ -2522,7 +2530,7 @@ function tdxLayerObservation(detail = {}, fallback = {}) {
 }
 
 async function getTdxObservability(sources) {
-  const limit = Math.max(0, Number(process.env.TDX_DAILY_REQUEST_BUDGET || TDX_DAILY_REQUEST_BUDGET) || 0);
+  const limit = getTdxDailyRequestBudget();
   const live = tdxLayerObservation(sources.__collectorResults?.tdxTraffic);
   const construction = tdxLayerObservation(sources.__collectorResults?.tdxConstruction);
   const coordinationUnavailable = [live, construction].some((layer) => layer.outcome === "coordination_unavailable");
