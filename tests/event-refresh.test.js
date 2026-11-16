@@ -283,7 +283,7 @@ async function call(handler, req) {
   const mapEvents = eventRefresh.normalizeFinalEvents(publishedNews);
   const { applyEventQueryFilters } = require("../event-query");
   assert.deepEqual(applyEventQueryFilters(mapEvents, { category: "accident" }).map((event) => event.url), [worksite.link, crash.link]);
-  assert.equal(publishedNews.diagnostics.rssRecords.find((item) => item.sourceId === newerGeneralNews.at(-1).link).reason, "ruleCandidateLimit");
+  assert.equal(publishedNews.diagnostics.rssRecords.find((item) => item.sourceId === newerGeneralNews.at(-1).guid).reason, "ruleCandidateLimit");
   const unlocatedAccident = { title: "民宅火警　消防員趕往現場", link: "https://example.test/rss/unlocated-fire", isoDate: olderTime };
   assert.equal(eventRefresh.extractRuleBasedEvents([unlocatedAccident], selectionTime).length, 0);
   const aiPriority = eventRefresh.selectAiNewsCandidates([...newerGeneralNews, unlocatedAccident], [], selectionTime);
