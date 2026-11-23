@@ -153,8 +153,11 @@ const refresh = require("../event-refresh");
   if (savedProductionClientId === undefined) delete process.env.TDX_CLIENT_ID; else process.env.TDX_CLIENT_ID = savedProductionClientId;
   if (savedProductionClientSecret === undefined) delete process.env.TDX_CLIENT_SECRET; else process.env.TDX_CLIENT_SECRET = savedProductionClientSecret;
 
-  await store.setCachedValue(refresh.getTaipeiTdxBudgetKey(), 204, { ex: 60 });
+  process.env.TDX_DAILY_REQUEST_BUDGET = "220";
+  await store.setCachedValue(refresh.getTaipeiTdxBudgetKey(), 56, { ex: 60 });
   const nearLimit = await refresh.runEventRefresh({ mode: "traffic", write: false, sourceData: {}, existingEvents: [] });
+  assert.equal(nearLimit.tdxBudget.limit, 72, "an environment override cannot exceed the monthly-safe daily ceiling");
+  assert.equal(nearLimit.tdxBudget.remaining, 16);
   assert.equal(nearLimit.tdxBudget.warning, "budget_near_limit");
   if (originalBudget === undefined) delete process.env.TDX_DAILY_REQUEST_BUDGET;
   else process.env.TDX_DAILY_REQUEST_BUDGET = originalBudget;
