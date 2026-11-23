@@ -349,6 +349,7 @@
             height: 100%;
             position: relative;
         }
+        #map .mapboxgl-canvas-container { isolation: isolate; }
         #map .mapboxgl-canvas-container,
         #map .mapboxgl-canvas,
         #map .leaflet-container {
@@ -1152,7 +1153,10 @@
         }
 
         /* ── POPUP demo（設計稿 §07）──────────────────────────── */
-        .custom-popup.mapboxgl-popup { max-width: 336px !important; }
+        .custom-popup.mapboxgl-popup {
+            max-width: 336px !important;
+            z-index: 1;
+        }
         .custom-popup .mapboxgl-popup-content {
             position: relative;
             overflow: hidden;
